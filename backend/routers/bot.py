@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
+from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from database import get_db
@@ -30,15 +31,41 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
     sender = msg.get("from") or {}
     tg_user_id = sender.get("id")
     chat = msg.get("chat") or {}
-    if tg_user_id is None or chat.get("type") != "private" or str(chat.get("id")) != str(tg_user_id):
+    if tg_user_id is None:
         return
     tg_user_id = str(tg_user_id)
-    result = await db.execute(select(Customer).filter(Customer.telegram_user_id == tg_user_id).with_for_update())
-    customer = result.scalars().first()
-    language = _language(customer.language_code if customer else sender.get("language_code"))
     text = (msg.get("text") or "").strip()
     parts = text.split()
     command = parts[0].split("@", 1)[0].lower() if parts else ""
+
+    if chat.get("type") in {"group", "supergroup"}:
+        if command != "/getgroupid":
+            return
+        staff_result = await db.execute(select(Staff).filter(
+            Staff.telegram_user_id == tg_user_id,
+            Staff.role == "MANAGER",
+            Staff.active.is_(True),
+        ))
+        manager = staff_result.scalars().first()
+        group_chat_id = str(chat.get("id", ""))
+        if not manager or not group_chat_id.lstrip("-").isdigit():
+            await send_bot_message(group_chat_id, tr("bot.groupIdManagerOnly", _language(sender.get("language_code"))))
+            return
+        try:
+            await send_bot_message(tg_user_id, tr("bot.groupIdDelivered", _language(sender.get("language_code")), group_id=group_chat_id))
+        except TelegramForbiddenError:
+            await send_bot_message(group_chat_id, tr("bot.groupIdStartBot", _language(sender.get("language_code"))))
+        return
+
+    if chat.get("type") != "private" or str(chat.get("id")) != tg_user_id:
+        return
+    if command == "/myid":
+        await send_bot_message(tg_user_id, tr("bot.myId", _language(sender.get("language_code")), telegram_id=tg_user_id))
+        return
+
+    result = await db.execute(select(Customer).filter(Customer.telegram_user_id == tg_user_id).with_for_update())
+    customer = result.scalars().first()
+    language = _language(customer.language_code if customer else sender.get("language_code"))
 
     if command in {"/start", "/pay"}:
         argument = parts[1] if len(parts) > 1 else ""

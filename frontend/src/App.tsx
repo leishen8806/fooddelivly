@@ -198,6 +198,8 @@ function AdminPage() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null });
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [telegramIdEdits, setTelegramIdEdits] = useState<Record<number, string>>({});
+  const [busyStaffId, setBusyStaffId] = useState<number | null>(null);
   const [newStaff, setNewStaff] = useState({ login: '', password: '', telegramId: '', role: 'STAFF' });
 
   const fetchData = useCallback(async () => {
@@ -307,6 +309,16 @@ function AdminPage() {
     try { await api.patch(`/api/v1/admin/staff/${member.id}`, { active: !member.active }); await fetchData(); }
     catch { setError(t('error.generic')); }
   };
+  const saveStaffTelegramId = async (member: Staff) => {
+    setBusyStaffId(member.id);
+    try {
+      const telegram_user_id = telegramIdEdits[member.id]?.trim() || null;
+      await api.patch(`/api/v1/admin/staff/${member.id}`, { telegram_user_id });
+      setTelegramIdEdits((current) => { const next = { ...current }; delete next[member.id]; return next; });
+      await fetchData();
+    } catch { setError(t('error.generic')); }
+    finally { setBusyStaffId(null); }
+  };
   const changeStaffRole = async (member: Staff, roleValue: string) => {
     try { await api.patch(`/api/v1/admin/staff/${member.id}`, { role: roleValue }); await fetchData(); }
     catch { setError(t('error.generic')); }
@@ -342,7 +354,7 @@ function AdminPage() {
       <label>{t('admin.timezone')}<input value={storeSettings.timezone} onChange={(event) => setStoreSettings({ ...storeSettings, timezone: event.target.value })} required /></label>
       <label>{t('admin.paymentLink')}<input type="url" value={storeSettings.payment_link || ''} onChange={(event) => setStoreSettings({ ...storeSettings, payment_link: event.target.value || null })} /></label>
       <ImageUpload label={t('admin.qrImageUrl')} value={storeSettings.aba_qr_asset_key} onChange={(aba_qr_asset_key) => setStoreSettings((current) => ({ ...current, aba_qr_asset_key }))} />
-      <label>{t('admin.groupId')}<input value={storeSettings.telegram_staff_group_id || ''} onChange={(event) => setStoreSettings({ ...storeSettings, telegram_staff_group_id: event.target.value || null })} /></label>
+      <label>{t('admin.groupId')}<input inputMode="numeric" value={storeSettings.telegram_staff_group_id || ''} onChange={(event) => setStoreSettings({ ...storeSettings, telegram_staff_group_id: event.target.value || null })} /><small>{t('admin.groupIdHelp')}</small></label>
       <label>{t('admin.groupLanguage')}<select value={storeSettings.staff_group_language} onChange={(event) => setStoreSettings({ ...storeSettings, staff_group_language: event.target.value })}><option value="en">English</option><option value="zh-CN">中文</option><option value="km">ខ្មែរ</option></select></label>
       <label>{t('admin.openHours')}<input value={storeSettings.open_hours || ''} onChange={(event) => setStoreSettings({ ...storeSettings, open_hours: event.target.value || null })} /></label>
       <button className="primary" type="submit">{t('admin.updateSettings')}</button>
@@ -353,7 +365,7 @@ function AdminPage() {
       <label>{t('admin.telegramUserId')}<input inputMode="numeric" value={newStaff.telegramId} onChange={(event) => setNewStaff({ ...newStaff, telegramId: event.target.value })} /></label>
       <label>{t('admin.staffRole')}<select value={newStaff.role} onChange={(event) => setNewStaff({ ...newStaff, role: event.target.value })}><option value="STAFF">{t('admin.waiter')}</option><option value="MANAGER">{t('admin.manager')}</option></select></label>
       <button className="primary" type="submit">{t('admin.addStaff')}</button>
-    </form><div className="order-list">{staff.map((member) => <article className="order-row" key={member.id}><strong>{member.login_name}</strong><span>{member.telegram_user_id || '—'}</span><select value={member.role} onChange={(event) => void changeStaffRole(member, event.target.value)}><option value="STAFF">{t('admin.waiter')}</option><option value="MANAGER">{t('admin.manager')}</option></select><span>{member.active ? t('admin.active') : t('admin.deactivate')}</span><button onClick={() => void toggleStaff(member)}>{member.active ? t('admin.deactivate') : t('admin.activate')}</button></article>)}</div></section>}
+    </form><div className="order-list">{staff.map((member) => <article className="order-row" key={member.id}><strong>{member.login_name}</strong><input inputMode="numeric" aria-label={t('admin.telegramUserId')} placeholder={t('admin.telegramUserId')} value={telegramIdEdits[member.id] ?? member.telegram_user_id ?? ''} onChange={(event) => setTelegramIdEdits((current) => ({ ...current, [member.id]: event.target.value }))} /><button type="button" disabled={busyStaffId === member.id} onClick={() => void saveStaffTelegramId(member)}>{t('admin.linkTelegramId')}</button><select value={member.role} onChange={(event) => void changeStaffRole(member, event.target.value)}><option value="STAFF">{t('admin.waiter')}</option><option value="MANAGER">{t('admin.manager')}</option></select><span>{member.active ? t('admin.active') : t('admin.deactivate')}</span><button onClick={() => void toggleStaff(member)}>{member.active ? t('admin.deactivate') : t('admin.activate')}</button></article>)}</div></section>}
   </main>;
 }
 
