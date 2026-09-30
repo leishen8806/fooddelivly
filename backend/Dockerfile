@@ -5,7 +5,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1
 
 RUN groupadd --system --gid 10001 teacafe \
-    && useradd --system --uid 10001 --gid teacafe --home-dir /app teacafe
+    && useradd --system --uid 10001 --gid teacafe --home-dir /app teacafe \
+    && mkdir -p /var/lib/teacafe/uploads \
+    && chown -R teacafe:teacafe /var/lib/teacafe
 
 WORKDIR /app
 COPY backend/requirements.txt ./requirements.txt

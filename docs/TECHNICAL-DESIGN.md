@@ -115,6 +115,8 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 
 所有顾客和后台 API 需要会话 Cookie；员工 API 额外需要 `STAFF`/`MANAGER` 角色。Bot webhook 独立验证 Telegram secret token。
 
+商品图片和 ABA 收款二维码由店长通过 `POST /api/v1/admin/uploads` 上传，限制 PNG/JPEG/WebP、单图最大 5 MB；文件写入持久化 `uploaded_images` 卷，返回的同源图片地址保存到 `products.image_key` 或 `store_settings.aba_qr_asset_key`。这类展示图片可公开读取；顾客付款凭证仍走 Bot 私聊及授权后台，不存入该公开图片目录。
+
 | 方法 | 路径 | 用途 |
 |---|---|---|
 | `POST` | `/api/v1/auth/telegram` | 校验 Mini App `initData`、建立会话 |
@@ -128,6 +130,8 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 | `GET` | `/api/v1/orders` | 顾客仅取本人订单；员工可加状态过滤 |
 | `GET` | `/api/v1/orders/{public_code}` | 读取授权范围内订单详情 |
 | `GET` | `/api/v1/admin/products` | 员工查询商品 |
+| `POST` | `/api/v1/admin/uploads` | 店长上传商品或 ABA 二维码图片（multipart/form-data） |
+| `GET` | `/api/v1/uploads/{filename}` | 展示已上传的商品/收款二维码图片 |
 | `POST` | `/api/v1/admin/products` | 店长创建商品 |
 | `PATCH` | `/api/v1/admin/products/{id}` | 店长编辑、上下架商品 |
 | `GET` | `/api/v1/admin/analytics?from=&to=` | 按门店时区返回聚合统计 |

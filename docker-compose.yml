@@ -37,8 +37,11 @@ services:
       MINI_APP_URL: ${MINI_APP_URL:-https://food.workline.ink/}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       SQL_ECHO: ${SQL_ECHO:-false}
+      UPLOAD_DIR: /var/lib/teacafe/uploads
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-https://food.workline.ink}
       TZ: Asia/Phnom_Penh
+    volumes:
+      - uploaded_images:/var/lib/teacafe/uploads
     depends_on:
       db:
         condition: service_healthy
@@ -72,3 +75,4 @@ services:
 
 volumes:
   postgres_data:
+  uploaded_images:
