@@ -4,6 +4,32 @@ import { useAuthStore } from '../store/authStore';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 
+function getTelegramLaunchData() {
+  const hash = window.location.hash.replace(/^#/, '');
+  const hashQuery = hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : hash;
+  const hashParams = new URLSearchParams(hashQuery);
+  const searchParams = new URLSearchParams(window.location.search);
+  const win = window as Window & {
+    Telegram?: { WebApp?: { initDataUnsafe?: { user?: { id?: number } } }; WebView?: { isIframe?: boolean } };
+    TelegramWebviewProxy?: unknown;
+  };
+  const hashData = hashParams.get('tgWebAppData') || '';
+  const searchData = searchParams.get('tgWebAppData') || '';
+
+  return {
+    initData: WebApp.initData || hashData || searchData,
+    diagnostics: {
+      webApp: Boolean(win.Telegram?.WebApp),
+      platform: String(WebApp.platform || 'unknown'),
+      version: String(WebApp.version || 'unknown'),
+      bridge: Boolean(win.TelegramWebviewProxy || win.Telegram?.WebView?.isIframe),
+      hashParam: hashParams.has('tgWebAppData'),
+      queryParam: searchParams.has('tgWebAppData'),
+      unsafeUser: Boolean(win.Telegram?.WebApp?.initDataUnsafe?.user?.id),
+    },
+  };
+}
+
 export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { setCustomerAuth } = useAuthStore();
   const { i18n, t } = useTranslation();
@@ -23,9 +49,20 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         } catch {
           // The Telegram bridge's ready event is advisory; validated initData is the auth source.
         }
-        const initData = WebApp.initData;
+        const { initData, diagnostics } = getTelegramLaunchData();
         
         if (!initData) {
+          void api.post('/api/v1/auth/telegram', { initData: '' }, {
+            headers: {
+              'X-TC-TG-WebApp': diagnostics.webApp ? '1' : '0',
+              'X-TC-TG-Platform': diagnostics.platform,
+              'X-TC-TG-Version': diagnostics.version,
+              'X-TC-TG-Bridge': diagnostics.bridge ? '1' : '0',
+              'X-TC-TG-Hash': diagnostics.hashParam ? '1' : '0',
+              'X-TC-TG-Query': diagnostics.queryParam ? '1' : '0',
+              'X-TC-TG-Unsafe-User': diagnostics.unsafeUser ? '1' : '0',
+            },
+          }).catch(() => undefined);
           setError('telegram');
           setLoading(false);
           return;

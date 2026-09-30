@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 import os
 import json
+import logging
+import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from database import get_db
@@ -10,6 +12,7 @@ from auth_utils import validate_telegram_init_data, verify_password, create_acce
 from dependencies import get_current_customer, get_current_staff
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
+logger = logging.getLogger("teacafe.telegram_auth")
 
 class TelegramLoginRequest(BaseModel):
     initData: str
@@ -35,7 +38,24 @@ def _supported_language(code: str | None) -> str:
     return "en"
 
 @router.post("/telegram")
-async def telegram_login(req: TelegramLoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
+async def telegram_login(req: TelegramLoginRequest, response: Response, request: Request, db: AsyncSession = Depends(get_db)):
+    if not req.initData:
+        platform = request.headers.get("x-tc-tg-platform", "unknown")
+        version = request.headers.get("x-tc-tg-version", "unknown")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{1,20}", platform):
+            platform = "unknown"
+        if not re.fullmatch(r"[0-9.]{1,16}", version):
+            version = "unknown"
+        logger.warning(
+            "telegram_initdata_empty webapp=%s platform=%s version=%s bridge=%s hash_param=%s query_param=%s unsafe_user=%s",
+            request.headers.get("x-tc-tg-webapp") == "1",
+            platform,
+            version,
+            request.headers.get("x-tc-tg-bridge") == "1",
+            request.headers.get("x-tc-tg-hash") == "1",
+            request.headers.get("x-tc-tg-query") == "1",
+            request.headers.get("x-tc-tg-unsafe-user") == "1",
+        )
     bot_token = os.getenv("BOT_TOKEN")
     if not bot_token:
         raise HTTPException(status_code=500, detail="Bot token not configured")
