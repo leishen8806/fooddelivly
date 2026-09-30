@@ -1,12 +1,12 @@
 # Tea Cafe 技术设计文档
 
-> 产品名称：Tea Cafe　|　状态：规划稿 v0.2　|　日期：2026-09-29　|　当前仓库含规划文档，尚无应用代码和既有技术基线。
+> 产品名称：Tea Cafe　|　状态：技术基线与部署状态　|　更新：2026-09-30。项目由空仓库启动；代码已实现并部署至 VPS，Telegram 与 ABA 业务验收待配置。
 
 | 项目项 | 值 |
 |---|---|
 | GitHub 仓库 | `git@github.com:leishen8806/fooddelivly.git` |
 | 工作目录 | `E:\TeaCafe` |
-| 规划部署 VPS | `159.223.92.104`（目标主机，尚未部署） |
+| 部署 VPS | `159.223.92.104`（Docker 服务运行中，PostgreSQL 15.19，迁移 `3c7d8e9f012a`） |
 | 顾客 Mini App | `https://food.workline.ink/` |
 | 管理后台 | `https://food.workline.ink/admin` |
 | DNS | 按项目方提供的信息，`food.workline.ink` 已解析到 `159.223.92.104` |
@@ -161,8 +161,8 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 
 ## 9. 部署与运行
 
-- 工作目录：`E:\TeaCafe`。目标主机：VPS `159.223.92.104`；顾客 Mini App 为 `https://food.workline.ink/`，普通浏览器管理后台为 `https://food.workline.ink/admin`。项目方确认域名 DNS 已解析到该 VPS；当前文档不代表主机或 HTTPS 已验证。
-- 配置 `https://food.workline.ink/` 到 Telegram Bot 的 Mini App 菜单/主应用入口；`/admin` 提供独立员工浏览器登录、会话和角色校验。部署时仍需安装并验证 TLS 证书、反向代理和应用健康状态。
+- 工作目录：`E:\TeaCafe`。VPS `159.223.92.104` 已运行独立 Docker Compose 服务和 PostgreSQL 15.19；Alembic 当前为 `3c7d8e9f012a`。`https://food.workline.ink/health`、菜单 API 与 `/admin` 已通过 HTTPS 验证；Caddy 自动 TLS 证书已签发。
+- `https://food.workline.ink/` 和 `/admin` 当前可访问；Telegram Bot Token/用户名仍未配置，因此 Telegram `initData` 登录、Bot webhook 和真实点餐流程尚未验收。不得把静态页面可访问描述为 Bot 点餐已上线。
 - 配置 Telegram 员工订单操作群组；Bot webhook 必须校验 secret token，并在每个群组 callback 上校验群组 ID、员工身份及订单当前状态。
 - 源码仓库：`git@github.com:leishen8806/fooddelivly.git`。部署时从该仓库构建并发布。
 - 单个应用服务提供 API、后台静态资源和 Telegram webhook；反向代理终止 TLS；PostgreSQL 独立持久化。

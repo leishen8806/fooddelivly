@@ -4,7 +4,7 @@
 
 **项目仓库：** `git@github.com:leishen8806/fooddelivly.git`  
 **工作目录：** `E:\TeaCafe`  
-**规划部署 VPS：** `159.223.92.104`（目标主机，尚未部署）
+**部署 VPS：** `159.223.92.104`（Docker 服务已启动；Bot 凭据和业务配置未完成）
 **顾客 Mini App：** `https://food.workline.ink/`（按项目方提供的信息，域名已解析到 `159.223.92.104`）  
 **管理后台：** `https://food.workline.ink/admin`
 
