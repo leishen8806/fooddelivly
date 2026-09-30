@@ -1,10 +1,10 @@
-# Tea Cafe · Trae 开发总指令
+# Tea Cafe · 开发实施总指令
 
-> 用途：把本文件全文交给 Trae，作为项目实施主任务。项目资料：[`PRODUCT-REQUIREMENTS.md`](PRODUCT-REQUIREMENTS.md)、[`TECHNICAL-DESIGN.md`](TECHNICAL-DESIGN.md)、[`ui/UI-DESIGN-HANDOFF.md`](ui/UI-DESIGN-HANDOFF.md)、[`ui/locales.json`](ui/locales.json)。如本指令与这些文件出现冲突，先指出冲突及影响，再按产品需求文档执行；不要静默改变业务规则。
+> 用途：作为 Tea Cafe 项目实施与验收的统一开发任务说明。项目资料：[`PRODUCT-REQUIREMENTS.md`](PRODUCT-REQUIREMENTS.md)、[`TECHNICAL-DESIGN.md`](TECHNICAL-DESIGN.md)、[`ui/UI-DESIGN-HANDOFF.md`](ui/UI-DESIGN-HANDOFF.md)、[`ui/locales.json`](ui/locales.json)。如本指令与这些文件出现冲突，先指出冲突及影响，再按产品需求文档执行；不要静默改变业务规则。
 
 ---
 
-## 可直接交给 Trae 的任务
+## 开发实施任务
 
 你是 Tea Cafe 项目的资深全栈工程师。请在当前 Git 仓库中把规划文档落实成一个可本地运行、可部署的 Telegram Mini App + Telegram Bot + 浏览器管理后台。不要只输出建议、伪代码或静态页面；需要实际创建和修改源代码、配置、数据库迁移、运行说明，并逐项验证交付结果。
 

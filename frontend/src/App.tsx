@@ -176,6 +176,9 @@ function AdminPage() {
     return () => { active = false; };
   }, [setAdminAuth, logoutAdmin]);
   useEffect(() => { if (isAdminAuthenticated) void fetchData(); }, [isAdminAuthenticated, fetchData]);
+  useEffect(() => {
+    if (!authLoading && !isAdminAuthenticated) navigate('/admin/login', { replace: true });
+  }, [authLoading, isAdminAuthenticated, navigate]);
 
   const signOut = async () => { try { await api.post('/api/v1/auth/admin/logout'); } finally { logoutAdmin(); navigate('/admin/login'); } };
   const reviewPayment = async (order: Order, decision: 'APPROVED' | 'REJECTED') => {
@@ -263,7 +266,7 @@ function AdminPage() {
   };
 
   if (authLoading) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
-  if (!isAdminAuthenticated) return <AdminLogin />;
+  if (!isAdminAuthenticated) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
 
   return <main className="admin-shell">
     <header className="admin-header"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t('nav.overview')}</h1></div></div><div className="header-actions"><LanguageSwitch /><button onClick={() => void signOut()}>{t('auth.logout')}</button></div></header>
