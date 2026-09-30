@@ -26,6 +26,80 @@ function CustomerPage() {
 
 function AdminLogin() { const { t } = useTranslation(); const navigate = useNavigate(); const { setAdminAuth } = useAuthStore(); const [login, setLogin] = useState(''); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const submit = async (e: FormEvent) => { e.preventDefault(); try { const r = await api.post('/api/v1/auth/admin/login', { login_name: login, password }); setAdminAuth(String(r.data.staff_id), r.data.role); navigate('/admin'); } catch { setError(t('auth.loginFailed')); } }; return <main className="auth-shell"><div className="auth-card"><div className="brand-mark">T</div><span className="eyebrow">TEA CAFE · STAFF CONSOLE</span><h1>{t('auth.loginTitle')}</h1><p>{t('auth.loginDescription')}</p><form onSubmit={submit}><label htmlFor="login">{t('auth.loginId')}</label><input id="login" value={login} onChange={(e) => setLogin(e.target.value)} autoComplete="username" required /><label htmlFor="password">{t('auth.password')}</label><input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />{error && <p className="error">{error}</p>}<button className="primary" type="submit">{t('auth.login')}</button></form><LanguageSwitch /></div></main>; }
 
-function AdminPage() { const { t } = useTranslation(); const { isAdminAuthenticated, logoutAdmin } = useAuthStore(); const [orders, setOrders] = useState<any[]>([]); const [error, setError] = useState(''); useEffect(() => { if (!isAdminAuthenticated) return; api.get('/api/v1/admin/orders').then((r) => setOrders(r.data)).catch(() => setError(t('error.network'))); }, [isAdminAuthenticated, t]); if (!isAdminAuthenticated) return <AdminLogin />; return <main className="admin-shell"><header className="admin-header"><div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t('nav.overview')}</h1></div><div className="header-actions"><LanguageSwitch /><button onClick={logoutAdmin}>{t('auth.logout')}</button></div></header><section className="metric-row"><div className="metric"><span>{t('admin.ordersToday')}</span><strong>{orders.length}</strong></div><div className="metric warning"><span>{t('admin.needsReview')}</span><strong>{orders.filter((o) => o.payment_status === 'PROOF_SUBMITTED').length}</strong></div><div className="metric"><span>{t('admin.confirmedPaid')}</span><strong>{orders.filter((o) => o.payment_status === 'PAID_CONFIRMED').length}</strong></div></section><section className="panel"><div className="panel-heading"><div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('nav.orders')}</h2></div><Link to="/">{t('nav.menu')}</Link></div>{error && <p className="error">{error}</p>}{orders.length === 0 ? <p className="state">{t('common.loading')}</p> : <div className="order-list">{orders.map((order) => <div className="order-row" key={order.id}><strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span>{order.payment_status}</span><b>{money(order.total_minor, order.currency)}</b></div>)}</div>}</section></main>; }
+function AdminPage() {
+  const { t } = useTranslation(); 
+  const { isAdminAuthenticated, logoutAdmin } = useAuthStore(); 
+  const [orders, setOrders] = useState<any[]>([]); 
+  const [error, setError] = useState(''); 
+  const [settings, setSettings] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
+
+  const fetchDashboard = () => {
+    if (!isAdminAuthenticated) return; 
+    api.get('/api/v1/admin/orders').then((r) => setOrders(r.data)).catch(() => setError(t('error.network'))); 
+    api.get('/api/v1/admin/settings').then((r) => setSettings(r.data)).catch(console.error);
+    api.get('/api/v1/admin/analytics').then((r) => setStats(r.data)).catch(console.error);
+  };
+
+  useEffect(() => { 
+    fetchDashboard();
+  }, [isAdminAuthenticated, t]); 
+
+  const reviewPayment = async (orderId: number, decision: 'APPROVED'|'REJECTED') => {
+    try {
+      await api.post(`/api/v1/admin/orders/${orderId}/payment-review`, { decision, reason: decision === 'REJECTED' ? 'Manual rejection' : undefined });
+      fetchDashboard();
+    } catch (e) {
+      alert('Failed to review payment');
+    }
+  };
+
+  if (!isAdminAuthenticated) return <AdminLogin />; 
+  
+  return (
+    <main className="admin-shell">
+      <header className="admin-header">
+        <div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t('nav.overview')}</h1></div>
+        <div className="header-actions"><LanguageSwitch /><button onClick={logoutAdmin}>{t('auth.logout')}</button></div>
+      </header>
+      
+      {stats && (
+        <section className="metric-row">
+          <div className="metric"><span>{t('admin.ordersToday')}</span><strong>{stats.order_volume}</strong></div>
+          <div className="metric warning"><span>{t('admin.needsReview')}</span><strong>{orders.filter((o) => o.payment_status === 'PROOF_SUBMITTED').length}</strong></div>
+          <div className="metric"><span>{t('admin.confirmedPaid')}</span><strong>{orders.filter((o) => o.payment_status === 'PAID_CONFIRMED').length}</strong></div>
+        </section>
+      )}
+
+      <section className="panel">
+        <div className="panel-heading">
+          <div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('nav.orders')}</h2></div>
+        </div>
+        {error && <p className="error">{error}</p>}
+        {orders.length === 0 ? <p className="state">{t('common.loading')}</p> : 
+          <div className="order-list">
+            {orders.map((order) => (
+              <div className="order-row" key={order.id}>
+                <strong>{order.public_code}</strong>
+                <span>{t('checkout.roomNumber')} {order.room_number}</span>
+                <span>Order: {order.order_status}</span>
+                <span>Payment: {order.payment_status}</span>
+                <b>{money(order.total_minor, order.currency)}</b>
+                <div className="actions">
+                  {order.payment_status === 'PROOF_SUBMITTED' && (
+                    <>
+                      <button onClick={() => reviewPayment(order.id, 'APPROVED')}>Approve Payment</button>
+                      <button onClick={() => reviewPayment(order.id, 'REJECTED')}>Reject Payment</button>
+                    </>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        }
+      </section>
+    </main>
+  ); 
+}
 
 export default function App() { return <TelegramProvider><Routes><Route path="/" element={<CustomerPage />} /><Route path="/admin/login" element={<AdminLogin />} /><Route path="/admin" element={<AdminPage />} /></Routes></TelegramProvider>; }
