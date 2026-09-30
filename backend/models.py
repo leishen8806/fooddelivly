@@ -11,6 +11,7 @@ class Customer(Base):
     display_name = Column(String, nullable=True)
     username = Column(String, nullable=True)
     language_code = Column(String, nullable=True)
+    preferred_language = Column(String, nullable=True)
     # The Telegram deep link selects the exact order whose proof is being sent.
     pending_payment_order_id = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

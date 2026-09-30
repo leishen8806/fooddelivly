@@ -130,7 +130,7 @@ async def create_order(
             order_status="NEW",
             payment_status="UNPAID",
             currency=currency,
-            customer_language=("zh-CN" if (customer.language_code or "").lower().startswith("zh") else "km" if (customer.language_code or "").lower().startswith("km") else "en"),
+            customer_language=customer.preferred_language or ("zh-CN" if (customer.language_code or "").lower().startswith("zh") else "km" if (customer.language_code or "").lower().startswith("km") else "en"),
             total_minor=total_minor,
             idempotency_key=idempotency_key,
             request_digest=request_digest

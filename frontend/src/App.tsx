@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { ClipboardList, Store, UserRound } from 'lucide-react';
+import { ClipboardList, ShoppingCart, Store, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from './api';
 import { TelegramProvider } from './components/TelegramProvider';
@@ -11,11 +11,11 @@ import './index.css';
 type Product = { id: number; category_id: number; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean; sweetness_enabled: boolean };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
 type CartLine = { product: Product; quantity: number; sweetness: number | null };
-type PlacedOrder = { public_code: string; total_minor: number; currency: string; status: string; payment_status: string; payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null };
 type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: { sweetness?: number } }> };
 type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; created_at: string };
 type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null };
-type CustomerProfile = { display_name: string | null; username: string | null; language: string };
+type LanguageCode = 'zh-CN' | 'en' | 'km';
+type CustomerProfile = { customer_id: number; display_name: string | null; username: string | null; language: LanguageCode; preferred_language: LanguageCode | null };
 type StoreSettings = { currency: string; timezone: string; aba_qr_asset_key: string | null; payment_link: string | null; telegram_staff_group_id: string | null; staff_group_language: string; open_hours: string | null };
 type Staff = { id: number; login_name: string; role: string; active: boolean; telegram_user_id: string | null };
 type Customer = { id: number; telegram_user_id: string; display_name: string | null; username: string | null; telegram_chat_url: string; order_count: number; completed_order_count: number; created_at: string };
@@ -92,13 +92,16 @@ function LanguageSwitch() {
 
 function CustomerPage() {
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'menu' | 'orders' | 'me'>('menu');
+  const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'orders' | 'me'>('menu');
   const [categories, setCategories] = useState<Category[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [sweetnessByProduct, setSweetnessByProduct] = useState<Record<number, number>>({});
   const [room, setRoom] = useState('');
-  const [order, setOrder] = useState<PlacedOrder | null>(null);
-  const [orderStatus, setOrderStatus] = useState<CustomerOrderDetails | null>(null);
+  const [orderDetails, setOrderDetails] = useState<CustomerOrderDetails | null>(null);
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [languageDraft, setLanguageDraft] = useState<LanguageCode>('en');
+  const [languageSaving, setLanguageSaving] = useState(false);
+  const [languageError, setLanguageError] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
@@ -106,11 +109,17 @@ function CustomerPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
-  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileError, setProfileError] = useState('');
   const idempotencyKey = useRef<string | null>(null);
+  const roomLoadedFor = useRef<number | null>(null);
+  const orderCloseRef = useRef<HTMLButtonElement>(null);
+  const languageSelectRef = useRef<HTMLSelectElement>(null);
   const total = useMemo(() => cart.reduce((sum, line) => sum + line.product.price_minor * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
+  const orderDialogOpen = orderDetails !== null;
+  const languageDialogOpen = profileLoaded && Boolean(profile) && !profile?.preferred_language;
 
   const loadMenu = useCallback(() => api.get('/api/v1/menu').then((response) => setCategories(response.data)).catch(() => setError(t('error.network'))).finally(() => setLoading(false)), [t]);
   useEffect(() => { void loadMenu(); }, [loadMenu]);
@@ -129,46 +138,90 @@ function CustomerPage() {
   }, [t]);
 
   const loadProfile = useCallback(async () => {
-    setProfileLoading(true);
-    setProfileError('');
     try {
       const response = await api.get('/api/v1/auth/me');
-      setProfile(response.data);
+      const customerProfile = response.data as CustomerProfile;
+      setProfile(customerProfile);
+      if (roomLoadedFor.current !== customerProfile.customer_id) {
+        setRoom(localStorage.getItem(`teacafe.roomNumber.${customerProfile.customer_id}`) || '');
+        roomLoadedFor.current = customerProfile.customer_id;
+      }
+      if (!customerProfile.preferred_language) setLanguageDraft(customerProfile.language);
     } catch {
       setProfileError(t('error.network'));
     } finally {
       setProfileLoading(false);
+      setProfileLoaded(true);
     }
   }, [t]);
+  useEffect(() => { void loadProfile(); }, [loadProfile]);
 
-  const selectTab = (tab: 'menu' | 'orders' | 'me') => {
+  useEffect(() => {
+    if (!orderDialogOpen) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    orderCloseRef.current?.focus();
+    const dialog = orderCloseRef.current?.closest('.order-modal');
+    const focusable = dialog?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href]');
+    const first = focusable?.[0];
+    const last = focusable?.[focusable.length - 1];
+    const handleDialogKeys = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOrderDetails(null);
+      if (event.key === 'Tab' && event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (event.key === 'Tab' && !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', handleDialogKeys);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKeys);
+      previousFocus?.focus();
+    };
+  }, [orderDialogOpen]);
+
+  useEffect(() => {
+    if (!languageDialogOpen) return;
+    const dialog = languageSelectRef.current?.closest('.language-modal');
+    const focusable = dialog?.querySelectorAll<HTMLElement>('select, button:not(:disabled)');
+    const first = focusable?.[0];
+    const last = focusable?.[focusable.length - 1];
+    languageSelectRef.current?.focus();
+    const keepDialogModal = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') event.preventDefault();
+      if (event.key === 'Tab' && event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (event.key === 'Tab' && !event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener('keydown', keepDialogModal);
+    return () => document.removeEventListener('keydown', keepDialogModal);
+  }, [languageDialogOpen]);
+
+  const selectTab = (tab: 'menu' | 'cart' | 'orders' | 'me') => {
     setActiveTab(tab);
-    if (tab === 'orders') void loadCustomerOrders();
+    if (tab === 'orders' || tab === 'me') void loadCustomerOrders();
     if (tab === 'me') {
-      void loadCustomerOrders();
+      setProfileLoading(true);
+      setProfileError('');
       void loadProfile();
     }
   };
 
   const openCustomerOrder = async (publicCode: string) => {
     setOrdersError('');
+    setOrderLoading(true);
     try {
       const response = await api.get(`/api/v1/orders/${publicCode}`);
-      const details = response.data as CustomerOrderDetails;
-      setOrder({
-        public_code: details.public_code,
-        total_minor: details.total_minor,
-        currency: details.currency,
-        status: details.order_status,
-        payment_status: details.payment_status,
-        payment_link: details.payment_link,
-        payment_qr_url: details.payment_qr_url,
-        bot_deeplink: details.bot_deeplink,
-      });
-      setOrderStatus(details);
-      setActiveTab('orders');
+      setOrderDetails(response.data as CustomerOrderDetails);
     } catch {
       setOrdersError(t('error.network'));
+    } finally {
+      setOrderLoading(false);
     }
   };
 
@@ -193,7 +246,7 @@ function CustomerPage() {
   };
   const setQuantity = (key: string, quantity: number) => {
     idempotencyKey.current = null;
-    setCart((current) => quantity < 1 ? current.filter((line) => cartLineKey(line) !== key) : current.map((line) => cartLineKey(line) === key ? { ...line, quantity } : line));
+    setCart((current) => quantity < 1 ? current.filter((line) => cartLineKey(line) !== key) : current.map((line) => cartLineKey(line) === key ? { ...line, quantity: Math.min(99, quantity) } : line));
   };
 
   const submit = async (event: FormEvent) => {
@@ -205,13 +258,12 @@ function CustomerPage() {
       const response = await api.post('/api/v1/orders', {
         room_number: room.trim(), items: cart.map((line) => ({ product_id: line.product.id, quantity: line.quantity, ...(line.sweetness === null ? {} : { options: { sweetness: line.sweetness } }) })),
       }, { headers: { 'Idempotency-Key': idempotencyKey.current } });
-      setOrder(response.data);
-      setOrderStatus(null);
       setCart([]);
       idempotencyKey.current = null;
       setStatus('');
       setActiveTab('orders');
-      void loadCustomerOrders();
+      await loadCustomerOrders();
+      await openCustomerOrder(response.data.public_code);
     } catch (requestError: any) {
       if (requestError?.response?.status === 409) idempotencyKey.current = null;
       setStatus(requestError?.response?.status === 409 ? t('cart.priceChanged') : t('checkout.failed'));
@@ -219,75 +271,103 @@ function CustomerPage() {
   };
 
   const refreshStatus = async () => {
-    if (!order) return;
-    try {
-      const response = await api.get(`/api/v1/orders/${order.public_code}`);
-      const details = response.data as CustomerOrderDetails;
-      setOrderStatus(details);
-      setOrder((current) => current ? { ...current, status: details.order_status, payment_status: details.payment_status } : current);
-      void loadCustomerOrders();
-    } catch { setStatus(t('error.network')); }
+    if (!orderDetails) return;
+    await openCustomerOrder(orderDetails.public_code);
+    void loadCustomerOrders();
   };
 
+  const saveLanguage = async (language = languageDraft) => {
+    setLanguageSaving(true);
+    setLanguageError('');
+    try {
+      const response = await api.patch('/api/v1/auth/me/language', { language });
+      localStorage.setItem('teacafe.language', response.data.language);
+      await i18n.changeLanguage(response.data.language);
+      setProfile((current) => current ? { ...current, language: response.data.language, preferred_language: response.data.preferred_language } : current);
+    } catch {
+      setLanguageError(t('language.saveFailed'));
+    } finally {
+      setLanguageSaving(false);
+    }
+  };
+
+  const paymentLabel = (paymentStatus: string) => paymentStatus === 'PAID_CONFIRMED' ? t('payment.confirmed') : paymentStatus === 'PROOF_SUBMITTED' ? t('payment.pending') : paymentStatus === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid');
+
   return <main className="customer-shell">
-    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'menu' && itemCount > 0 && <a className="cart-shortcut" href="#cart" aria-label={`${t('cart.title')}: ${itemCount}`}><span>{t('cart.title')}</span><strong>{itemCount}</strong></a>}<LanguageSwitch /></div></header>
+    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
 
     {activeTab === 'menu' && <>
       <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>
       {loading && <p className="state">{t('common.loading')}</p>}{error && <p className="error">{error}</p>}
       {!loading && !error && categories.length === 0 && <section className="state empty-menu" role="status"><h2>{t('menu.emptyTitle')}</h2><p>{t('menu.emptyDescription')}</p></section>}
-      <section id="menu" className="menu-grid">{categories.map((category) => <div className="category" key={category.id}><h2>{label(category.name, i18n.language)}</h2><div className="product-grid">{(category.products || []).map((product) => <article className="product-card" key={product.id}>{product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}<div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p>{product.sweetness_enabled && <label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? ''} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="" disabled>{t('menu.chooseSweetness')}</option><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label>}<div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button type="button" disabled={!product.available || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{product.available ? t('menu.addToCart') : t('common.soldOut')}</button></div></div></article>)}</div></div>)}</section>
-      <section id="cart" className="checkout-card"><div><span className="eyebrow">{t('cart.title')}</span><h2>{itemCount ? `${itemCount} ${t('common.quantity')}` : t('cart.empty')}</h2></div>
-        {cart.length > 0 && <form onSubmit={submit}>{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}</span><span><button type="button" onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)} aria-label={t('common.delete')}>−</button> {line.quantity} <button type="button" onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></span></div>)}
-          <button className="continue-shopping" type="button" onClick={() => document.getElementById('menu')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>{t('menu.addMore')}</button>
-          <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); }} autoComplete="off" maxLength={32} required />
-          <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button></form>}
-        {status && <p className="status" role="status">{status}</p>}
-      </section>
+      <section className="menu-grid">{categories.map((category) => <div className="category" key={category.id}><h2>{label(category.name, i18n.language)}</h2><div className="product-grid">{(category.products || []).map((product) => <article className="product-card" key={product.id}>{product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}<div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p>{product.sweetness_enabled && <label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? ''} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="" disabled>{t('menu.chooseSweetness')}</option><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label>}<div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button type="button" disabled={!product.available || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{product.available ? t('menu.addToCart') : t('common.soldOut')}</button></div></div></article>)}</div></div>)}</section>
+      {status && <p className="status" role="status">{status}</p>}
     </>}
+
+    {activeTab === 'cart' && <section className="customer-page-section cart-page">
+      <div className="customer-page-heading"><span className="eyebrow">{t('cart.title')}</span><h2>{itemCount ? `${itemCount} ${t('common.quantity')}` : t('cart.empty')}</h2></div>
+      {!cart.length ? <div className="cart-empty"><p>{t('cart.empty')}</p><button className="primary" type="button" onClick={() => selectTab('menu')}>{t('cart.startShopping')}</button></div> : <form className="checkout-card cart-checkout" onSubmit={submit}>
+        <div className="cart-lines">{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}<small>{amount(line.product.price_minor * line.quantity, line.product.currency, i18n.language)}</small></span><div className="quantity-control"><button type="button" aria-label={t('common.delete')} onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)}>−</button><strong>{line.quantity}</strong><button type="button" aria-label={t('common.add')} onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></div></div>)}</div>
+        <button className="continue-shopping" type="button" onClick={() => selectTab('menu')}>{t('menu.addMore')}</button>
+        <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); if (profile) localStorage.setItem(`teacafe.roomNumber.${profile.customer_id}`, event.target.value); }} autoComplete="off" maxLength={32} required />
+        <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button>
+        {status && <p className="status" role="status">{status}</p>}
+      </form>}
+    </section>}
 
     {activeTab === 'orders' && <section className="customer-page-section">
       <div className="customer-page-heading"><span className="eyebrow">{t('order.history')}</span><h2>{t('nav.orders')}</h2></div>
       {ordersLoading && <p className="state" role="status">{t('common.loading')}</p>}
       {ordersError && <p className="error" role="alert">{ordersError} <button type="button" onClick={() => void loadCustomerOrders()}>{t('common.retry')}</button></p>}
       {!ordersLoading && !ordersError && customerOrders.length === 0 && <p className="state empty-menu">{t('order.empty')}</p>}
-      <div className="customer-orders">{customerOrders.map((customerOrder) => <article className="customer-order-card" key={customerOrder.public_code}>
+      <div className="customer-orders">{customerOrders.map((customerOrder) => <button type="button" className="customer-order-card" key={customerOrder.public_code} onClick={() => void openCustomerOrder(customerOrder.public_code)}>
         <div className="customer-order-heading"><strong>{t('payment.order')} {customerOrder.public_code}</strong><span>{t(`order.status.${customerOrder.order_status.toLowerCase()}`)}</span></div>
         <div className="customer-order-meta"><span>{t('order.room')}: {customerOrder.room_number}</span><time dateTime={customerOrder.created_at}>{new Date(customerOrder.created_at).toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'short' })}</time></div>
-        <div className="customer-order-total"><span>{customerOrder.payment_status === 'PAID_CONFIRMED' ? t('payment.confirmed') : customerOrder.payment_status === 'PROOF_SUBMITTED' ? t('payment.pending') : customerOrder.payment_status === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid')}</span><strong>{amount(customerOrder.total_minor, customerOrder.currency, i18n.language)}</strong></div>
-        <button type="button" onClick={() => void openCustomerOrder(customerOrder.public_code)}>{t('order.track')}</button>
-      </article>)}</div>
-      {order && <section className="checkout-card payment-card"><span className="eyebrow">{t('payment.title')}</span><h2>{t('payment.order')} {order.public_code}</h2>
-        {orderStatus?.items?.length ? <div className="customer-order-items">{orderStatus.items.map((item, index) => <div key={`${order.public_code}:${index}`}><span>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined && <small>{t('menu.sweetness')}: {item.options.sweetness}%</small>}</span><strong>{amount(item.line_total_minor, order.currency, i18n.language)}</strong></div>)}</div> : null}
-        <p>{t('order.room')}: {orderStatus?.room_number}</p><p>{t('payment.amountDue')}: <strong>{amount(order.total_minor, order.currency, i18n.language)}</strong></p>
-        {order.payment_qr_url && <img className="payment-qr" src={order.payment_qr_url} alt={t('payment.aba')} />}
-        {order.payment_link && <a className="primary payment-link" href={order.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
-        {!order.payment_qr_url && !order.payment_link && <p className="error">{t('payment.notConfigured')}</p>}
-        <p>{t('payment.instruction')}</p><p>{t('payment.notConfirmed')}</p>
-        {order.bot_deeplink ? <a className="primary payment-link" href={order.bot_deeplink}>{t('payment.sendProof')}</a> : <p>{t('payment.botNotConfigured')}</p>}
-        <button type="button" onClick={refreshStatus}>{t('payment.refreshStatus')}</button>
-        {orderStatus && <div className="status" role="status"><strong>{t(`order.status.${orderStatus.order_status.toLowerCase()}`)}</strong><p>{orderStatus.payment_status === 'PAID_CONFIRMED' ? t('payment.confirmed') : orderStatus.payment_status === 'PROOF_SUBMITTED' ? t('payment.pending') : orderStatus.payment_status === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid')}</p>{orderStatus.payment_status === 'REJECTED' && <p>{t('payment.resubmit')}</p>}</div>}
-      </section>}
+        <div className="customer-order-total"><span>{paymentLabel(customerOrder.payment_status)}</span><strong>{amount(customerOrder.total_minor, customerOrder.currency, i18n.language)}</strong></div>
+      </button>)}</div>
     </section>}
 
     {activeTab === 'me' && <section className="customer-page-section customer-profile">
       <div className="customer-page-heading"><span className="eyebrow">{t('profile.telegramConnected')}</span><h2>{t('profile.title')}</h2></div>
       {profileLoading && <p className="state" role="status">{t('common.loading')}</p>}
-      {profileError && <p className="error" role="alert">{profileError} <button type="button" onClick={() => void loadProfile()}>{t('common.retry')}</button></p>}
+      {profileError && <p className="error" role="alert">{profileError} <button type="button" onClick={() => { setProfileLoading(true); setProfileError(''); void loadProfile(); }}>{t('common.retry')}</button></p>}
       {ordersLoading && <p className="state" role="status">{t('common.loading')}</p>}
       {ordersError && <p className="error" role="alert">{ordersError} <button type="button" onClick={() => void loadCustomerOrders()}>{t('common.retry')}</button></p>}
       {profile && <>
         <section className="profile-identity"><UserRound size={28} aria-hidden="true" /><div><strong>{profile.display_name || profile.username || 'Tea Cafe'}</strong>{profile.username && <span>@{profile.username}</span>}</div></section>
         {!ordersLoading && !ordersError && <div className="profile-stats"><article><span>{t('profile.orderCount')}</span><strong>{customerOrders.length}</strong></article><article><span>{t('profile.completedOrders')}</span><strong>{customerOrders.filter((customerOrder) => customerOrder.order_status === 'COMPLETED').length}</strong></article></div>}
-        <label className="profile-language">{t('common.language')}<LanguageSwitch /></label>
+        <label className="profile-language">{t('common.language')}<select aria-label={t('common.language')} value={profile.preferred_language || languageDraft} disabled={languageSaving} onChange={(event) => { const language = event.target.value as LanguageCode; setLanguageDraft(language); void saveLanguage(language); }}><option value="en">English</option><option value="zh-CN">中文</option><option value="km">ខ្មែរ</option></select></label>
+        {languageError && <p className="error" role="alert">{languageError}</p>}
       </>}
     </section>}
 
     <nav className="customer-bottom-nav" aria-label={t('common.navigation')}>
       <button type="button" className={activeTab === 'menu' ? 'active' : ''} aria-current={activeTab === 'menu' ? 'page' : undefined} onClick={() => selectTab('menu')}><Store size={20} aria-hidden="true" /><span>{t('nav.menu')}</span></button>
+      <button type="button" className={activeTab === 'cart' ? 'active' : ''} aria-current={activeTab === 'cart' ? 'page' : undefined} onClick={() => selectTab('cart')}><span className="nav-icon-wrap"><ShoppingCart size={20} aria-hidden="true" />{itemCount > 0 && <span className="cart-badge">{itemCount > 99 ? '99+' : itemCount}</span>}</span><span>{t('nav.cart')}</span></button>
       <button type="button" className={activeTab === 'orders' ? 'active' : ''} aria-current={activeTab === 'orders' ? 'page' : undefined} onClick={() => selectTab('orders')}><ClipboardList size={20} aria-hidden="true" /><span>{t('nav.orders')}</span></button>
       <button type="button" className={activeTab === 'me' ? 'active' : ''} aria-current={activeTab === 'me' ? 'page' : undefined} onClick={() => selectTab('me')}><UserRound size={20} aria-hidden="true" /><span>{t('nav.me')}</span></button>
     </nav>
+
+    {orderLoading && <div className="order-modal-backdrop" role="presentation"><section className="order-modal" role="status">{t('common.loading')}</section></div>}
+    {orderDetails && <div className="order-modal-backdrop" role="presentation" onClick={() => setOrderDetails(null)}><section className="order-modal" role="dialog" aria-modal="true" aria-labelledby="order-modal-title" onClick={(event) => event.stopPropagation()}>
+      <div className="order-modal-header"><div><span className="eyebrow">{t('payment.title')}</span><h2 id="order-modal-title">{t('payment.order')} {orderDetails.public_code}</h2></div><button ref={orderCloseRef} type="button" aria-label={t('common.close')} onClick={() => setOrderDetails(null)}>×</button></div>
+      <div className="customer-order-heading"><strong>{t(`order.status.${orderDetails.order_status.toLowerCase()}`)}</strong><span>{paymentLabel(orderDetails.payment_status)}</span></div>
+      <p>{t('order.room')}: <strong>{orderDetails.room_number}</strong></p>
+      <div className="customer-order-items">{orderDetails.items.map((item, index) => <div key={`${orderDetails.public_code}:${index}`}><span>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined && <small>{t('menu.sweetness')}: {item.options.sweetness}%</small>}</span><strong>{amount(item.line_total_minor, orderDetails.currency, i18n.language)}</strong></div>)}</div>
+      <p className="order-modal-total">{t('payment.amountDue')}: <strong>{amount(orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>
+      {orderDetails.payment_status !== 'PAID_CONFIRMED' && <>
+        {orderDetails.payment_qr_url && <img className="payment-qr" src={orderDetails.payment_qr_url} alt={t('payment.aba')} />}
+        {orderDetails.payment_link && <a className="primary payment-link" href={orderDetails.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
+        {!orderDetails.payment_qr_url && !orderDetails.payment_link && <p className="error">{t('payment.notConfigured')}</p>}
+        <p>{t('payment.instruction')}</p><p>{t('payment.notConfirmed')}</p>
+        {orderDetails.bot_deeplink ? <a className="primary payment-link" href={orderDetails.bot_deeplink}>{t('payment.sendProof')}</a> : <p>{t('payment.botNotConfigured')}</p>}
+      </>}
+      {orderDetails.payment_status === 'REJECTED' && <p className="error">{t('payment.resubmit')}</p>}
+      <button type="button" onClick={() => void refreshStatus()}>{t('payment.refreshStatus')}</button>
+    </section></div>}
+
+    {languageDialogOpen && <div className="language-modal-backdrop"><section className="language-modal" role="dialog" aria-modal="true" aria-labelledby="language-modal-title"><img src="/tea-cafe-logo.png" alt="Tea Cafe" /><span className="eyebrow">TEA CAFE</span><h2 id="language-modal-title">{t('language.first.title')}</h2><p>{t('language.first.description')}</p><label>{t('common.language')}<select ref={languageSelectRef} value={languageDraft} onChange={(event) => setLanguageDraft(event.target.value as LanguageCode)}><option value="zh-CN">中文</option><option value="en">English</option><option value="km">ខ្មែរ</option></select></label>{languageError && <p className="error" role="alert">{languageError}</p>}<button className="primary" type="button" disabled={languageSaving} onClick={() => void saveLanguage()}>{languageSaving ? t('common.loading') : t('language.first.continue')}</button></section></div>}
+    {profileLoaded && !profile && profileError && <div className="language-modal-backdrop"><section className="language-modal" role="alert"><h2>{t('error.network')}</h2><p>{profileError}</p><button type="button" onClick={() => { setProfileLoading(true); setProfileError(''); void loadProfile(); }}>{t('common.retry')}</button></section></div>}
   </main>;
 }
 

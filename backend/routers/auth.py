@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Literal
 import os
 import json
 import logging
@@ -20,6 +20,9 @@ class TelegramLoginRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     login_name: str
     password: str
+
+class LanguagePreferenceRequest(BaseModel):
+    language: Literal["zh-CN", "en", "km"]
 
 def _cookie_options():
     return {
@@ -96,7 +99,12 @@ async def telegram_login(req: TelegramLoginRequest, response: Response, request:
     response.set_cookie(key="session_token", value=token, **_cookie_options())
     response.headers["Cache-Control"] = "no-store"
     
-    return {"message": "Login successful", "customer_id": customer.id, "language": _supported_language(customer.language_code)}
+    return {
+        "message": "Login successful",
+        "customer_id": customer.id,
+        "language": customer.preferred_language or _supported_language(customer.language_code),
+        "preferred_language": customer.preferred_language,
+    }
 
 
 @router.post("/admin/login")
@@ -138,5 +146,20 @@ async def customer_me(customer_id: int = Depends(get_current_customer), db: Asyn
         "customer_id": customer.id,
         "display_name": customer.display_name,
         "username": customer.username,
-        "language": _supported_language(customer.language_code),
+        "language": customer.preferred_language or _supported_language(customer.language_code),
+        "preferred_language": customer.preferred_language,
     }
+
+@router.patch("/me/language")
+async def set_customer_language(
+    req: LanguagePreferenceRequest,
+    customer_id: int = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Customer).filter(Customer.id == customer_id))
+    customer = result.scalars().first()
+    if customer is None:
+        raise HTTPException(status_code=401, detail="Customer session is no longer valid")
+    customer.preferred_language = req.language
+    await db.commit()
+    return {"language": customer.preferred_language, "preferred_language": customer.preferred_language}

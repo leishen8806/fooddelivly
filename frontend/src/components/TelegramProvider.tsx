@@ -93,9 +93,10 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
         if (res.data.customer_id) {
           setCustomerAuth(res.data.customer_id);
-          if (!localStorage.getItem('teacafe.language')) {
-            await i18n.changeLanguage(res.data.language || 'en');
-          }
+          const language = res.data.preferred_language || res.data.language || 'en';
+          if (res.data.preferred_language) localStorage.setItem('teacafe.language', language);
+          else localStorage.removeItem('teacafe.language');
+          await i18n.changeLanguage(language);
         }
       } catch (requestError) {
         const status = (requestError as { response?: { status?: number } })?.response?.status;
