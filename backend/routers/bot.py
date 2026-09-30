@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, WebAppInfo
 
 from database import get_db
 from models import Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff, StoreSettings
@@ -99,6 +99,7 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
             text=tr("nav.menu", language), web_app=WebAppInfo(url=miniapp_url)
         )]])
+        await send_bot_message(tg_user_id, tr("bot.refreshMenuButton", language), ReplyKeyboardRemove(remove_keyboard=True))
         await send_bot_message(tg_user_id, tr("bot.hello", language), keyboard)
         return
 
