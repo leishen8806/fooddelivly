@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy import text
 from pathlib import Path
-from routers import auth, products, orders, admin_orders, bot, admin_stats, admin_settings, admin_staff, uploads
+from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads
 from dotenv import load_dotenv
 import os
 
@@ -44,6 +44,8 @@ app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(admin_orders.router)
+app.include_router(admin_customers.router)
+app.include_router(admin_audit.router)
 app.include_router(bot.router)
 app.include_router(admin_stats.router)
 app.include_router(admin_settings.router)

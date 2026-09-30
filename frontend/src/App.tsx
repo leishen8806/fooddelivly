@@ -9,11 +9,13 @@ import './index.css';
 
 type Product = { id: number; category_id: number; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
-type CartLine = { product: Product; quantity: number };
+type CartLine = { product: Product; quantity: number; sweetness: number };
 type PlacedOrder = { public_code: string; total_minor: number; currency: string; status: string; payment_status: string; payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null };
-type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number }> };
+type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: { sweetness?: number } }> };
 type StoreSettings = { currency: string; timezone: string; aba_qr_asset_key: string | null; payment_link: string | null; telegram_staff_group_id: string | null; staff_group_language: string; open_hours: string | null };
 type Staff = { id: number; login_name: string; role: string; active: boolean; telegram_user_id: string | null };
+type Customer = { id: number; telegram_user_id: string; display_name: string | null; username: string | null; telegram_chat_url: string; order_count: number; completed_order_count: number; created_at: string };
+type AuditEntry = { id: number; entity_type: string; entity_id: string; action: string; operator_name: string; operator_telegram_id: string | null; source: string; details: Record<string, any>; created_at: string };
 
 const label = (value: Record<string, string> | undefined, language: string) => value?.[language] || value?.en || '';
 const amount = (minor: number, currency: string, locale = 'en') => {
@@ -88,6 +90,7 @@ function CustomerPage() {
   const { t, i18n } = useTranslation();
   const [categories, setCategories] = useState<Category[]>([]);
   const [cart, setCart] = useState<CartLine[]>([]);
+  const [sweetnessByProduct, setSweetnessByProduct] = useState<Record<number, number>>({});
   const [room, setRoom] = useState('');
   const [order, setOrder] = useState<PlacedOrder | null>(null);
   const [orderStatus, setOrderStatus] = useState<Order | null>(null);
@@ -100,11 +103,25 @@ function CustomerPage() {
   const loadMenu = useCallback(() => api.get('/api/v1/menu').then((response) => setCategories(response.data)).catch(() => setError(t('error.network'))).finally(() => setLoading(false)), [t]);
   useEffect(() => { void loadMenu(); }, [loadMenu]);
 
-  const add = (product: Product) => setCart((current) => {
-    const found = current.find((line) => line.product.id === product.id);
-    return found ? current.map((line) => line.product.id === product.id ? { ...line, quantity: Math.min(99, line.quantity + 1) } : line) : [...current, { product, quantity: 1 }];
-  });
-  const setQuantity = (productId: number, quantity: number) => setCart((current) => quantity < 1 ? current.filter((line) => line.product.id !== productId) : current.map((line) => line.product.id === productId ? { ...line, quantity } : line));
+  const cartLineKey = (line: CartLine) => `${line.product.id}:${line.sweetness}`;
+  const add = (product: Product) => {
+    if (cart.length && cart[0].product.currency !== product.currency) {
+      setStatus(t('cart.mixedCurrency'));
+      return;
+    }
+    setStatus('');
+    idempotencyKey.current = null;
+    setCart((current) => {
+      const selectedSweetness = sweetnessByProduct[product.id] ?? 100;
+      const key = `${product.id}:${selectedSweetness}`;
+      const found = current.find((line) => cartLineKey(line) === key);
+      return found ? current.map((line) => cartLineKey(line) === key ? { ...line, quantity: Math.min(99, line.quantity + 1) } : line) : [...current, { product, quantity: 1, sweetness: selectedSweetness }];
+    });
+  };
+  const setQuantity = (key: string, quantity: number) => {
+    idempotencyKey.current = null;
+    setCart((current) => quantity < 1 ? current.filter((line) => cartLineKey(line) !== key) : current.map((line) => cartLineKey(line) === key ? { ...line, quantity } : line));
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -113,7 +130,7 @@ function CustomerPage() {
     try {
       setStatus(t('checkout.submitting'));
       const response = await api.post('/api/v1/orders', {
-        room_number: room.trim(), items: cart.map((line) => ({ product_id: line.product.id, quantity: line.quantity })),
+        room_number: room.trim(), items: cart.map((line) => ({ product_id: line.product.id, quantity: line.quantity, options: { sweetness: line.sweetness } })),
       }, { headers: { 'Idempotency-Key': idempotencyKey.current } });
       setOrder(response.data);
       setOrderStatus(null);
@@ -121,6 +138,7 @@ function CustomerPage() {
       idempotencyKey.current = null;
       setStatus('');
     } catch (requestError: any) {
+      if (requestError?.response?.status === 409) idempotencyKey.current = null;
       setStatus(requestError?.response?.status === 409 ? t('cart.priceChanged') : t('checkout.failed'));
     }
   };
@@ -138,10 +156,10 @@ function CustomerPage() {
     <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>
     {loading && <p className="state">{t('common.loading')}</p>}{error && <p className="error">{error}</p>}
     {!loading && !error && categories.length === 0 && <section className="state empty-menu" role="status"><h2>{t('menu.emptyTitle')}</h2><p>{t('menu.emptyDescription')}</p></section>}
-    <section className="menu-grid">{categories.map((category) => <div className="category" key={category.id}><h2>{label(category.name, i18n.language)}</h2><div className="product-grid">{(category.products || []).map((product) => <article className="product-card" key={product.id}>{product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}<div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p><div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button disabled={!product.available} onClick={() => add(product)}>{product.available ? t('menu.addToCart') : t('common.soldOut')}</button></div></div></article>)}</div></div>)}</section>
+    <section className="menu-grid">{categories.map((category) => <div className="category" key={category.id}><h2>{label(category.name, i18n.language)}</h2><div className="product-grid">{(category.products || []).map((product) => <article className="product-card" key={product.id}>{product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}<div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p><label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? 100} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label><div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button disabled={!product.available} onClick={() => add(product)}>{product.available ? t('menu.addToCart') : t('common.soldOut')}</button></div></div></article>)}</div></div>)}</section>
     <section className="checkout-card"><div><span className="eyebrow">{t('cart.title')}</span><h2>{cart.length ? `${cart.reduce((count, line) => count + line.quantity, 0)} ${t('common.quantity')}` : t('cart.empty')}</h2></div>
-      {cart.length > 0 && <form onSubmit={submit}>{cart.map((line) => <div className="total-row" key={line.product.id}><span>{label(line.product.name, i18n.language)}</span><span><button type="button" onClick={() => setQuantity(line.product.id, line.quantity - 1)} aria-label={t('common.delete')}>−</button> {line.quantity} <button type="button" onClick={() => setQuantity(line.product.id, line.quantity + 1)}>+</button></span></div>)}
-        <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => setRoom(event.target.value)} autoComplete="off" maxLength={32} required />
+      {cart.length > 0 && <form onSubmit={submit}>{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}<small>{t('menu.sweetness')}: {line.sweetness}%</small></span><span><button type="button" onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)} aria-label={t('common.delete')}>−</button> {line.quantity} <button type="button" onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></span></div>)}
+        <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); }} autoComplete="off" maxLength={32} required />
         <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button></form>}
       {status && <p className="status" role="status">{status}</p>}
     </section>
@@ -185,7 +203,7 @@ function AdminPage() {
   const [stats, setStats] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [section, setSection] = useState<'orders' | 'products' | 'finance' | 'settings' | 'staff'>('orders');
+  const [section, setSection] = useState<'overview' | 'orders' | 'products' | 'finance' | 'settings' | 'staff' | 'customers' | 'audit'>('overview');
   const [orderFilter, setOrderFilter] = useState('ALL');
   const [error, setError] = useState('');
   const [from, setFrom] = useState(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
@@ -198,16 +216,24 @@ function AdminPage() {
   const [busyId, setBusyId] = useState<number | null>(null);
   const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null });
   const [staff, setStaff] = useState<Staff[]>([]);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [imageErrors, setImageErrors] = useState<Set<number>>(() => new Set());
+  const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditOffset, setAuditOffset] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [telegramIdEdits, setTelegramIdEdits] = useState<Record<number, string>>({});
   const [busyStaffId, setBusyStaffId] = useState<number | null>(null);
   const [newStaff, setNewStaff] = useState({ login: '', password: '', telegramId: '', role: 'STAFF' });
 
   const fetchData = useCallback(async () => {
     setError('');
-    const [orderResult, statsResult, productResult, categoryResult, settingsResult, staffResult] = await Promise.allSettled([
+    const [orderResult, statsResult, productResult, categoryResult, settingsResult, staffResult, customerResult] = await Promise.allSettled([
       api.get('/api/v1/admin/orders'), api.get('/api/v1/admin/analytics/', { params: { from, to } }),
       api.get('/api/v1/admin/products'), api.get('/api/v1/admin/categories'),
       api.get('/api/v1/admin/settings/'), api.get('/api/v1/admin/staff'),
+      role === 'MANAGER' ? api.get('/api/v1/admin/customers') : Promise.resolve({ data: [] }),
     ]);
     if (orderResult.status === 'fulfilled') setOrders(orderResult.value.data); else setError(t('error.network'));
     if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
@@ -215,7 +241,8 @@ function AdminPage() {
     if (categoryResult.status === 'fulfilled') setCategories(categoryResult.value.data);
     if (settingsResult.status === 'fulfilled') setStoreSettings(settingsResult.value.data);
     if (staffResult.status === 'fulfilled') setStaff(staffResult.value.data);
-  }, [from, to, t]);
+    if (customerResult.status === 'fulfilled') setCustomers(customerResult.value.data);
+  }, [from, to, role, t]);
 
   useEffect(() => {
     let active = true;
@@ -225,6 +252,17 @@ function AdminPage() {
     return () => { active = false; };
   }, [setAdminAuth, logoutAdmin]);
   useEffect(() => { if (isAdminAuthenticated) void fetchData(); }, [isAdminAuthenticated, fetchData]);
+  const fetchAuditLogs = useCallback(async () => {
+    if (role !== 'MANAGER') return;
+    setAuditLoading(true);
+    try {
+      const response = await api.get('/api/v1/admin/audit-logs', { params: { limit: 25, offset: auditOffset } });
+      setAuditLogs(response.data.items);
+      setAuditTotal(response.data.total);
+    } catch { setError(t('error.network')); }
+    finally { setAuditLoading(false); }
+  }, [auditOffset, role, t]);
+  useEffect(() => { if (isAdminAuthenticated && section === 'audit') void fetchAuditLogs(); }, [isAdminAuthenticated, section, fetchAuditLogs]);
   useEffect(() => {
     if (!authLoading && !isAdminAuthenticated) navigate('/admin/login', { replace: true });
   }, [authLoading, isAdminAuthenticated, navigate]);
@@ -327,21 +365,47 @@ function AdminPage() {
   if (authLoading) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
   if (!isAdminAuthenticated) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
 
-  return <main className="admin-shell">
-    <header className="admin-header"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t('nav.overview')}</h1></div></div><div className="header-actions"><LanguageSwitch /><button onClick={() => void signOut()}>{t('auth.logout')}</button></div></header>
-    <nav className="admin-tabs"><button onClick={() => setSection('orders')}>{t('nav.orders')}</button>{role === 'MANAGER' && <button onClick={() => setSection('products')}>{t('nav.products')}</button>}<button onClick={() => setSection('finance')}>{t('nav.finance')}</button>{role === 'MANAGER' && <button onClick={() => setSection('settings')}>{t('nav.settings')}</button>}{role === 'MANAGER' && <button onClick={() => setSection('staff')}>{t('admin.staffAccess')}</button>}</nav>
-    {error && <p className="error" role="alert">{error}</p>}
+  return <main className="admin-shell"><div className="admin-layout">
+    <aside className="admin-sidebar"><div className="admin-sidebar-brand"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><strong>Tea Cafe</strong><small>STORE CONSOLE</small></div></div>
+      <nav className="admin-nav" aria-label={t('admin.navigation')}>
+        <button className={section === 'overview' ? 'active' : ''} onClick={() => setSection('overview')}><span aria-hidden="true">▦</span>{t('nav.overview')}</button>
+        <button className={section === 'orders' ? 'active' : ''} onClick={() => setSection('orders')}><span aria-hidden="true">▤</span>{t('nav.orders')}</button>
+        {role === 'MANAGER' && <button className={section === 'customers' ? 'active' : ''} onClick={() => setSection('customers')}><span aria-hidden="true">♧</span>{t('nav.customers')}</button>}
+        {role === 'MANAGER' && <button className={section === 'products' ? 'active' : ''} onClick={() => setSection('products')}><span aria-hidden="true">▧</span>{t('nav.products')}</button>}
+        <button className={section === 'finance' ? 'active' : ''} onClick={() => setSection('finance')}><span aria-hidden="true">▥</span>{t('nav.finance')}</button>
+        {role === 'MANAGER' && <button className={section === 'audit' ? 'active' : ''} onClick={() => { setAuditOffset(0); setSection('audit'); }}><span aria-hidden="true">◷</span>{t('nav.auditLogs')}</button>}
+        {role === 'MANAGER' && <button className={section === 'staff' ? 'active' : ''} onClick={() => setSection('staff')}><span aria-hidden="true">⚙</span>{t('admin.staffAccess')}</button>}
+        {role === 'MANAGER' && <button className={section === 'settings' ? 'active' : ''} onClick={() => setSection('settings')}><span aria-hidden="true">⌘</span>{t('nav.settings')}</button>}
+      </nav><div className="sidebar-footer"><span>{role === 'MANAGER' ? t('admin.manager') : t('admin.waiter')}</span><span>TEA CAFE</span></div>
+    </aside>
+    <div className="admin-main"><header className="admin-header"><div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t(section === 'audit' ? 'nav.auditLogs' : section === 'staff' ? 'admin.staffAccess' : `nav.${section}`)}</h1></div><div className="header-actions"><LanguageSwitch /><button onClick={() => void signOut()}>{t('auth.logout')}</button></div></header>
+    <div className="admin-content">{error && <p className="error" role="alert">{error}</p>}
+    {section === 'overview' && <section className="overview-grid"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><button className="metric metric-action warning" onClick={() => { setOrderFilter('ALL'); setSection('orders'); }}><span>{t('admin.needsReview')}</span><strong>{orders.filter((order) => order.payment_status === 'PROOF_SUBMITTED').length}</strong></button><div className="metric"><span>{t('admin.confirmedPaid')}</span><strong>{orders.filter((order) => order.payment_status === 'PAID_CONFIRMED').length}</strong></div><div className="metric"><span>{t('admin.cancelledCount')}</span><strong>{stats?.cancelled_count ?? '—'}</strong></div><section className="panel overview-recent"><div className="panel-heading"><div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('admin.recentOrders')}</h2></div><button onClick={() => setSection('orders')}>{t('admin.viewOrders')}</button></div>{orders.slice(0, 6).map((order) => <div className="overview-order" key={order.id}><strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span>{t(`order.status.${order.order_status.toLowerCase()}`)}</span><b>{amount(order.total_minor, order.currency, i18n.language)}</b></div>)}</section></section>}
     {section === 'orders' && <>
-      <section className="metric-row"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><div className="metric warning"><span>{t('admin.needsReview')}</span><strong>{orders.filter((order) => order.payment_status === 'PROOF_SUBMITTED').length}</strong></div><div className="metric"><span>{t('admin.confirmedPaid')}</span><strong>{orders.filter((order) => order.payment_status === 'PAID_CONFIRMED').length}</strong></div></section>
       <section className="panel"><div className="panel-heading"><div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('nav.orders')}</h2></div><label>{t('admin.allStatuses')}<select value={orderFilter} onChange={(event) => setOrderFilter(event.target.value)}><option value="ALL">{t('admin.allStatuses')}</option>{['NEW', 'ACCEPTED', 'PREPARING', 'READY', 'DELIVERED', 'COMPLETED', 'CANCELLED'].map((value) => <option key={value} value={value}>{t(`order.status.${value.toLowerCase()}`)}</option>)}</select></label><button onClick={() => void fetchData()}>{t('common.retry')}</button></div>
         {orders.length === 0 ? <p className="state">{t('admin.noOrders')}</p> : <div className="order-list">{orders.filter((order) => orderFilter === 'ALL' || order.order_status === orderFilter).map((order) => <article className="order-row" key={order.id}>
           <strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span>{t(`order.status.${order.order_status.toLowerCase()}`)}</span><span>{order.payment_status === 'PAID_CONFIRMED' ? t('payment.confirmed') : order.payment_status === 'PROOF_SUBMITTED' ? t('payment.pending') : order.payment_status === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid')}</span><b>{amount(order.total_minor, order.currency, i18n.language)}</b>
-          {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>)}</div> : null}
-          {order.payment_status === 'PROOF_SUBMITTED' && <details><summary>{t('admin.openPaymentProof')}</summary><img className="payment-proof" src={`/api/v1/admin/orders/${order.id}/payment-proof`} alt={t('admin.paymentImage')} /><p>{t('admin.checkActualPayment')}</p>{order.order_status === 'ACCEPTED' && <div className="actions"><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'APPROVED')}>{t('order.confirmPayment')}</button><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'REJECTED')}>{t('order.reject')}</button></div>}</details>}
+          {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined ? ` · ${t('order.sweetnessValue', { value: item.options.sweetness })}` : ''} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>)}</div> : null}
+          {order.payment_status === 'PROOF_SUBMITTED' && <details><summary>{t('admin.openPaymentProof')}</summary>{imageErrors.has(order.id) ? <p className="error">{t('admin.paymentImageUnavailable')} <button type="button" onClick={() => setImageErrors((current) => { const next = new Set(current); next.delete(order.id); return next; })}>{t('common.retry')}</button></p> : <img className="payment-proof" src={`/api/v1/admin/orders/${order.id}/payment-proof`} alt={t('admin.paymentImage')} onError={() => setImageErrors((current) => new Set(current).add(order.id))} />}<p>{t('admin.checkActualPayment')}</p>{order.order_status === 'ACCEPTED' && <div className="actions"><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'APPROVED')}>{t('order.confirmPayment')}</button><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'REJECTED')}>{t('order.reject')}</button></div>}</details>}
           <div className="actions">{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}</div>
         </article>)}</div>}
       </section>
     </>}
+    {section === 'customers' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><div><span className="eyebrow">{t('admin.customerList')}</span><h2>{t('nav.customers')}</h2></div><label>{t('common.search')}<input type="search" value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('admin.searchCustomers')} /></label></div>
+      {customers.length === 0 ? <p className="state">{t('admin.noCustomers')}</p> : <div className="customer-table-wrap"><table className="customer-table"><thead><tr><th>{t('admin.telegramName')}</th><th>{t('admin.telegramId')}</th><th>{t('admin.telegramChat')}</th><th>{t('admin.orderCount')}</th><th>{t('admin.completedOrderCount')}</th></tr></thead><tbody>{customers.filter((customer) => `${customer.display_name || ''} ${customer.username || ''} ${customer.telegram_user_id}`.toLowerCase().includes(customerSearch.trim().toLowerCase())).map((customer) => <tr key={customer.id}><td>{customer.display_name || customer.username || '—'}{customer.username && <small>@{customer.username}</small>}</td><td>{customer.telegram_user_id}</td><td><a href={customer.telegram_chat_url}>{t('admin.telegramChat')}</a></td><td>{customer.order_count}</td><td>{customer.completed_order_count}</td></tr>)}</tbody></table></div>}
+    </section>}
+    {section === 'audit' && role === 'MANAGER' && <section className="panel audit-panel" aria-busy={auditLoading}><div className="panel-heading"><div><span className="eyebrow">{t('admin.auditDescription')}</span><h2>{t('nav.auditLogs')}</h2></div><button onClick={() => void fetchAuditLogs()} disabled={auditLoading}>{auditLoading ? t('common.loading') : t('common.retry')}</button></div>
+      {auditLogs.length === 0 && !auditLoading ? <p className="state">{t('admin.noAuditLogs')}</p> : <div className="customer-table-wrap"><table className="customer-table audit-table"><thead><tr><th>{t('admin.logTime')}</th><th>{t('admin.logAction')}</th><th>{t('admin.logOrder')}</th><th>{t('admin.logOperator')}</th><th>{t('admin.logChannel')}</th><th>{t('admin.logState')}</th></tr></thead><tbody>{auditLogs.map((entry) => {
+        const groupAction = entry.source === 'telegram_group' && entry.details.action ? `audit.groupAction.${entry.details.action}` : null;
+        const actionKey = groupAction || `audit.action.${entry.action}`;
+        const actionLabel = t(actionKey, { defaultValue: entry.action });
+        const orderLabel = entry.details.public_code || `${t(`audit.entity.${entry.entity_type}`, { defaultValue: entry.entity_type })} #${entry.entity_id}`;
+        let timeLabel = entry.created_at;
+        try { timeLabel = new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short', timeZone: storeSettings.timezone }).format(new Date(entry.created_at)); } catch { /* retain server timestamp */ }
+        return <tr key={entry.id}><td>{timeLabel}</td><td>{actionLabel}{entry.details.reason && <small>{entry.details.reason}</small>}</td><td>{orderLabel}</td><td>{entry.operator_name}<small>{entry.operator_telegram_id ? `${t('admin.telegramId')}: ${entry.operator_telegram_id}` : ''}</small></td><td>{t(`audit.source.${entry.source}`, { defaultValue: entry.source })}{entry.source === 'telegram_group' && entry.details.group_id && <small>{entry.details.group_id}</small>}</td><td><span>{entry.details.from_state || '—'}</span>{entry.details.to_state && <small>→ {entry.details.to_state}</small>}</td></tr>;
+      })}</tbody></table></div>}
+      {auditTotal > 0 && <div className="audit-pagination"><span>{t('admin.logRange', { from: auditOffset + 1, to: Math.min(auditOffset + auditLogs.length, auditTotal), total: auditTotal })}</span><div><button disabled={auditOffset === 0 || auditLoading} onClick={() => setAuditOffset((offset) => Math.max(0, offset - 25))}>{t('common.back')}</button><button disabled={auditOffset + 25 >= auditTotal || auditLoading} onClick={() => setAuditOffset((offset) => offset + 25)}>{t('admin.nextPage')}</button></div></div>}
+    </section>}
     {section === 'products' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('nav.products')}</h2></div>
       <form className="product-form" onSubmit={createCategory}><label>{t('admin.newCategory')} (EN)<input value={newCategory.en} onChange={(event) => setNewCategory({ ...newCategory, en: event.target.value })} required /></label><label>{t('admin.newCategory')} (中文)<input value={newCategory.zh} onChange={(event) => setNewCategory({ ...newCategory, zh: event.target.value })} required /></label><label>{t('admin.newCategory')} (ខ្មែរ)<input value={newCategory.km} onChange={(event) => setNewCategory({ ...newCategory, km: event.target.value })} required /></label><button type="submit">{editingCategoryId ? t('common.save') : t('common.add')}</button>{editingCategoryId && <button type="button" onClick={() => { setEditingCategoryId(null); setNewCategory({ en: '', zh: '', km: '' }); }}>{t('common.cancel')}</button>}</form>
       <div className="order-list">{categories.map((category) => <article className="order-row" key={category.id}><strong>{label(category.name, i18n.language)}</strong><span>{category.active ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startCategoryEdit(category)}>{t('common.edit')}</button><button onClick={() => void toggleCategory(category)}>{category.active ? t('admin.deactivate') : t('admin.activate')}</button></article>)}</div>
@@ -366,7 +430,7 @@ function AdminPage() {
       <label>{t('admin.staffRole')}<select value={newStaff.role} onChange={(event) => setNewStaff({ ...newStaff, role: event.target.value })}><option value="STAFF">{t('admin.waiter')}</option><option value="MANAGER">{t('admin.manager')}</option></select></label>
       <button className="primary" type="submit">{t('admin.addStaff')}</button>
     </form><div className="order-list">{staff.map((member) => <article className="order-row" key={member.id}><strong>{member.login_name}</strong><input inputMode="numeric" aria-label={t('admin.telegramUserId')} placeholder={t('admin.telegramUserId')} value={telegramIdEdits[member.id] ?? member.telegram_user_id ?? ''} onChange={(event) => setTelegramIdEdits((current) => ({ ...current, [member.id]: event.target.value }))} /><button type="button" disabled={busyStaffId === member.id} onClick={() => void saveStaffTelegramId(member)}>{t('admin.linkTelegramId')}</button><select value={member.role} onChange={(event) => void changeStaffRole(member, event.target.value)}><option value="STAFF">{t('admin.waiter')}</option><option value="MANAGER">{t('admin.manager')}</option></select><span>{member.active ? t('admin.active') : t('admin.deactivate')}</span><button onClick={() => void toggleStaff(member)}>{member.active ? t('admin.deactivate') : t('admin.activate')}</button></article>)}</div></section>}
-  </main>;
+    </div></div></div></main>;
 }
 
 export default function App() {

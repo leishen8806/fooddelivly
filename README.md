@@ -8,8 +8,11 @@ Telegram Mini App ordering with a Telegram bot and a browser based staff console
 - PostgreSQL 15 schema managed by Alembic; Docker Compose production layout.
 - Customer Mini App authentication uses validated Telegram `initData`; the browser admin uses a separate staff login and HttpOnly cookie.
 - Product, order, manual payment proof review, staff/group actions, store settings, and date-range financial summary are implemented.
-- Chinese, English, and Khmer locale files contain the same 169 keys. Product and category entry supports all three languages.
-- Local frontend production build, backend import, offline migration generation, Compose configuration, and locale-key checks pass.
+- Customer ordering supports per-item sweetness, a shared cart, one room number, and one checkout/payment handoff for the full cart.
+- Manager-only customer management shows Telegram name/ID, a Telegram chat link, total orders, and completed orders.
+- Payment-proof images are served with a raster content type detected from the file bytes, including when Telegram labels the download as generic binary data.
+- Chinese, English, and Khmer locale files contain the same 202 keys. Product, category, customer-management, and sweetness labels support all three languages.
+- Current local checks: frontend production build, backend Python syntax compilation and FastAPI route import, order sweetness schema validation, and locale-key parity. Docker/PostgreSQL integration remains unverified in this host environment.
 - Deployed on VPS `159.223.92.104`; PostgreSQL 15.19 migration and `/health`, `/api/v1/menu`, and `/admin` HTTPS routes have been verified.
 - Telegram `initData` login, Bot webhook, manager bootstrap, ABA payment details, staff group, and real order/payment flow remain pending Tea Cafe configuration and live acceptance.
 

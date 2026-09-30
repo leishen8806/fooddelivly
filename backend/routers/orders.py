@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
-from typing import List, Optional
+from typing import List, Optional, Literal
 import os
 from pydantic import BaseModel, Field, field_validator
 from database import get_db
@@ -17,10 +17,13 @@ import string
 router = APIRouter(prefix="/api/v1", tags=["Orders"])
 
 # Schemas
+class OrderItemOptions(BaseModel):
+    sweetness: Literal[0, 25, 50, 75, 100] = 100
+
 class OrderItemCreate(BaseModel):
     product_id: int
     quantity: int = Field(gt=0, le=99, description="Quantity must be between 1 and 99")
-    options: Optional[dict] = Field(None, description="Priced options/extras are temporarily disabled in MVP")
+    options: Optional[OrderItemOptions] = Field(None, description="Non-priced preparation options")
 
 class OrderCreate(BaseModel):
     room_number: str = Field(min_length=1, max_length=32)
@@ -92,10 +95,6 @@ async def create_order(
     order_items = []
     
     for item in order_req.items:
-        if item.options:
-            # Temporarily reject orders attempting to use priced options/extras
-            raise HTTPException(status_code=400, detail="Priced options/extras are temporarily disabled in MVP")
-
         result = await db.execute(select(Product).filter(Product.id == item.product_id))
         product = result.scalars().first()
         if not product or not product.available:
@@ -116,7 +115,7 @@ async def create_order(
             product_name_snapshot=product.name,
             unit_price_minor=unit_price,
             quantity=item.quantity,
-            options_json=item.options,
+            options_json=(item.options or OrderItemOptions()).model_dump(),
             line_total_minor=line_total
         ))
         

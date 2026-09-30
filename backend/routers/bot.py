@@ -9,8 +9,8 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, WebAppInfo
 
 from database import get_db
-from models import Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff, StoreSettings
-from telegram_service import answer_callback, notify_new_order, order_keyboard, send_bot_message, tr, update_order_message
+from models import AuditLog, Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff, StoreSettings
+from telegram_service import answer_callback, notify_new_order, order_keyboard, send_bot_message, send_payment_proof_reply, tr, update_order_message
 
 router = APIRouter(prefix="/api/v1/telegram", tags=["Telegram Webhook"])
 
@@ -160,18 +160,35 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
 
     await send_bot_message(tg_user_id, f"{tr('bot.paymentProofSubmitted', language)}\n{tr('payment.notConfirmed', language)}")
     if settings and settings.telegram_staff_group_id and order.telegram_group_message_id:
+        proof_state = _message_status(order)
         try:
             await update_order_message(settings.telegram_staff_group_id, order.telegram_group_message_id,
                                        order, settings.staff_group_language, order.items)
         except Exception:
             pass
+        try:
+            shared_message = await send_payment_proof_reply(
+                settings.telegram_staff_group_id, order.telegram_group_message_id,
+                photos[-1]["file_id"], order.public_code, settings.staff_group_language,
+            )
+            event_name = "PAYMENT_PROOF_SHARED_TO_GROUP" if shared_message else "PAYMENT_PROOF_GROUP_SHARE_FAILED"
+            db.add(OrderEvent(order_id=order.id, actor_type="SYSTEM", actor_id=None,
+                              event=event_name, from_state=proof_state, to_state=proof_state))
+            await db.commit()
+        except Exception:
+            await db.rollback()
+            db.add(OrderEvent(order_id=order.id, actor_type="SYSTEM", actor_id=None,
+                              event="PAYMENT_PROOF_GROUP_SHARE_FAILED",
+                              from_state=proof_state, to_state=proof_state))
+            await db.commit()
 
 
 async def _handle_callback(cb: dict, db: AsyncSession) -> None:
     callback_id = cb.get("id")
     message = cb.get("message") or {}
     chat = message.get("chat") or {}
-    tg_user_id = (cb.get("from") or {}).get("id")
+    sender = cb.get("from") or {}
+    tg_user_id = sender.get("id")
     settings_result = await db.execute(select(StoreSettings).limit(1))
     settings = settings_result.scalars().first()
     staff_group_id = str(settings.telegram_staff_group_id) if settings and settings.telegram_staff_group_id else None
@@ -237,6 +254,25 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
     db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff.id,
                       event="PAYMENT_CONFIRMED" if action == "confirmpay" else f"ORDER_{order.order_status}",
                       from_state=old_state, to_state=new_state))
+    db.add(AuditLog(
+        actor_staff_id=staff.id,
+        entity_type="order",
+        entity_id=str(order.id),
+        action="payment_approved" if action == "confirmpay" else "status_changed",
+        details={
+            "source": "telegram_group",
+            "operator_name": staff.login_name,
+            "operator_telegram_id": str(tg_user_id),
+            "operator_telegram_username": sender.get("username"),
+            "operator_first_name": sender.get("first_name"),
+            "group_id": str(chat.get("id")),
+            "public_code": order.public_code,
+            "room_number": order.room_number,
+            "action": action,
+            "from_state": old_state,
+            "to_state": new_state,
+        },
+    ))
     customer_result = await db.execute(select(Customer).filter(Customer.id == order.customer_id))
     customer = customer_result.scalars().first()
     await db.commit()

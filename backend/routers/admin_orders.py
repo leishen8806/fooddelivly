@@ -4,7 +4,7 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from database import get_db
-from models import Order, PaymentProof, PaymentReview, OrderEvent, Customer, StoreSettings
+from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer, StoreSettings
 from dependencies import get_current_staff
 import os
 import httpx
@@ -23,6 +23,7 @@ async def list_orders(
         "order_status": order.order_status, "payment_status": order.payment_status,
         "currency": order.currency, "total_minor": order.total_minor, "created_at": order.created_at,
         "items": [{"name": item.product_name_snapshot, "quantity": item.quantity,
+                   "options": item.options_json or {},
                    "line_total_minor": item.line_total_minor} for item in order.items],
     } for order in orders]
 
@@ -45,10 +46,20 @@ async def get_payment_proof(order_id: int, staff_info: dict = Depends(get_curren
         image = await client.get(f"https://api.telegram.org/file/bot{token}/{path}")
         if image.status_code != 200 or len(image.content) > 12 * 1024 * 1024:
             raise HTTPException(status_code=502, detail="Payment image could not be loaded")
-        content_type = image.headers.get("content-type", "application/octet-stream")
-        if not content_type.startswith("image/"):
+        body = image.content
+        # Telegram's file endpoint can label valid uploaded photos as
+        # application/octet-stream. Determine the safe raster MIME from bytes.
+        if body.startswith(b"\xff\xd8\xff"):
+            content_type = "image/jpeg"
+        elif body.startswith(b"\x89PNG\r\n\x1a\n"):
+            content_type = "image/png"
+        elif body.startswith((b"GIF87a", b"GIF89a")):
+            content_type = "image/gif"
+        elif len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+            content_type = "image/webp"
+        else:
             raise HTTPException(status_code=415, detail="Uploaded file is not an image")
-        return Response(content=image.content, media_type=content_type, headers={
+        return Response(content=body, media_type=content_type, headers={
             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
         })
 
@@ -85,6 +96,11 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
     staff_id = staff_info["staff_id"]
     db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff_id, event=event_name,
                       from_state=old_state, to_state=f"{order.order_status}/{order.payment_status}"))
+    db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id), action="status_changed",
+                    details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
+                             "operator_telegram_id": staff_info.get("telegram_user_id"), "public_code": order.public_code,
+                             "room_number": order.room_number, "from_state": old_state,
+                             "to_state": f"{order.order_status}/{order.payment_status}", "reason": reason}))
     customer_result = await db.execute(select(Customer).filter(Customer.id == order.customer_id))
     customer = customer_result.scalars().first()
     settings_result = await db.execute(select(StoreSettings).limit(1))
@@ -173,6 +189,14 @@ async def review_payment(
         from_state=f"{old_order_status}/{old_payment_status}",
         to_state=f"{order.order_status}/{order.payment_status}",
     ))
+    db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
+                    action=f"payment_{req.decision.lower()}",
+                    details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
+                             "operator_telegram_id": staff_info.get("telegram_user_id"), "public_code": order.public_code,
+                             "room_number": order.room_number,
+                             "from_state": f"{old_order_status}/{old_payment_status}",
+                             "to_state": f"{order.order_status}/{order.payment_status}",
+                             "reason": req.reason.strip() if req.reason else None}))
     customer_result = await db.execute(select(Customer).filter(Customer.id == order.customer_id))
     customer = customer_result.scalars().first()
     settings_result = await db.execute(select(StoreSettings).limit(1))

@@ -69,7 +69,7 @@ Telegram 客户端
 
 ### 3.3 Telegram 群组权限
 
-- 配置一个订单操作群组 `telegram_staff_group_id`；订单 Bot 消息仅发送订单号、房间号、商品摘要、金额和当前状态。顾客付款图片留在私聊/后台，不转发到群组。
+- 配置一个订单操作群组 `telegram_staff_group_id`；订单 Bot 消息包含订单号、房间号、商品摘要、金额和当前状态。顾客付款图片由 Bot 在私聊接收后，使用 Telegram `file_id` 作为回复发送到该订单群组消息下，并启用 `protect_content`；群组必须仅允许获授权的 Tea Cafe 员工加入。图片展示本身不改变付款状态。
 - Bot callback 同时验证来源 `chat_id` 属于配置群组、点击人的 Telegram ID 绑定到有效 `STAFF`/`MANAGER` 账号、当前订单状态允许该操作。仅是 Telegram 群管理员不构成 Tea Cafe 员工授权。
 - 群组和后台复用同一后端状态转换服务；数据库事务检查当前状态和支付状态，首个合法操作成功，重复/并发 callback 幂等拒绝或返回当前状态。
 - 成功后更新群组订单卡的状态和下一步按钮，并私聊顾客状态变化；所有操作写 `order_events`，记录执行员工、来源群组和时间。
@@ -100,10 +100,10 @@ Telegram 客户端
 
 1. `POST /api/v1/orders` 在数据库事务中创建订单，初始 `order_status=NEW`、`payment_status=UNPAID`；Bot 将新单发到配置员工群组并附“接单”按钮。
 2. 后端返回应付金额、门店配置的 QR 图片或支付链接、Bot deep link 和随机 `public_code`。只有 ABA 商户确认可用的支付介质才能出现在生产配置中。
-3. 顾客点“发送付款凭证”打开 `https://t.me/<bot>?start=pay_<public_code>`。Bot 校验发起人 Telegram ID 与订单 `customer_id` 一致，再接收照片并写 `payment_proofs`，将付款状态置为 `PROOF_SUBMITTED`；订单状态仍独立维护。
+3. 顾客点“发送付款凭证”打开 `https://t.me/<bot>?start=pay_<public_code>`。Bot 校验发起人 Telegram ID 与订单 `customer_id` 一致，再接收照片并写 `payment_proofs`，将付款状态置为 `PROOF_SUBMITTED`；订单状态仍独立维护。Bot 更新群组订单卡后，将截图作为该订单卡的回复发送到配置群组；失败时记录系统事件，凭证仍可在后台查看。
 4. 员工在管理后台或群组点“接单”，订单状态变为 `ACCEPTED`。群组的“确认支付”按钮仅在订单已接单且有凭证后可用；员工核对 ABA 实际入账后确认，事务内将付款状态改为 `PAID_CONFIRMED`、订单状态改为 `PREPARING`。拒绝凭证需写原因并通知顾客补交。
 5. 员工在群组依序点“出餐”（`PREPARING→READY`）、“已配送”（`READY→DELIVERED`）、“已完成”（`DELIVERED→COMPLETED`）。每个动作验证操作者/群组/来源状态，更新原群组消息并通知顾客。
-6. 截图上传、OCR 结果或顾客声明不能独立改变付款为已确认；顾客图片不发到操作群组。
+6. 截图上传、OCR 结果或顾客声明不能独立改变付款为已确认；群组截图只供获授权员工查看，员工须核对 ABA 实际到账。
 
 ### 5.2 ABA 接入边界
 
@@ -137,6 +137,8 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 | `POST` | `/api/v1/admin/products` | 店长创建商品 |
 | `PATCH` | `/api/v1/admin/products/{id}` | 店长编辑、上下架商品 |
 | `GET` | `/api/v1/admin/analytics?from=&to=` | 按门店时区返回聚合统计 |
+| `GET` | `/api/v1/admin/customers` | 店长查看顾客 Telegram 昵称、ID、聊天链接、订单数和完成数 |
+| `GET` | `/api/v1/admin/audit-logs?limit=&offset=` | 店长分页查看后台与 Telegram 群组操作人、来源和状态变化 |
 | `POST` | `/api/v1/admin/orders/{id}/payment-review` | 员工人工确认或拒绝，并记录原因 |
 | `PATCH` | `/api/v1/admin/orders/{id}/status` | 更新履约状态，校验状态机 |
 | `GET/POST/PATCH` | `/api/v1/admin/staff`、`/api/v1/admin/staff/{id}` | 店长查询、授权或停用员工 |
@@ -153,6 +155,8 @@ Bot 私聊命令 `/myid` 显示当前 Telegram ID；员工群命令 `/getgroupid
 - **Analytics：**订单量、订单额、已确认收款、待核验金额、取消订单；明确标注统计日期和币种。
 - **Admin login：**普通浏览器直达 `/admin`；未登录跳转 `/admin/login`。后台会话与顾客 Telegram 会话分开。
 - **Staff/Settings：**仅店长可管理后台员工登录名、员工 Telegram ID/角色、操作群组 ID、营业设置、币种和 ABA 收款资料。
+- **Customers：**店长查看 Telegram 昵称、用户 ID、可打开的 Telegram 聊天链接、总订单数和完成订单数。
+- **Activity log：**店长分页检查后台与群组内的操作记录；每条记录包含操作人、Telegram ID（已绑定时）、来源、订单、状态变化和时间。群组截图转发和状态动作归属于指定 Tea Cafe 员工账号。
 - 从后台确认付款时需二次确认操作和展示金额/订单号；群组 Bot 同样校验支付凭证状态、员工权限和群组来源；操作落同一审计记录。
 
 完整 UI 屏幕/状态清单与交互矩阵见 [`UI-DESIGN-HANDOFF.md`](ui/UI-DESIGN-HANDOFF.md)，对应静态 SVG 包含顾客 Mini App、浏览器后台登录、管理后台、员工群组操作和跨角色交接。它们不是已实现页面或浏览器验证结果；图中样例数据不能当作真实商品/统计口径。

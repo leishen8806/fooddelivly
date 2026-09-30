@@ -52,7 +52,9 @@ async def get_current_staff(request: Request, db: AsyncSession = Depends(get_db)
         
     return {
         "staff_id": staff.id,
-        "role": staff.role
+        "role": staff.role,
+        "login_name": staff.login_name,
+        "telegram_user_id": staff.telegram_user_id,
     }
 
 async def get_current_manager(staff_info: dict = Depends(get_current_staff)) -> Dict[str, Any]:

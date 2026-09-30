@@ -4,7 +4,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from aiogram import Bot
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters
 
 
 @lru_cache(maxsize=1)
@@ -62,7 +62,11 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
             name = item.product_name_snapshot
             if isinstance(name, dict):
                 name = name.get(language) or name.get("en") or next(iter(name.values()), "")
-            lines.append(f"• {item.quantity} × {name}")
+            line = f"• {item.quantity} × {name}"
+            sweetness = (getattr(item, "options_json", None) or {}).get("sweetness")
+            if sweetness is not None:
+                line += f" · {tr('order.sweetnessValue', language, value=sweetness)}"
+            lines.append(line)
     lines.extend([
         f"{tr('common.total', language)}: {_currency_amount(order.total_minor, order.currency)}",
         f"{tr('nav.orders', language)}: {status_label}",
@@ -98,6 +102,22 @@ async def update_order_message(group_id: str, message_id: str, order, language: 
             message_id=int(message_id),
             text=order_text(order, language=language, items=items),
             reply_markup=order_keyboard(order.id, order.order_status, order.payment_status, language),
+        )
+    finally:
+        await bot.session.close()
+
+
+async def send_payment_proof_reply(group_id: str, message_id: str, file_id: str, order_code: str, language: str = "en"):
+    bot = _bot()
+    if not bot:
+        return None
+    try:
+        return await bot.send_photo(
+            chat_id=group_id,
+            photo=file_id,
+            caption=tr("bot.groupPaymentProof", language, order=order_code),
+            reply_parameters=ReplyParameters(message_id=int(message_id)),
+            protect_content=True,
         )
     finally:
         await bot.session.close()
