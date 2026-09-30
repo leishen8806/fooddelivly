@@ -82,7 +82,7 @@ Telegram 客户端
 | `customers` | `id`, `telegram_user_id UNIQUE`, `display_name`, `username`, `created_at` | Telegram 验证后的顾客身份 |
 | `staff` | `id`, `telegram_user_id UNIQUE`, `login_name UNIQUE`, `password_hash`, `role`, `active` | 后台浏览器账号与 Bot 群组身份绑定；`MANAGER` / `STAFF` 权限。登录标识/bootstrap 方式待确认 |
 | `categories` | `id`, `name`, `sort_order`, `active` | 菜单分类 |
-| `products` | `id`, `category_id`, `name`, `description`, `price_minor`, `currency`, `image_key`, `available` | 商品当前配置 |
+| `products` | `id`, `category_id`, `name`, `description`, `price_minor`, `currency`, `image_key`, `available`, `sweetness_enabled` | 商品当前配置；甜度选择按商品单独开启 |
 | `orders` | `id`, `public_code UNIQUE`, `customer_id`, `room_number`, `order_status`, `payment_status`, `currency`, `total_minor`, `telegram_group_message_id`, timestamps | `public_code` 使用不可预测随机值，不暴露自增 ID；群组消息 ID 用于编辑订单卡 |
 | `order_items` | `order_id`, `product_id`, `product_name_snapshot`, `unit_price_minor`, `quantity`, `options_json`, `line_total_minor` | 订单创建时的商品快照 |
 | `payment_proofs` | `id`, `order_id`, `telegram_file_id`, `submitted_by`, `submitted_at`, `review_status` | Bot 收到的付款图片元数据；员工在 Bot 或后台查看 |
@@ -152,6 +152,7 @@ Bot 私聊命令 `/myid` 显示当前 Telegram ID；员工群命令 `/getgroupid
 
 - **Orders：**状态计数、时间筛选、订单号/房间搜索、商品/总额、付款凭证预览、确认/拒绝和履约状态操作。
 - **Products：**分类、图片、价格、规格、售罄/上下架。
+- 商品发布/编辑可单独设置是否需要顾客选择甜度；启用时顾客必须先从 0%、25%、50%、75%、100% 中选择，才可加入购物车。只有启用的商品接受 `options.sweetness`，服务端拒绝未提供甜度的订单。未启用商品不渲染甜度控件，且不保存甜度选项。
 - **Analytics：**订单量、订单额、已确认收款、待核验金额、取消订单；明确标注统计日期和币种。
 - **Admin login：**普通浏览器直达 `/admin`；未登录跳转 `/admin/login`。后台会话与顾客 Telegram 会话分开。
 - **Staff/Settings：**仅店长可管理后台员工登录名、员工 Telegram ID/角色、操作群组 ID、营业设置、币种和 ABA 收款资料。

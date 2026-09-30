@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["Orders"])
 
 # Schemas
 class OrderItemOptions(BaseModel):
-    sweetness: Literal[0, 25, 50, 75, 100] = 100
+    sweetness: Literal[0, 25, 50, 75, 100]
 
 class OrderItemCreate(BaseModel):
     product_id: int
@@ -99,6 +99,9 @@ async def create_order(
         product = result.scalars().first()
         if not product or not product.available:
             raise HTTPException(status_code=400, detail=f"Product {item.product_id} not available")
+
+        if product.sweetness_enabled and item.options is None:
+            raise HTTPException(status_code=422, detail=f"Sweetness selection is required for product {item.product_id}")
             
         # Ensure consistent currency
         if currency is None:
@@ -115,7 +118,7 @@ async def create_order(
             product_name_snapshot=product.name,
             unit_price_minor=unit_price,
             quantity=item.quantity,
-            options_json=(item.options or OrderItemOptions()).model_dump(),
+            options_json=item.options.model_dump() if product.sweetness_enabled and item.options else {},
             line_total_minor=line_total
         ))
         

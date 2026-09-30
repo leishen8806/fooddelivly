@@ -47,6 +47,7 @@ class Product(Base):
     currency = Column(String, default="USD")
     image_key = Column(String, nullable=True)
     available = Column(Boolean, default=True)
+    sweetness_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     
     category = relationship("Category", back_populates="products")
 

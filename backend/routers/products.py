@@ -28,6 +28,7 @@ class ProductResponse(BaseModel):
     currency: str
     image_key: Optional[str]
     available: bool
+    sweetness_enabled: bool
 
     class Config:
         from_attributes = True
@@ -77,6 +78,7 @@ class ProductCreate(BaseModel):
     currency: str = "USD"
     image_key: Optional[str] = None
     available: bool = True
+    sweetness_enabled: bool = False
 
 class ProductUpdate(BaseModel):
     category_id: Optional[int] = None
@@ -86,6 +88,7 @@ class ProductUpdate(BaseModel):
     currency: Optional[str] = None
     image_key: Optional[str] = None
     available: Optional[bool] = None
+    sweetness_enabled: Optional[bool] = None
 
 class CategoryCreate(BaseModel):
     name: LocalizedText
@@ -146,13 +149,15 @@ async def admin_create_product(
         price_minor=product.price_minor,
         currency=product.currency,
         image_key=product.image_key,
-        available=product.available
+        available=product.available,
+        sweetness_enabled=product.sweetness_enabled,
     )
     db.add(new_product)
     await db.flush()
     db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="product", entity_id=str(new_product.id),
                     action="created", details={"name": new_product.name, "price_minor": new_product.price_minor,
-                                               "currency": new_product.currency}))
+                                               "currency": new_product.currency,
+                                               "sweetness_enabled": new_product.sweetness_enabled}))
     await db.commit()
     await db.refresh(new_product)
     return new_product
@@ -174,7 +179,8 @@ async def admin_update_product(product_id: int, changes: ProductUpdate,
             value = value.model_dump(by_alias=True, exclude_none=True) if isinstance(value, LocalizedText) else value
         setattr(product, field, value)
     db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="product", entity_id=str(product.id),
-                    action="updated", details={"changed_fields": list(values)}))
+                    action="updated", details={"changed_fields": list(values),
+                                                "sweetness_enabled": product.sweetness_enabled}))
     await db.commit()
     await db.refresh(product)
     return product
