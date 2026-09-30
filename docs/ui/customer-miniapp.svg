@@ -1,0 +1,95 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1120" viewBox="0 0 1800 1120" role="img" aria-labelledby="title desc">
+  <title id="title">Tea Cafe Telegram Mini App — customer journey</title>
+  <desc id="desc">Eight phone screen concepts covering menu browsing, cart, room checkout, ABA payment placeholder, Bot receipt submission, payment review, and order tracking.</desc>
+  <defs>
+    <linearGradient id="paper" x2="0" y2="1"><stop stop-color="#FBFAF6"/><stop offset="1" stop-color="#F4F8F9"/></linearGradient>
+    <linearGradient id="dish" x2="1" y2="1"><stop stop-color="#46AAD3"/><stop offset="1" stop-color="#D86C4F"/></linearGradient>
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%"><feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#354B51" flood-opacity=".10"/></filter>
+    <style>
+      text{font-family:Inter,"Segoe UI",Arial,sans-serif;fill:#25383D}.muted{fill:#71858A}.green{fill:#4C6971}.white{fill:#fff}.tiny{font-size:11px}.small{font-size:13px}.body{font-size:15px}.label{font-size:12px;font-weight:700;letter-spacing:1px}.title{font-size:30px;font-weight:700}.screenTitle{font-size:19px;font-weight:700}.price{font-size:16px;font-weight:700;fill:#4C6971}.outline{fill:#fff;stroke:#E5ECEE;stroke-width:1.2}.pill{fill:#E8F3F5}.warn{fill:#D9EEF5}.red{fill:#F7E3DE}.line{stroke:#E5E6DF;stroke-width:1}
+    </style>
+    <g id="phone">
+      <rect x="0" y="0" width="390" height="490" rx="26" fill="#FFFFFF" stroke="#D7DBD3" stroke-width="2" filter="url(#shadow)"/>
+      <rect x="15" y="14" width="360" height="30" rx="10" fill="#F5F6F2"/>
+      <text x="31" y="34" class="tiny" font-weight="700">9:41</text><text x="181" y="34" class="tiny green" font-weight="700">● TELEGRAM</text><text x="334" y="34" class="tiny">▰ ▰</text>
+      <text x="30" y="70" class="small muted">‹  Close</text><text x="195" y="70" class="small" text-anchor="middle" font-weight="700">Tea Cafe</text><circle cx="350" cy="65" r="13" fill="#EEF4F5"/><text x="350" y="70" class="small" text-anchor="middle">•••</text>
+      <line x1="18" y1="87" x2="372" y2="87" class="line"/>
+    </g>
+    <g id="foodmark">
+      <circle cx="0" cy="0" r="33" fill="url(#dish)"/><ellipse cx="0" cy="6" rx="24" ry="17" fill="#FFF8E8"/><ellipse cx="0" cy="3" rx="19" ry="12" fill="#6E9C68"/><circle cx="-8" cy="1" r="5" fill="#D86447"/><circle cx="5" cy="-3" r="5" fill="#46AAD3"/><circle cx="10" cy="6" r="4" fill="#B94F3A"/>
+    </g>
+  </defs>
+  <rect width="1800" height="1120" fill="url(#paper)"/>
+  <text x="48" y="54" class="label green">TEA CAFE · CUSTOMER MINI APP</text>
+  <text x="48" y="96" class="title">Order in Telegram. Deliver to your room.</text>
+  <text x="48" y="124" class="body muted">Guest journey · English interface concept · prices and menu items are sample data</text>
+  <g transform="translate(1460 48)"><rect width="288" height="56" rx="14" fill="#4C6971"/><text x="20" y="24" class="tiny white" font-weight="700">PAYMENT SAFETY</text><text x="20" y="43" class="small white">A staff member confirms the receipt.</text></g>
+
+  <!-- C01 menu -->
+  <g transform="translate(45 160)"><use href="#phone"/>
+    <rect x="25" y="101" width="340" height="100" rx="18" fill="#4C6971"/><text x="43" y="132" class="tiny" fill="#DCE8D8">TODAY'S KITCHEN</text><text x="43" y="160" font-size="22" font-weight="700" fill="#fff">Good food,</text><text x="43" y="184" font-size="22" font-weight="700" fill="#fff">right to your room.</text>
+    <text x="29" y="228" class="screenTitle">Popular today</text><text x="350" y="228" class="small green" text-anchor="end">See menu →</text>
+    <rect x="25" y="244" width="84" height="28" rx="14" fill="#4C6971"/><text x="67" y="263" class="tiny white" text-anchor="middle" font-weight="700">All dishes</text><rect x="116" y="244" width="82" height="28" rx="14" fill="#EEF4F5"/><text x="157" y="263" class="tiny" text-anchor="middle">Noodles</text><rect x="205" y="244" width="77" height="28" rx="14" fill="#EEF4F5"/><text x="243" y="263" class="tiny" text-anchor="middle">Rice</text>
+    <rect x="25" y="283" width="340" height="76" rx="14" class="outline"/><g transform="translate(67 321)"><use href="#foodmark"/></g><text x="112" y="309" class="small" font-weight="700">Beef Lok Lak</text><text x="112" y="330" class="tiny muted">Pepper sauce · rice</text><text x="112" y="349" class="price">$7.50</text><circle cx="337" cy="322" r="16" fill="#E2F1F5"/><text x="337" y="328" class="body green" text-anchor="middle" font-weight="700">+</text>
+    <rect x="25" y="369" width="340" height="76" rx="14" class="outline"/><g transform="translate(67 407)"><use href="#foodmark"/></g><text x="112" y="395" class="small" font-weight="700">Khmer Noodle Soup</text><text x="112" y="416" class="tiny muted">Herbs · clear broth</text><text x="112" y="435" class="price">$6.50</text>
+    <rect x="25" y="451" width="340" height="25" rx="12" fill="#4C6971"/><text x="195" y="469" class="tiny white" text-anchor="middle" font-weight="700">Cart · 2 items</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C01</text>
+  </g>
+  <!-- C02 detail -->
+  <g transform="translate(485 160)"><use href="#phone"/>
+    <rect x="25" y="101" width="340" height="112" rx="16" fill="#DCEEF2"/><circle cx="195" cy="157" r="44" fill="url(#dish)"/><ellipse cx="195" cy="165" rx="35" ry="23" fill="#FFF9EA"/><ellipse cx="195" cy="160" rx="28" ry="17" fill="#769A60"/><circle cx="183" cy="156" r="7" fill="#D96B4D"/><circle cx="202" cy="153" r="7" fill="#E5BA54"/><circle cx="210" cy="166" r="6" fill="#B9503E"/>
+    <text x="28" y="242" class="screenTitle">Beef Lok Lak</text><text x="362" y="242" class="price" text-anchor="end">$7.50</text><text x="28" y="265" class="small muted">Stir-fried beef, pepper sauce, jasmine rice.</text>
+    <text x="28" y="299" class="label">CHOOSE A SIDE</text><rect x="25" y="310" width="340" height="42" rx="12" class="outline"/><circle cx="45" cy="331" r="8" fill="#4C6971"/><circle cx="45" cy="331" r="3" fill="#fff"/><text x="63" y="336" class="small">Jasmine rice</text><text x="348" y="336" class="tiny muted" text-anchor="end">Included</text>
+    <text x="28" y="382" class="label">ADD A LITTLE EXTRA</text><rect x="25" y="393" width="340" height="38" rx="11" fill="#F7FAFB"/><rect x="36" y="405" width="14" height="14" rx="4" fill="#fff" stroke="#CBD1C9"/><text x="62" y="418" class="small">Fried egg</text><text x="348" y="418" class="tiny muted" text-anchor="end">+$0.80</text>
+    <rect x="25" y="443" width="340" height="34" rx="17" fill="#4C6971"/><text x="195" y="465" class="small white" text-anchor="middle" font-weight="700">Add to cart · $7.50</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C02</text>
+  </g>
+  <!-- C03 cart -->
+  <g transform="translate(925 160)"><use href="#phone"/>
+    <text x="28" y="119" class="screenTitle">Your cart</text><text x="362" y="119" class="small green" text-anchor="end">Add more +</text>
+    <rect x="25" y="137" width="340" height="82" rx="14" class="outline"/><circle cx="66" cy="178" r="24" fill="#C9E5ED"/><text x="104" y="165" class="small" font-weight="700">Beef Lok Lak</text><text x="104" y="185" class="tiny muted">Jasmine rice</text><text x="348" y="168" class="small" text-anchor="end" font-weight="700">$7.50</text><rect x="104" y="193" width="74" height="18" rx="9" fill="#EEF4F5"/><text x="141" y="206" class="tiny" text-anchor="middle">−　1　+</text>
+    <rect x="25" y="230" width="340" height="82" rx="14" class="outline"/><circle cx="66" cy="271" r="24" fill="#DCE7D5"/><text x="104" y="258" class="small" font-weight="700">Noodle Soup</text><text x="104" y="278" class="tiny muted">No extra chili</text><text x="348" y="261" class="small" text-anchor="end" font-weight="700">$6.50</text><rect x="104" y="286" width="74" height="18" rx="9" fill="#EEF4F5"/><text x="141" y="299" class="tiny" text-anchor="middle">−　1　+</text>
+    <text x="28" y="350" class="small muted">Subtotal</text><text x="360" y="350" class="small" text-anchor="end">$14.00</text><line x1="28" y1="366" x2="360" y2="366" class="line"/><text x="28" y="390" class="small" font-weight="700">Total</text><text x="360" y="390" class="screenTitle green" text-anchor="end">$14.00</text>
+    <rect x="25" y="427" width="340" height="49" rx="15" fill="#4C6971"/><text x="195" y="457" class="body white" text-anchor="middle" font-weight="700">Continue to checkout →</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C03</text>
+  </g>
+  <!-- C04 checkout -->
+  <g transform="translate(1365 160)"><use href="#phone"/>
+    <text x="28" y="119" class="screenTitle">Delivery details</text><rect x="25" y="139" width="340" height="71" rx="14" fill="#F4F8F9"/><circle cx="59" cy="174" r="18" fill="#E2F1F5"/><text x="59" y="180" class="body green" text-anchor="middle">⌂</text><text x="90" y="164" class="tiny muted">DELIVER TO ROOM</text><text x="90" y="188" class="small" font-weight="700">Hotel delivery</text>
+    <text x="28" y="244" class="label">ROOM NUMBER</text><rect x="25" y="255" width="340" height="54" rx="12" fill="#fff" stroke="#4C6971" stroke-width="1.5"/><text x="44" y="289" font-size="23" font-weight="700">508</text><text x="28" y="330" class="tiny muted">This is the only delivery detail needed.</text>
+    <text x="28" y="371" class="small" font-weight="700">Order total</text><text x="360" y="371" class="screenTitle green" text-anchor="end">$14.00</text><text x="28" y="393" class="tiny muted">2 items · Prices confirmed by the kitchen</text>
+    <rect x="25" y="427" width="340" height="49" rx="15" fill="#4C6971"/><text x="195" y="457" class="body white" text-anchor="middle" font-weight="700">Place order · $14.00</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C04</text>
+  </g>
+  <!-- second row -->
+  <!-- C05 payment -->
+  <g transform="translate(45 730)"><use href="#phone"/>
+    <text x="28" y="119" class="screenTitle">Pay for your order</text><rect x="25" y="137" width="340" height="55" rx="13" fill="#F4F8F9"/><text x="42" y="160" class="tiny muted">ORDER TC-8K4M</text><text x="42" y="181" class="small" font-weight="700">Room 508</text><text x="348" y="172" class="screenTitle green" text-anchor="end">$14.00</text>
+    <rect x="25" y="206" width="340" height="195" rx="16" fill="#E8F3F5"/><text x="195" y="233" class="label green" text-anchor="middle">ABA KHQR</text><rect x="126" y="247" width="138" height="112" rx="15" fill="#FFF"/><path d="M144 265h29v29h-29zm63 0h29v29h-29zm-63 63h29v16h-29zm43-40h20v17h-20zm26 34h19v22h-19z" fill="#8DA899"/><text x="195" y="380" class="tiny" text-anchor="middle" font-weight="700" fill="#C75B4B">DEMO ONLY · NOT PAYABLE</text>
+    <text x="30" y="426" class="small" font-weight="700">After paying, send a screenshot</text><text x="30" y="447" class="tiny muted">A staff member will check the actual receipt.</text><rect x="25" y="457" width="340" height="29" rx="14" fill="#4C6971"/><text x="195" y="477" class="tiny white" text-anchor="middle" font-weight="700">Open bot to send proof →</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C05</text>
+  </g>
+  <!-- C06 bot proof -->
+  <g transform="translate(485 730)"><use href="#phone"/>
+    <rect x="18" y="96" width="354" height="48" rx="12" fill="#F2F5F0"/><circle cx="43" cy="120" r="15" fill="#4C6971"/><text x="43" y="125" class="tiny white" text-anchor="middle" font-weight="700">T</text><text x="67" y="116" class="small" font-weight="700">Tea Cafe Bot</text><text x="67" y="133" class="tiny muted">Order TC-8K4M · Room 508</text>
+    <rect x="31" y="163" width="286" height="94" rx="15" fill="#EEF4F5"/><text x="48" y="188" class="small">Please send your payment</text><text x="48" y="208" class="small">screenshot for order TC-8K4M.</text><text x="48" y="235" class="tiny muted">Only the restaurant team can view it.</text>
+    <rect x="105" y="273" width="257" height="148" rx="16" fill="#DCEBE2"/><rect x="121" y="288" width="225" height="100" rx="10" fill="#F7F5EE"/><rect x="138" y="303" width="90" height="11" rx="5" fill="#9BAA9E"/><rect x="138" y="323" width="172" height="8" rx="4" fill="#DCE5E8"/><rect x="138" y="342" width="130" height="8" rx="4" fill="#DCE5E8"/><rect x="138" y="361" width="85" height="14" rx="6" fill="#D6AD58"/><text x="225" y="408" class="tiny green" text-anchor="middle" font-weight="700">Payment image · sent</text>
+    <rect x="31" y="437" width="331" height="38" rx="19" fill="#F3F4EF"/><text x="53" y="461" class="small muted">Message</text><circle cx="340" cy="456" r="15" fill="#4C6971"/><text x="340" y="461" class="small white" text-anchor="middle">↑</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C06</text>
+  </g>
+  <!-- C07 review -->
+  <g transform="translate(925 730)"><use href="#phone"/>
+    <rect x="25" y="112" width="340" height="162" rx="18" fill="#D9EEF5"/><circle cx="65" cy="153" r="21" fill="#46AAD3"/><text x="65" y="160" class="screenTitle white" text-anchor="middle">…</text><text x="99" y="151" class="screenTitle">Payment review</text><text x="47" y="191" class="small">Your screenshot is with the</text><text x="47" y="212" class="small">restaurant team. We'll message</text><text x="47" y="233" class="small">you when they confirm it.</text><text x="47" y="257" class="tiny muted">This does not mean payment is confirmed yet.</text>
+    <text x="28" y="313" class="label">ORDER TC-8K4M</text><rect x="25" y="326" width="340" height="72" rx="14" class="outline"/><text x="44" y="353" class="small" font-weight="700">Room 508 · 2 items</text><text x="44" y="377" class="tiny muted">Submitted today · 10:42</text><text x="346" y="365" class="tiny" text-anchor="end">$14.00</text>
+    <rect x="25" y="418" width="340" height="51" rx="15" fill="#4C6971"/><text x="195" y="449" class="body white" text-anchor="middle" font-weight="700">View order status</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C07</text>
+  </g>
+  <!-- C08 status/history -->
+  <g transform="translate(1365 730)"><use href="#phone"/>
+    <text x="28" y="119" class="screenTitle">Order status</text><rect x="25" y="137" width="340" height="89" rx="15" fill="#4C6971"/><text x="44" y="164" class="tiny" fill="#E2F1F5">TC-8K4M · ROOM 508</text><text x="44" y="194" font-size="20" font-weight="700" fill="#fff">Being prepared</text><text x="346" y="193" class="small white" text-anchor="end">$14.00</text>
+    <line x1="54" y1="257" x2="54" y2="404" stroke="#D7DDD5" stroke-width="3"/><circle cx="54" cy="260" r="10" fill="#4C6971"/><text x="80" y="257" class="small" font-weight="700">Payment confirmed</text><text x="80" y="276" class="tiny muted">The team checked your payment.</text><circle cx="54" cy="319" r="10" fill="#4C6971"/><text x="80" y="316" class="small" font-weight="700">In the kitchen</text><text x="80" y="335" class="tiny muted">Your order is being prepared.</text><circle cx="54" cy="378" r="10" fill="#fff" stroke="#B8C2B8" stroke-width="2"/><text x="80" y="375" class="small muted">Ready for delivery</text><text x="80" y="394" class="tiny muted">We'll send you an update.</text>
+    <rect x="25" y="424" width="340" height="49" rx="14" fill="#F4F8F9"/><text x="43" y="445" class="tiny muted">NEED HELP?</text><text x="43" y="463" class="small green" font-weight="700">Message the restaurant →</text>
+    <rect x="0" y="-31" width="46" height="22" rx="11" fill="#E2F1F5"/><text x="23" y="-16" class="tiny green" text-anchor="middle" font-weight="700">C08</text>
+  </g>
+  <text x="47" y="1090" class="small muted">Flow: C01 → C02 → C03 → C04 → C05 → C06 → C07 → C08　 ·　If staff rejects proof, C07 returns to C05/C06 for another submission.</text>
+</svg>

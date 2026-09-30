@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1320" viewBox="0 0 2000 1320" role="img" aria-labelledby="title desc">
+  <title id="title">Tea Cafe manager console — screen concepts</title>
+  <desc id="desc">Seven restaurant manager screens: dashboard, orders, payment review, products, product editor, finance, staff and store settings.</desc>
+  <defs>
+    <style>
+      text{font-family:Inter,"Segoe UI",Arial,sans-serif;fill:#25383D}.muted{fill:#71858A}.green{fill:#4C6971}.white{fill:#fff}.label{font-size:11px;font-weight:700;letter-spacing:1px}.small{font-size:12px}.body{font-size:14px}.h2{font-size:20px;font-weight:700}.title{font-size:31px;font-weight:700}.metric{font-size:23px;font-weight:700}.line{stroke:#E5E6DF;stroke-width:1}.panel{fill:#fff;stroke:#E5ECEE}.amber{fill:#D9EEF5}.mint{fill:#E8F3F5}.coral{fill:#F7E3DE}
+    </style>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="125%"><feDropShadow dx="0" dy="5" stdDeviation="6" flood-color="#26372F" flood-opacity=".08"/></filter>
+    <g id="browser">
+      <rect width="600" height="325" rx="14" fill="#fff" stroke="#D9DDD5" filter="url(#sh)"/>
+      <path d="M0 14a14 14 0 0 1 14-14h572a14 14 0 0 1 14 14v25H0z" fill="#F5F6F2"/>
+      <circle cx="20" cy="19" r="5" fill="#E47A68"/><circle cx="37" cy="19" r="5" fill="#E3B354"/><circle cx="54" cy="19" r="5" fill="#77A887"/><text x="300" y="23" class="tiny muted" text-anchor="middle">food.workline.ink/admin</text>
+      <rect x="0" y="39" width="120" height="286" fill="#FBFCFC"/><text x="17" y="66" class="small green" font-weight="700">Tea Cafe</text>
+      <text x="18" y="97" class="tiny">▦　Overview</text><text x="18" y="124" class="tiny">▤　Orders</text><text x="18" y="151" class="tiny">▧　Products</text><text x="18" y="178" class="tiny">▥　Finance</text><text x="18" y="205" class="tiny">⚙　Settings</text>
+      <text x="139" y="62" class="tiny muted">Store manager　·　Today</text>
+      <line x1="137" y1="76" x2="583" y2="76" class="line"/>
+    </g>
+    <g id="badgePaid"><rect width="72" height="19" rx="9" fill="#E2F1F5"/><text x="36" y="13" class="tiny green" text-anchor="middle" font-weight="700">Paid</text></g>
+    <g id="badgeReview"><rect width="112" height="19" rx="9" fill="#D9EEF5"/><text x="56" y="13" class="tiny" text-anchor="middle" font-weight="700">Needs review</text></g>
+    <g id="badgePrep"><rect width="88" height="19" rx="9" fill="#E7EDF5"/><text x="44" y="13" class="tiny" text-anchor="middle" font-weight="700">Preparing</text></g>
+  </defs>
+  <rect width="2000" height="1320" fill="#F4F8F9"/>
+  <text x="42" y="56" class="label green">TEA CAFE · STAFF AND STORE MANAGER</text>
+  <text x="42" y="99" class="title">One queue for orders, payments and the kitchen.</text>
+  <text x="42" y="127" class="body muted">Admin web console concept · confirmation means staff checked the actual ABA receipt</text>
+  <g transform="translate(1510 50)"><rect width="444" height="58" rx="13" fill="#D9EEF5"/><text x="20" y="24" class="label">PAYMENT REVIEW RULE</text><text x="20" y="45" class="small">A screenshot is evidence to review, never payment confirmation.</text></g>
+
+  <!-- A01 overview -->
+  <g transform="translate(35 166)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A01</text>
+    <text x="141" y="107" class="h2">Good morning, Dara</text><text x="575" y="106" class="tiny green" text-anchor="end">Today ▾</text>
+    <g transform="translate(140 120)"><rect width="133" height="66" rx="10" fill="#F7FAFB"/><text x="12" y="22" class="tiny muted">NEW ORDERS</text><text x="12" y="51" class="metric">12</text></g>
+    <g transform="translate(282 120)"><rect width="143" height="66" rx="10" fill="#FFF8E8"/><text x="12" y="22" class="tiny muted">NEEDS REVIEW</text><text x="12" y="51" class="metric">3</text></g>
+    <g transform="translate(434 120)"><rect width="148" height="66" rx="10" fill="#E4F0F3"/><text x="12" y="22" class="tiny muted">CONFIRMED PAID</text><text x="12" y="51" class="metric">$212</text></g>
+    <rect x="140" y="198" width="274" height="101" rx="11" fill="#fff" stroke="#E5ECEE"/><text x="153" y="218" class="small" font-weight="700">Orders today</text><line x1="158" y1="277" x2="400" y2="277" class="line"/><path d="M165 268l35-17 34 7 34-28 34 16 36-33 36 13 24-26" fill="none" stroke="#47846A" stroke-width="3"/><text x="154" y="292" class="tiny muted">09:00　　　 12:00　　　 15:00　　　 18:00</text>
+    <rect x="425" y="198" width="157" height="101" rx="11" fill="#fff" stroke="#E5ECEE"/><text x="439" y="219" class="small" font-weight="700">Needs attention</text><text x="439" y="245" class="tiny">3 proofs to review</text><text x="439" y="267" class="tiny">2 orders in kitchen</text><text x="439" y="289" class="tiny green" font-weight="700">Open order queue →</text>
+  </g>
+  <!-- A02 orders queue -->
+  <g transform="translate(700 166)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A02</text>
+    <text x="141" y="107" class="h2">Orders</text><rect x="487" y="89" width="96" height="25" rx="12" fill="#4C6971"/><text x="535" y="106" class="tiny white" text-anchor="middle" font-weight="700">Today ▾</text>
+    <rect x="140" y="121" width="443" height="27" rx="8" fill="#F6F7F3"/><text x="153" y="139" class="tiny green" font-weight="700">All 12</text><text x="215" y="139" class="tiny">Needs review 3</text><text x="335" y="139" class="tiny">Preparing 3</text><text x="447" y="139" class="tiny">Ready 2</text>
+    <rect x="140" y="156" width="443" height="24" rx="7" fill="#F4F8F9"/><text x="150" y="172" class="tiny muted">ORDER</text><text x="222" y="172" class="tiny muted">ROOM</text><text x="277" y="172" class="tiny muted">TOTAL</text><text x="342" y="172" class="tiny muted">PAYMENT / STATUS</text>
+    <g class="small"><line x1="140" y1="213" x2="583" y2="213" class="line"/><text x="150" y="198" class="tiny green" font-weight="700">TC-8K4M</text><text x="222" y="198" class="tiny">508</text><text x="277" y="198" class="tiny">$14.00</text><use href="#badgeReview" x="340" y="184"/>
+    <line x1="140" y1="247" x2="583" y2="247" class="line"/><text x="150" y="233" class="tiny">TC-8K3P</text><text x="222" y="233" class="tiny">312</text><text x="277" y="233" class="tiny">$28.40</text><use href="#badgePaid" x="340" y="219"/><use href="#badgePrep" x="421" y="219"/>
+    <line x1="140" y1="281" x2="583" y2="281" class="line"/><text x="150" y="267" class="tiny">TC-8K2Q</text><text x="222" y="267" class="tiny">417</text><text x="277" y="267" class="tiny">$7.90</text><use href="#badgeReview" x="340" y="253"/></g>
+    <text x="150" y="304" class="tiny muted">Select an order to review details and take the next action.</text>
+  </g>
+  <!-- A03 review -->
+  <g transform="translate(1365 166)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A03</text>
+    <text x="141" y="107" class="h2">TC-8K4M · Room 508</text><use href="#badgeReview" x="475" y="88"/>
+    <rect x="140" y="121" width="205" height="158" rx="10" fill="#FBFCFC" stroke="#E5ECEE"/><text x="154" y="144" class="label">ORDER</text><text x="154" y="168" class="small">Beef Lok Lak × 1</text><text x="154" y="189" class="small">Noodle Soup × 1</text><line x1="154" y1="207" x2="330" y2="207" class="line"/><text x="154" y="230" class="tiny muted">TOTAL DUE</text><text x="330" y="232" class="h2 green" text-anchor="end">$14.00</text><text x="154" y="259" class="tiny muted">Created 10:42 · Guest Telegram</text>
+    <rect x="357" y="121" width="226" height="158" rx="10" fill="#F6F3E9" stroke="#E5ECEE"/><text x="372" y="144" class="label">PAYMENT IMAGE</text><rect x="373" y="155" width="194" height="85" rx="8" fill="#E6EEF0"/><rect x="391" y="169" width="143" height="12" rx="5" fill="#AEB8AC"/><rect x="391" y="190" width="122" height="7" rx="3" fill="#CAD8DC"/><rect x="391" y="206" width="99" height="7" rx="3" fill="#CAD8DC"/><text x="470" y="258" class="tiny muted" text-anchor="middle">Open full image · Telegram proof</text>
+    <rect x="140" y="287" width="443" height="25" rx="7" fill="#E7F5F8"/><text x="152" y="304" class="tiny" font-weight="700">Check actual ABA incoming payment before confirming.</text>
+    <rect x="140" y="-1" width="0" height="0" fill="none"/>
+  </g>
+  <!-- A04 products -->
+  <g transform="translate(35 565)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A04</text>
+    <text x="141" y="107" class="h2">Menu items</text><rect x="474" y="88" width="109" height="26" rx="12" fill="#4C6971"/><text x="528" y="105" class="tiny white" text-anchor="middle" font-weight="700">+ Add item</text>
+    <rect x="140" y="121" width="443" height="25" rx="7" fill="#F4F8F9"/><text x="153" y="138" class="tiny muted">ITEM</text><text x="350" y="138" class="tiny muted">PRICE</text><text x="432" y="138" class="tiny muted">AVAILABILITY</text>
+    <g><line x1="140" y1="184" x2="583" y2="184" class="line"/><circle cx="160" cy="165" r="13" fill="#D5AE68"/><text x="181" y="162" class="tiny" font-weight="700">Beef Lok Lak</text><text x="181" y="177" class="tiny muted">Main dishes</text><text x="350" y="171" class="tiny">$7.50</text><rect x="430" y="154" width="66" height="20" rx="10" class="mint"/><text x="463" y="168" class="tiny green" text-anchor="middle">Available</text><text x="558" y="170" class="tiny green">Edit</text>
+    <line x1="140" y1="223" x2="583" y2="223" class="line"/><circle cx="160" cy="204" r="13" fill="#CBD9BE"/><text x="181" y="201" class="tiny" font-weight="700">Khmer Noodle Soup</text><text x="181" y="216" class="tiny muted">Noodles</text><text x="350" y="210" class="tiny">$6.50</text><rect x="430" y="193" width="66" height="20" rx="10" fill="#D9EEF5"/><text x="463" y="207" class="tiny" text-anchor="middle">Sold out</text><text x="558" y="209" class="tiny green">Edit</text>
+    <line x1="140" y1="262" x2="583" y2="262" class="line"/><circle cx="160" cy="243" r="13" fill="#E5C6B3"/><text x="181" y="240" class="tiny" font-weight="700">Fresh Spring Rolls</text><text x="181" y="255" class="tiny muted">Small plates</text><text x="350" y="249" class="tiny">$6.50</text><rect x="430" y="232" width="66" height="20" rx="10" class="mint"/><text x="463" y="246" class="tiny green" text-anchor="middle">Available</text><text x="558" y="248" class="tiny green">Edit</text></g>
+    <text x="151" y="296" class="tiny muted">Changing a menu item never rewrites a placed order.</text>
+  </g>
+  <!-- A05 editor -->
+  <g transform="translate(700 565)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A05</text>
+    <text x="141" y="107" class="h2">Edit menu item</text><text x="578" y="106" class="tiny green" text-anchor="end">← Back to menu</text>
+    <text x="141" y="139" class="tiny muted">ITEM NAME</text><rect x="140" y="147" width="424" height="31" rx="7" fill="#fff" stroke="#DCE5E8"/><text x="153" y="167" class="small">Beef Lok Lak</text>
+    <text x="141" y="198" class="tiny muted">CATEGORY</text><rect x="140" y="206" width="202" height="31" rx="7" fill="#fff" stroke="#DCE5E8"/><text x="153" y="226" class="small">Main dishes　⌄</text><text x="360" y="198" class="tiny muted">PRICE</text><rect x="359" y="206" width="205" height="31" rx="7" fill="#fff" stroke="#DCE5E8"/><text x="372" y="226" class="small">7.50　USD</text>
+    <text x="141" y="257" class="tiny muted">DESCRIPTION</text><rect x="140" y="265" width="266" height="40" rx="7" fill="#fff" stroke="#DCE5E8"/><text x="153" y="282" class="tiny">Pepper sauce, jasmine rice.</text><rect x="420" y="265" width="144" height="40" rx="7" fill="#E6F0F2"/><text x="492" y="289" class="tiny muted" text-anchor="middle">Replace image +</text>
+    <rect x="140" y="311" width="111" height="25" rx="12" fill="#4C6971"/><text x="195" y="328" class="tiny white" text-anchor="middle" font-weight="700">Save changes</text>
+  </g>
+  <!-- A06 finance -->
+  <g transform="translate(1365 565)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A06</text>
+    <text x="141" y="107" class="h2">Finance</text><rect x="472" y="88" width="111" height="26" rx="12" fill="#F3F4EF"/><text x="527" y="105" class="tiny" text-anchor="middle">Last 7 days ▾</text>
+    <g transform="translate(140 123)"><rect width="105" height="61" rx="9" fill="#F7FAFB"/><text x="10" y="21" class="tiny muted">ORDERS</text><text x="10" y="48" class="metric">68</text></g><g transform="translate(254 123)"><rect width="105" height="61" rx="9" fill="#F7FAFB"/><text x="10" y="21" class="tiny muted">ORDER TOTAL</text><text x="10" y="48" font-size="20" font-weight="700">$824</text></g><g transform="translate(368 123)"><rect width="105" height="61" rx="9" fill="#E4F0F3"/><text x="10" y="21" class="tiny muted">CONFIRMED</text><text x="10" y="48" font-size="20" font-weight="700">$701</text></g><g transform="translate(482 123)"><rect width="101" height="61" rx="9" fill="#E7F5F8"/><text x="9" y="21" font-size="9" fill="#71858A">IN REVIEW</text><text x="9" y="48" font-size="20" font-weight="700">$123</text></g>
+    <rect x="140" y="197" width="443" height="102" rx="10" fill="#fff" stroke="#E5ECEE"/><text x="154" y="217" class="small" font-weight="700">Order volume &amp; confirmed receipts</text><line x1="160" y1="278" x2="565" y2="278" class="line"/><g fill="#8DB59B"><rect x="178" y="251" width="20" height="27" rx="4"/><rect x="223" y="235" width="20" height="43" rx="4"/><rect x="268" y="245" width="20" height="33" rx="4"/><rect x="313" y="224" width="20" height="54" rx="4"/><rect x="358" y="238" width="20" height="40" rx="4"/><rect x="403" y="216" width="20" height="62" rx="4"/><rect x="448" y="228" width="20" height="50" rx="4"/><rect x="493" y="207" width="20" height="71" rx="4"/></g><text x="154" y="294" class="tiny muted">Amounts reflect staff-confirmed payments, not bank API reconciliation.</text>
+  </g>
+  <!-- A07 staff/settings -->
+  <g transform="translate(35 964)"><use href="#browser"/><rect x="0" y="-30" width="49" height="21" rx="10" class="mint"/><text x="24" y="-15" class="tiny green" text-anchor="middle" font-weight="700">A07</text>
+    <text x="141" y="107" class="h2">Team &amp; payment settings</text><text x="141" y="133" class="label">STAFF ACCESS · MANAGER ONLY</text>
+    <rect x="140" y="143" width="255" height="106" rx="9" fill="#FBFCFC" stroke="#E5ECEE"/><text x="154" y="165" class="tiny" font-weight="700">Telegram user</text><text x="270" y="165" class="tiny" font-weight="700">Role</text><text x="154" y="191" class="tiny">@dara_kitchen</text><text x="270" y="191" class="tiny">Manager ▾</text><line x1="153" y1="201" x2="382" y2="201" class="line"/><text x="154" y="225" class="tiny">Telegram ID: •••• 2841</text><text x="367" y="225" class="tiny green" text-anchor="end">Active</text><text x="154" y="243" class="tiny green" font-weight="700">+ Invite staff member</text>
+    <rect x="408" y="143" width="175" height="106" rx="9" fill="#FBFCFC" stroke="#E5ECEE"/><text x="422" y="165" class="label">ABA COLLECTION</text><rect x="423" y="177" width="46" height="48" rx="5" fill="#E8F3F5"/><path d="M431 185h11v11h-11zm17 0h11v11h-11zm-17 17h11v15h-11zm18-5h10v8h-10z" fill="#A6B9A7"/><text x="480" y="194" class="tiny" font-weight="700">Store KHQR</text><text x="480" y="211" class="tiny muted">Configured</text><text x="480" y="229" class="tiny" fill="#B36A25">Manual review</text>
+    <text x="141" y="281" class="tiny muted">Only a manager can grant access or change payment settings.</text>
+  </g>
+  <g transform="translate(700 964)"><rect width="600" height="325" rx="14" fill="#4C6971"/><text x="30" y="47" class="label" fill="#E2F1F5">SCREEN COVERAGE</text><text x="30" y="93" font-size="26" font-weight="700" fill="#fff">7 manager views</text><text x="30" y="128" class="body" fill="#E3EEF1">Overview · Orders · Payment review</text><text x="30" y="154" class="body" fill="#E3EEF1">Products · Product editor · Finance</text><text x="30" y="180" class="body" fill="#E3EEF1">Team and collection settings</text><line x1="30" y1="209" x2="566" y2="209" stroke="#658477"/><text x="30" y="240" class="small" fill="#F1D08E">Amber is review. Green appears after staff confirm.</text><text x="30" y="265" class="small" fill="#E3EEF1">No screenshot, OCR, or button click alone proves payment.</text><text x="30" y="297" class="tiny" fill="#B9C9BD">All totals and accounts shown are fictional examples.</text></g>
+  <text x="40" y="1307" class="small muted">A03 uses a second confirmation step. Staff checks the ABA transaction first, then confirms the order; rejection requires a reason and lets the guest resubmit.</text>
+</svg>

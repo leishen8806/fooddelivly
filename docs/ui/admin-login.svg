@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+  <title id="title">Tea Cafe admin browser login concept</title>
+  <desc id="desc">A standalone browser sign-in page for authorized Tea Cafe managers and staff at food.workline.ink/admin.</desc>
+  <defs>
+    <style>
+      text{font-family:Inter,"Segoe UI",Arial,sans-serif;fill:#25383D}.muted{fill:#71858A}.green{fill:#4C6971}.white{fill:#fff}.tiny{font-size:12px}.small{font-size:14px}.body{font-size:16px}.h1{font-size:36px;font-weight:700}.label{font-size:12px;font-weight:700;letter-spacing:1px}
+    </style>
+    <linearGradient id="left" x2="0" y2="1"><stop stop-color="#3F5A62"/><stop offset="1" stop-color="#354B51"/></linearGradient>
+    <filter id="shade" x="-20%" y="-20%" width="140%" height="150%"><feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#354B51" flood-opacity=".12"/></filter>
+  </defs>
+  <rect width="1440" height="900" fill="#F4F8F9"/>
+  <rect x="0" y="0" width="720" height="900" fill="url(#left)"/>
+  <text x="70" y="72" class="label" fill="#D7EBF0">TEA CAFE　·　STAFF CONSOLE</text>
+  <text x="70" y="190" class="h1 white">A calm kitchen</text><text x="70" y="235" class="h1 white">starts here.</text>
+  <text x="72" y="282" class="body" fill="#DCE9EC">Orders, menu and payment checks</text><text x="72" y="308" class="body" fill="#DCE9EC">for the people serving Tea Cafe guests.</text>
+  <rect x="70" y="380" width="580" height="246" rx="22" fill="#F4F8F9"/>
+  <rect x="92" y="402" width="536" height="48" rx="12" fill="#E4EFF1"/><circle cx="118" cy="426" r="12" fill="#4C6971"/><text x="118" y="431" class="tiny white" text-anchor="middle" font-weight="700">T</text><text x="143" y="431" class="small" font-weight="700">Tea Cafe Orders</text><text x="600" y="431" class="tiny muted" text-anchor="end">STAFF GROUP</text>
+  <rect x="92" y="467" width="536" height="137" rx="14" fill="#fff"/>
+  <text x="112" y="493" class="tiny muted">NEW ORDER　·　ROOM 508</text><text x="112" y="522" class="body" font-weight="700">Beef Lok Lak × 1　 ·　 Noodle Soup × 1</text><text x="112" y="550" class="small muted">Total due　$14.00</text><rect x="112" y="566" width="150" height="26" rx="13" fill="#4C6971"/><text x="187" y="584" class="tiny white" text-anchor="middle" font-weight="700">Accept order</text>
+  <text x="72" y="682" class="small" fill="#DCE9EC">Access is limited to invited Tea Cafe staff.</text><text x="72" y="709" class="tiny" fill="#9FB7A7">Customer Mini App sign-in and staff sign-in are separate.</text>
+  <rect x="720" y="0" width="720" height="900" fill="#FBFAF6"/>
+  <g filter="url(#shade)"><rect x="840" y="161" width="480" height="580" rx="24" fill="#fff" stroke="#E6EEF0"/></g>
+  <circle cx="1080" cy="221" r="27" fill="#E2F1F5"/><path d="M1068 226c2-15 22-15 24 0M1074 212a6 6 0 1 0 12 0" fill="none" stroke="#4C6971" stroke-width="2.5" stroke-linecap="round"/>
+  <text x="1080" y="281" class="h1" font-size="26" text-anchor="middle">Welcome back</text><text x="1080" y="309" class="small muted" text-anchor="middle">Sign in to manage Tea Cafe orders.</text>
+  <text x="890" y="365" class="label">LOGIN ID</text><rect x="890" y="380" width="380" height="54" rx="11" fill="#fff" stroke="#DCE5E8" stroke-width="1.5"/><text x="910" y="413" class="small muted">Username or email</text>
+  <text x="890" y="472" class="label">PASSWORD</text><rect x="890" y="487" width="380" height="54" rx="11" fill="#fff" stroke="#DCE5E8" stroke-width="1.5"/><text x="910" y="520" class="small muted">Enter your password</text><text x="1242" y="520" class="small muted" text-anchor="end">Show</text>
+  <text x="1268" y="565" class="tiny green" text-anchor="end" font-weight="700">Forgot password?</text>
+  <rect x="890" y="590" width="380" height="54" rx="12" fill="#4C6971"/><text x="1080" y="624" class="body white" text-anchor="middle" font-weight="700">Sign in</text>
+  <rect x="890" y="669" width="380" height="44" rx="10" fill="#F4F8F9"/><text x="1080" y="688" class="tiny muted" text-anchor="middle">Need access? Ask the Tea Cafe manager.</text><text x="1080" y="704" class="tiny muted" text-anchor="middle">Login ID type and password recovery are to be confirmed.</text>
+  <text x="72" y="858" class="tiny" fill="#9FB7A7">STATIC DESIGN CONCEPT　·　NOT A LIVE LOGIN PAGE</text>
+  <text x="838" y="800" class="tiny muted">Direct browser route: https://food.workline.ink/admin → /admin/login when no staff session exists.</text>
+</svg>
