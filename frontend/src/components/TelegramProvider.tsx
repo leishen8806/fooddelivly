@@ -8,7 +8,7 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { setCustomerAuth } = useAuthStore();
   const { i18n, t } = useTranslation();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<'telegram' | 'session' | null>(null);
+  const [error, setError] = useState<'telegram' | 'session' | 'network' | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
@@ -18,7 +18,11 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
     const authenticate = async () => {
       try {
-        WebApp.ready();
+        try {
+          WebApp.ready();
+        } catch {
+          // The Telegram bridge's ready event is advisory; validated initData is the auth source.
+        }
         const initData = WebApp.initData;
         
         if (!initData) {
@@ -35,8 +39,9 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             await i18n.changeLanguage(res.data.language || 'en');
           }
         }
-      } catch {
-        setError('session');
+      } catch (requestError) {
+        const status = (requestError as { response?: { status?: number } })?.response?.status;
+        setError(status === 401 ? 'session' : 'network');
       } finally {
         setLoading(false);
       }
@@ -50,7 +55,8 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }
 
   if (error) {
-    return <main className="auth-shell"><section className="auth-card" role="alert"><img className="login-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><span className="eyebrow">TEA CAFE</span><h1>{t('brand')}</h1><p>{error === 'telegram' ? t('auth.openFromTelegram') : t('auth.sessionExpired')}</p><button className="primary" type="button" onClick={() => { setLoading(true); setError(null); setRetryCount((count) => count + 1); }}>{t('common.retry')}</button></section></main>;
+    const message = error === 'telegram' ? t('auth.openFromTelegram') : error === 'session' ? t('auth.sessionExpired') : t('error.network');
+    return <main className="auth-shell"><section className="auth-card" role="alert"><img className="login-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><span className="eyebrow">TEA CAFE</span><h1>{t('brand')}</h1><p>{message}</p><button className="primary" type="button" onClick={() => { setLoading(true); setError(null); setRetryCount((count) => count + 1); }}>{t('common.retry')}</button></section></main>;
   }
 
   return <>{children}</>;
