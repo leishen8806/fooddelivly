@@ -115,7 +115,7 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 
 所有顾客和后台 API 需要会话 Cookie；员工 API 额外需要 `STAFF`/`MANAGER` 角色。Bot webhook 独立验证 Telegram secret token。
 
-店长群组配置：用户可在 Bot 私聊发送 `/myid` 获取自己的 Telegram ID；店长在后台“员工”列表将该 ID 绑定到自己的有效 `MANAGER` 账号。先私聊 Bot `/start`，再把 Bot 添加到员工群并发送 `/getgroupid`。Webhook 仅在 `Staff.telegram_user_id` 精确匹配、角色为 `MANAGER` 且账号启用时，把群组 ID 私发给该店长；不会在群消息中回显 ID。店长将 ID 填入“设置 → Telegram 员工群组 ID”并保存。
+店长群组配置：用户可在 Bot 私聊发送 `/myid` 获取自己的 Telegram ID；店长在后台“员工”列表将该 ID 绑定到自己的有效 `MANAGER` 账号。先私聊 Bot `/start`，再把 Bot 添加到员工群并发送 `/getgroupid@teacafeLH_Bot`。明确提及 Bot 用户名可兼容默认群组隐私模式。Webhook 仅在 `Staff.telegram_user_id` 精确匹配、角色为 `MANAGER` 且账号启用时，把群组 ID 私发给该店长；不会在群消息中回显 ID。店长将 ID 填入“设置 → Telegram 员工群组 ID”并保存。
 
 商品图片和 ABA 收款二维码由店长通过 `POST /api/v1/admin/uploads` 上传，限制 PNG/JPEG/WebP、单图最大 5 MB；文件写入持久化 `uploaded_images` 卷，返回的同源图片地址保存到 `products.image_key` 或 `store_settings.aba_qr_asset_key`。这类展示图片可公开读取；顾客付款凭证仍走 Bot 私聊及授权后台，不存入该公开图片目录。
 
@@ -142,7 +142,7 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 | `GET/POST/PATCH` | `/api/v1/admin/staff`、`/api/v1/admin/staff/{id}` | 店长查询、授权或停用员工 |
 | `POST` | `/api/v1/telegram/webhook` | 接收 Bot 私聊图片、群组消息和状态按钮 callback；群组按钮走共享状态服务 |
 
-Bot 私聊命令 `/myid` 显示当前 Telegram ID；员工群命令 `/getgroupid` 仅供已绑定的有效店长获取当前群组 ID。
+Bot 私聊命令 `/myid` 显示当前 Telegram ID；员工群命令 `/getgroupid@teacafeLH_Bot` 仅供已绑定的有效店长获取当前群组 ID。
 
 订单创建支持 `Idempotency-Key`；后台状态操作用数据库事务和当前状态条件更新，避免双击/重复 webhook 重复确认。
 
