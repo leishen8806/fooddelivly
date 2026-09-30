@@ -280,6 +280,45 @@ small {
   gap: var(--space-4);
 }
 
+.customer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cart-shortcut {
+  display: inline-flex;
+  min-height: var(--control-height);
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-brand);
+  background: var(--color-surface);
+  font-size: var(--type-small);
+  font-weight: var(--weight-semibold);
+  line-height: var(--line-small);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.cart-shortcut strong {
+  display: grid;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  place-items: center;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  color: #fff;
+  background: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.cart-shortcut:hover {
+  background: var(--color-tint);
+}
+
 .topbar h1,
 .admin-header h1 {
   margin: var(--space-1) 0 0;
@@ -418,10 +457,17 @@ small {
 }
 
 .checkout-card {
-  position: sticky;
-  bottom: var(--space-4);
   margin: var(--space-8) 0;
   padding: var(--space-5);
+}
+
+#menu,
+#cart {
+  scroll-margin-top: var(--space-4);
+}
+
+.continue-shopping {
+  justify-self: start;
 }
 
 .checkout-card h2 {
@@ -1043,7 +1089,13 @@ small {
   }
 
   .topbar {
+    flex-wrap: wrap;
     gap: var(--space-3);
+  }
+
+  .customer-header-actions {
+    margin-left: auto;
+    gap: var(--space-1);
   }
 
   .topbar h1 {
@@ -1094,7 +1146,6 @@ small {
   }
 
   .checkout-card {
-    bottom: var(--space-2);
     margin: var(--space-6) 0;
     padding: var(--space-4);
   }
