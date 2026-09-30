@@ -219,7 +219,8 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
         "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
         "currency": order.currency, "total_minor": order.total_minor, "created_at": order.created_at,
+        **payment_handoff(order.public_code, (await db.execute(select(StoreSettings).limit(1))).scalars().first()),
         "items": [{"name": x.product_name_snapshot, "quantity": x.quantity, "unit_price_minor": x.unit_price_minor,
-                   "line_total_minor": x.line_total_minor} for x in items_result.scalars().all()],
+                   "line_total_minor": x.line_total_minor, "options": x.options_json or {}} for x in items_result.scalars().all()],
         "proof_status": proof.review_status if proof else None,
     }

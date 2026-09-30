@@ -129,5 +129,14 @@ async def customer_logout(response: Response):
     return {"message": "Logged out"}
 
 @router.get("/me")
-async def customer_me(customer_id: int = Depends(get_current_customer)):
-    return {"customer_id": customer_id}
+async def customer_me(customer_id: int = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Customer).filter(Customer.id == customer_id))
+    customer = result.scalars().first()
+    if customer is None:
+        raise HTTPException(status_code=401, detail="Customer session is no longer valid")
+    return {
+        "customer_id": customer.id,
+        "display_name": customer.display_name,
+        "username": customer.username,
+        "language": _supported_language(customer.language_code),
+    }

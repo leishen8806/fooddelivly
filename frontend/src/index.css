@@ -268,6 +268,10 @@ small {
   padding: var(--space-6);
 }
 
+.customer-shell {
+  padding-bottom: calc(var(--space-6) + 5.5rem + env(safe-area-inset-bottom));
+}
+
 .topbar,
 .admin-header,
 .panel-heading,
@@ -472,6 +476,164 @@ small {
 
 .checkout-card h2 {
   margin: var(--space-1) 0 0;
+}
+
+.customer-page-section {
+  display: grid;
+  max-width: 52rem;
+  gap: var(--space-4);
+  margin: var(--space-6) auto 0;
+}
+
+.customer-page-heading h2 {
+  margin: var(--space-1) 0 0;
+}
+
+.customer-orders {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.customer-order-card,
+.profile-identity,
+.profile-stats article {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+}
+
+.customer-order-card {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.customer-order-heading,
+.customer-order-meta,
+.customer-order-total,
+.customer-order-items > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.customer-order-heading > span {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  color: var(--color-brand);
+  background: var(--color-tint);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-semibold);
+}
+
+.customer-order-meta {
+  flex-wrap: wrap;
+  color: var(--color-muted);
+  font-size: var(--type-small);
+}
+
+.customer-order-total {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.customer-order-total strong,
+.customer-order-items strong {
+  color: var(--color-brand);
+  font-variant-numeric: tabular-nums;
+}
+
+.customer-order-card > button {
+  justify-self: start;
+}
+
+.customer-order-items {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.profile-identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  color: var(--color-brand);
+}
+
+.profile-identity div,
+.profile-identity span {
+  display: block;
+}
+
+.profile-identity span {
+  margin-top: var(--space-1);
+  color: var(--color-muted);
+  font-size: var(--type-small);
+}
+
+.profile-stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.profile-stats article span,
+.profile-stats article strong {
+  display: block;
+}
+
+.profile-stats article span {
+  color: var(--color-muted);
+  font-size: var(--type-small);
+}
+
+.profile-stats article strong {
+  margin-top: var(--space-2);
+  color: var(--color-brand);
+  font-size: var(--type-title);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-language {
+  display: grid;
+  max-width: 20rem;
+  gap: var(--space-2);
+}
+
+.customer-bottom-nav {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  padding: var(--space-2) max(var(--space-4), env(safe-area-inset-left)) calc(var(--space-2) + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--color-border);
+  background: rgb(251 252 252 / 96%);
+  box-shadow: 0 -0.25rem 1rem rgb(37 56 61 / 6%);
+  backdrop-filter: blur(16px);
+}
+
+.customer-bottom-nav button {
+  min-width: 0;
+  min-height: 3.25rem;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-color: transparent;
+  border-radius: var(--radius-control);
+  font-size: var(--type-caption);
+  line-height: var(--line-caption);
+}
+
+.customer-bottom-nav button.active {
+  color: var(--color-brand);
+  background: var(--color-tint);
 }
 
 .payment-card {
@@ -1085,7 +1247,7 @@ small {
 
 @media (max-width: 700px) {
   .customer-shell {
-    padding: var(--space-4);
+    padding: var(--space-4) var(--space-4) calc(var(--space-4) + 5.5rem + env(safe-area-inset-bottom));
   }
 
   .topbar {
@@ -1264,6 +1426,12 @@ small {
 
   .customer-table {
     min-width: 42.5rem;
+  }
+
+  .customer-order-card,
+  .profile-identity,
+  .profile-stats article {
+    padding: var(--space-3);
   }
 
   .audit-pagination {
