@@ -305,7 +305,7 @@ function CustomerPage() {
       <section className="menu-browser" aria-label={t('menu.title')}>
         <nav className="category-rail" aria-label={t('menu.category')}>
           {categories.map((category) => <button key={category.id} type="button" className={`category-rail-item${selectedCategory?.id === category.id ? ' active' : ''}`} aria-current={selectedCategory?.id === category.id ? 'true' : undefined} onClick={() => setSelectedCategoryId(category.id)}>
-            <span>{label(category.name, i18n.language)}</span><small>{category.products?.length ?? 0}</small>
+            <span>{label(category.name, i18n.language)}</span>
           </button>)}
         </nav>
         {selectedCategory && <section className="category-products" aria-labelledby={`category-${selectedCategory.id}`}>
