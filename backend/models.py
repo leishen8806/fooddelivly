@@ -11,6 +11,8 @@ class Customer(Base):
     display_name = Column(String, nullable=True)
     username = Column(String, nullable=True)
     language_code = Column(String, nullable=True)
+    # The Telegram deep link selects the exact order whose proof is being sent.
+    pending_payment_order_id = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Staff(Base):
@@ -58,6 +60,7 @@ class Order(Base):
     order_status = Column(String, default="NEW")
     payment_status = Column(String, default="UNPAID")
     currency = Column(String, default="USD")
+    customer_language = Column(String, nullable=False, default="en")
     total_minor = Column(Integer, nullable=False)
     telegram_group_message_id = Column(String, nullable=True)
     idempotency_key = Column(String, index=True, nullable=True)
@@ -117,6 +120,17 @@ class OrderEvent(Base):
     to_state = Column(String, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    actor_staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False)
+    entity_type = Column(String, nullable=False)
+    entity_id = Column(String, nullable=False)
+    action = Column(String, nullable=False)
+    details = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
 class StoreSettings(Base):
     __tablename__ = "store_settings"
 
@@ -126,6 +140,7 @@ class StoreSettings(Base):
     aba_qr_asset_key = Column(String, nullable=True)
     payment_link = Column(String, nullable=True)
     telegram_staff_group_id = Column(String, nullable=True)
+    staff_group_language = Column(String, nullable=False, default="en")
     open_hours = Column(String, nullable=True)
     delivery_mode = Column(String, nullable=True)
 

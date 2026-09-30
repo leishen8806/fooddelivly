@@ -1,47 +1,76 @@
-from fastapi import APIRouter, Depends, HTTPException, Header
+from datetime import date, datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
+
 from database import get_db
-from models import Order
 from dependencies import get_current_staff
-from jose import jwt
-import os
-from datetime import datetime
+from models import Order, PaymentReview, StoreSettings
 
 router = APIRouter(prefix="/api/v1/admin/analytics", tags=["Admin Stats"])
 
+
 @router.get("/")
 async def get_analytics(
-    start_date: str = None, 
-    end_date: str = None, 
-    staff_info: dict = Depends(get_current_staff), 
-    db: AsyncSession = Depends(get_db)
+    from_date: date | None = Query(None, alias="from"),
+    to_date: date | None = Query(None, alias="to"),
+    staff_info: dict = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
 ):
-    # In MVP, just return basic aggregates
-    # We would use start_date and end_date to filter Order.created_at
-    
-    query = select(Order)
-    result = await db.execute(query)
+    settings_result = await db.execute(select(StoreSettings).limit(1))
+    settings = settings_result.scalars().first()
+    timezone_name = settings.timezone if settings else "Asia/Phnom_Penh"
+    try:
+        store_tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        raise HTTPException(status_code=500, detail="Store timezone is invalid")
+
+    today = datetime.now(store_tz).date()
+    end_date = to_date or today
+    start_date = from_date or (end_date - timedelta(days=6))
+    if start_date > end_date:
+        raise HTTPException(status_code=422, detail="The start date must not be after the end date")
+    start_local = datetime.combine(start_date, time.min, store_tz)
+    end_local = datetime.combine(end_date + timedelta(days=1), time.min, store_tz)
+    start_utc = start_local.astimezone(timezone.utc)
+    end_utc = end_local.astimezone(timezone.utc)
+
+    result = await db.execute(select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc))
     orders = result.scalars().all()
-    
-    total_orders = len(orders)
-    total_amount = sum(o.total_minor for o in orders)
-    
-    confirmed_orders = [o for o in orders if o.payment_status == "PAID_CONFIRMED"]
-    confirmed_amount = sum(o.total_minor for o in confirmed_orders)
-    
-    pending_review_orders = [o for o in orders if o.payment_status == "PROOF_SUBMITTED"]
-    pending_review_amount = sum(o.total_minor for o in pending_review_orders)
-    
-    cancelled_orders = [o for o in orders if o.order_status == "CANCELLED"]
-    cancelled_count = len(cancelled_orders)
-    
+    reviews_result = await db.execute(
+        select(Order.currency, func.sum(Order.total_minor))
+        .select_from(PaymentReview)
+        .join(Order, PaymentReview.order_id == Order.id)
+        .filter(PaymentReview.decision == "APPROVED", PaymentReview.created_at >= start_utc,
+                PaymentReview.created_at < end_utc)
+        .group_by(Order.currency)
+    )
+    confirmed_by_currency = {currency: int(amount or 0) for currency, amount in reviews_result.all()}
+
+    totals: dict[str, dict[str, int]] = {}
+    for order in orders:
+        bucket = totals.setdefault(order.currency, {"order_total_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0})
+        bucket["order_total_minor"] += order.total_minor
+        if order.payment_status == "PROOF_SUBMITTED":
+            bucket["in_review_minor"] += order.total_minor
+        if order.order_status == "CANCELLED":
+            bucket["cancelled_total_minor"] += order.total_minor
+    for currency, bucket in totals.items():
+        bucket["confirmed_receipts_minor"] = confirmed_by_currency.get(currency, 0)
+
+    for currency, amount in confirmed_by_currency.items():
+        totals.setdefault(currency, {"order_total_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0,
+                                     "confirmed_receipts_minor": amount})
+
     return {
-        "order_volume": total_orders,
-        "order_total_minor": total_amount,
-        "confirmed_receipts_minor": confirmed_amount,
-        "in_review_minor": pending_review_amount,
-        "cancelled_count": cancelled_count,
-        "manual_review_basis": True
+        "from": start_date.isoformat(),
+        "to": end_date.isoformat(),
+        "timezone": timezone_name,
+        "order_volume": len(orders),
+        "cancelled_count": sum(1 for order in orders if order.order_status == "CANCELLED"),
+        "by_currency": [{"currency": currency, **values} for currency, values in sorted(totals.items())],
+        "manual_review_basis": True,
     }

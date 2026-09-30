@@ -11,8 +11,9 @@ i18n
       en: { translation: locales['en'] },
       km: { translation: locales['km'] }
     },
-    lng: 'en', // default language
+    lng: localStorage.getItem('teacafe.language') || 'en',
     fallbackLng: 'en',
+    keySeparator: false,
     interpolation: {
       escapeValue: false // react already safes from xss
     }

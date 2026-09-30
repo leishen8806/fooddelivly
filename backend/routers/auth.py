@@ -7,6 +7,7 @@ from sqlalchemy.future import select
 from database import get_db
 from models import Customer, Staff
 from auth_utils import validate_telegram_init_data, verify_password, create_access_token
+from dependencies import get_current_customer, get_current_staff
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 
@@ -16,6 +17,22 @@ class TelegramLoginRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     login_name: str
     password: str
+
+def _cookie_options():
+    return {
+        "httponly": True,
+        "secure": os.getenv("COOKIE_SECURE", "true").lower() == "true",
+        "samesite": "lax",
+        "path": "/",
+        "max_age": 7 * 24 * 60 * 60,
+    }
+
+def _supported_language(code: str | None) -> str:
+    if code and code.lower().startswith("zh"):
+        return "zh-CN"
+    if code and code.lower().startswith("km"):
+        return "km"
+    return "en"
 
 @router.post("/telegram")
 async def telegram_login(req: TelegramLoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
@@ -48,18 +65,18 @@ async def telegram_login(req: TelegramLoginRequest, response: Response, db: Asyn
         db.add(customer)
         await db.commit()
         await db.refresh(customer)
+    else:
+        customer.display_name = " ".join(filter(None, [user_data.get("first_name"), user_data.get("last_name")])) or customer.display_name
+        customer.username = user_data.get("username")
+        customer.language_code = user_data.get("language_code")
+        await db.commit()
     
     token = create_access_token({"sub": str(customer.id), "type": "customer"})
     
-    response.set_cookie(
-        key="session_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="lax"
-    )
+    response.set_cookie(key="session_token", value=token, **_cookie_options())
+    response.headers["Cache-Control"] = "no-store"
     
-    return {"message": "Login successful", "customer_id": customer.id}
+    return {"message": "Login successful", "customer_id": customer.id, "language": _supported_language(customer.language_code)}
 
 
 @router.post("/admin/login")
@@ -72,12 +89,25 @@ async def admin_login(req: AdminLoginRequest, response: Response, db: AsyncSessi
     
     token = create_access_token({"sub": str(staff.id), "type": "staff", "role": staff.role})
     
-    response.set_cookie(
-        key="admin_session_token",
-        value=token,
-        httponly=True,
-        secure=True,
-        samesite="lax"
-    )
+    response.set_cookie(key="admin_session_token", value=token, **_cookie_options())
+    response.headers["Cache-Control"] = "no-store"
     
     return {"message": "Login successful", "staff_id": staff.id, "role": staff.role}
+
+@router.get("/admin/me")
+async def admin_me(staff_info: dict = Depends(get_current_staff)):
+    return staff_info
+
+@router.post("/admin/logout")
+async def admin_logout(response: Response):
+    response.delete_cookie("admin_session_token", path="/", secure=os.getenv("COOKIE_SECURE", "true").lower() == "true", httponly=True, samesite="lax")
+    return {"message": "Logged out"}
+
+@router.post("/logout")
+async def customer_logout(response: Response):
+    response.delete_cookie("session_token", path="/", secure=os.getenv("COOKIE_SECURE", "true").lower() == "true", httponly=True, samesite="lax")
+    return {"message": "Logged out"}
+
+@router.get("/me")
+async def customer_me(customer_id: int = Depends(get_current_customer)):
+    return {"customer_id": customer_id}
