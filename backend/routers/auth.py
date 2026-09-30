@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, Literal
+from pydantic import BaseModel
+from typing import Literal
 import os
 import json
 import logging
