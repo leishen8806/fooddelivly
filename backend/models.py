@@ -35,7 +35,7 @@ class Category(Base):
     sort_order = Column(Integer, default=0)
     active = Column(Boolean, default=True)
     
-    products = relationship("Product", back_populates="category")
+    products = relationship("Product", back_populates="category", order_by="(Product.sort_order, Product.id)")
 
 class Product(Base):
     __tablename__ = "products"
@@ -48,6 +48,7 @@ class Product(Base):
     currency = Column(String, default="USD")
     image_key = Column(String, nullable=True)
     available = Column(Boolean, default=True)
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
     sweetness_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     
     category = relationship("Category", back_populates="products")

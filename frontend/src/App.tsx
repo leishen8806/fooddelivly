@@ -94,6 +94,7 @@ function CustomerPage() {
   const { t, i18n } = useTranslation();
   const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'orders' | 'me'>('menu');
   const [categories, setCategories] = useState<Category[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [sweetnessByProduct, setSweetnessByProduct] = useState<Record<number, number>>({});
   const [room, setRoom] = useState('');
@@ -118,6 +119,7 @@ function CustomerPage() {
   const languageSelectRef = useRef<HTMLSelectElement>(null);
   const total = useMemo(() => cart.reduce((sum, line) => sum + line.product.price_minor * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
+  const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? categories[0];
   const orderDialogOpen = orderDetails !== null;
   const languageDialogOpen = profileLoaded && Boolean(profile) && !profile?.preferred_language;
 
@@ -300,7 +302,23 @@ function CustomerPage() {
       <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>
       {loading && <p className="state">{t('common.loading')}</p>}{error && <p className="error">{error}</p>}
       {!loading && !error && categories.length === 0 && <section className="state empty-menu" role="status"><h2>{t('menu.emptyTitle')}</h2><p>{t('menu.emptyDescription')}</p></section>}
-      <section className="menu-grid">{categories.map((category) => <div className="category" key={category.id}><h2>{label(category.name, i18n.language)}</h2><div className="product-grid">{(category.products || []).map((product) => <article className="product-card" key={product.id}>{product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}<div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p>{product.sweetness_enabled && <label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? ''} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="" disabled>{t('menu.chooseSweetness')}</option><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label>}<div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button type="button" disabled={!product.available || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{product.available ? t('menu.addToCart') : t('common.soldOut')}</button></div></div></article>)}</div></div>)}</section>
+      <section className="menu-browser" aria-label={t('menu.title')}>
+        <nav className="category-rail" aria-label={t('menu.category')}>
+          {categories.map((category) => <button key={category.id} type="button" className={`category-rail-item${selectedCategory?.id === category.id ? ' active' : ''}`} aria-current={selectedCategory?.id === category.id ? 'true' : undefined} onClick={() => setSelectedCategoryId(category.id)}>
+            <span>{label(category.name, i18n.language)}</span><small>{category.products?.length ?? 0}</small>
+          </button>)}
+        </nav>
+        {selectedCategory && <section className="category-products" aria-labelledby={`category-${selectedCategory.id}`}>
+          <h2 id={`category-${selectedCategory.id}`} className="category-products-title">{label(selectedCategory.name, i18n.language)}</h2>
+          {(selectedCategory.products || []).length === 0 ? <p className="category-products-empty">{t('menu.emptyDescription')}</p> : <div className="menu-product-list">{(selectedCategory.products || []).map((product) => <article className="product-card menu-product-row" key={product.id}>
+            {product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}
+            <div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p>
+              {product.sweetness_enabled && <label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? ''} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="" disabled>{t('menu.chooseSweetness')}</option><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label>}
+              <div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button type="button" disabled={!product.available || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{product.available ? t('menu.addToCart') : t('common.soldOut')}</button></div>
+            </div>
+          </article>)}</div>}
+        </section>}
+      </section>
       {status && <p className="status" role="status">{status}</p>}
     </>}
 

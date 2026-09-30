@@ -82,7 +82,7 @@ Telegram 客户端
 | `customers` | `id`, `telegram_user_id UNIQUE`, `display_name`, `username`, `created_at` | Telegram 验证后的顾客身份 |
 | `staff` | `id`, `telegram_user_id UNIQUE`, `login_name UNIQUE`, `password_hash`, `role`, `active` | 后台浏览器账号与 Bot 群组身份绑定；`MANAGER` / `STAFF` 权限。登录标识/bootstrap 方式待确认 |
 | `categories` | `id`, `name`, `sort_order`, `active` | 菜单分类 |
-| `products` | `id`, `category_id`, `name`, `description`, `price_minor`, `currency`, `image_key`, `available`, `sweetness_enabled` | 商品当前配置；甜度选择按商品单独开启 |
+| `products` | `id`, `category_id`, `name`, `description`, `price_minor`, `currency`, `image_key`, `available`, `sort_order`, `sweetness_enabled` | 商品当前配置；在分类内按 sort_order 展示；甜度选择按商品单独开启 |
 | `orders` | `id`, `public_code UNIQUE`, `customer_id`, `room_number`, `order_status`, `payment_status`, `currency`, `total_minor`, `telegram_group_message_id`, timestamps | `public_code` 使用不可预测随机值，不暴露自增 ID；群组消息 ID 用于编辑订单卡 |
 | `order_items` | `order_id`, `product_id`, `product_name_snapshot`, `unit_price_minor`, `quantity`, `options_json`, `line_total_minor` | 订单创建时的商品快照 |
 | `payment_proofs` | `id`, `order_id`, `telegram_file_id`, `submitted_by`, `submitted_at`, `review_status` | Bot 收到的付款图片元数据；员工在 Bot 或后台查看 |

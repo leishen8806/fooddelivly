@@ -28,6 +28,7 @@ class ProductResponse(BaseModel):
     currency: str
     image_key: Optional[str]
     available: bool
+    sort_order: int = 0
     sweetness_enabled: bool
 
     class Config:
@@ -65,7 +66,7 @@ async def admin_get_products(
     staff_info: dict = Depends(get_current_staff), 
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Product).order_by(Product.id))
+    result = await db.execute(select(Product).order_by(Product.category_id, Product.sort_order, Product.id))
     products = result.scalars().all()
     return products
 
@@ -78,6 +79,7 @@ class ProductCreate(BaseModel):
     currency: str = "USD"
     image_key: Optional[str] = None
     available: bool = True
+    sort_order: int = 0
     sweetness_enabled: bool = False
 
 class ProductUpdate(BaseModel):
@@ -88,6 +90,7 @@ class ProductUpdate(BaseModel):
     currency: Optional[str] = None
     image_key: Optional[str] = None
     available: Optional[bool] = None
+    sort_order: Optional[int] = None
     sweetness_enabled: Optional[bool] = None
 
 class CategoryCreate(BaseModel):
@@ -150,6 +153,7 @@ async def admin_create_product(
         currency=product.currency,
         image_key=product.image_key,
         available=product.available,
+        sort_order=product.sort_order,
         sweetness_enabled=product.sweetness_enabled,
     )
     db.add(new_product)
