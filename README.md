@@ -37,23 +37,25 @@ Telegram Mini App for ordering, with a Telegram Bot and Admin Web Console.
   - Alembic script static review passed.
 - **Remaining issues**: DB testing pending.
 
-### Slice D: Payment Proof & Manual Verification - **INCOMPLETE (Pending implementation and DB verification)**
+### Slice D: Payment Proof & Manual Verification - **IMPLEMENTED (Pending DB and Telegram verification)**
 - **Modules modified**:
   - Backend: `models.py` (PaymentProof, PaymentReview), `routers/admin_orders.py`, `routers/bot.py`.
-- **Validation**: Webhook secret rejection and basic proof persistence are present; real Telegram webhook setup and end-to-end payment review are not verified.
-- **Remaining issues**: Payment review UI and real Telegram webhook/database verification remain pending.
+- **Validation**: Webhook handler logic and manual review UI are implemented. Static checks pass.
+- **Remaining issues**: Real Telegram webhook setup, payment-proof access, and database integration remain unverified.
 
-### Slice E: Telegram Group & Fulfillment - **INCOMPLETE (Pending implementation and DB verification)**
+### Slice E: Telegram Group & Fulfillment - **IMPLEMENTED (Pending DB and Telegram verification)**
 - **Modules modified**:
   - Backend: `models.py` (OrderEvent), `routers/bot.py` (callback query state machine).
-- **Validation**: Callback transitions now include the `确认支付` gate, configured group ID validation, callback acknowledgement, and best-effort Bot message updates. Real Telegram integration and database verification remain pending.
-- **Remaining issues**: Requires implementation and integration testing with the real Bot.
+- **Validation**: State transitions, configured group checks, callback updates and customer notifications are implemented. Static checks pass.
+- **Remaining issues**: Requires integration testing with the real Bot and PostgreSQL.
 
-### Slice F: Admin, Stats & Deploy - **INCOMPLETE**
+### Slice F: Admin, Stats & Deploy - **IMPLEMENTED (Deployment pending)**
 - **Modules modified**:
   - Backend: `models.py` (StoreSettings), `routers/admin_stats.py`, `routers/admin_settings.py`.
+  - Frontend: `App.tsx` Admin Dashboard fully populated with approval/rejection actions and stats.
   - Docker Compose: Initialized at project start.
-- **Validation**: Basic aggregation and manager settings checks exist. A first functional customer menu/room checkout and staff order list are now wired to the API. Full payment review UI, product editor, group operations, VPS deployment, and production validation remain incomplete.
+- **Validation**: Aggregation, settings authorization, customer menu and admin order review are implemented. Frontend build passes.
+- **Remaining issues**: PostgreSQL migration, production secrets, HTTPS, VPS deployment and live acceptance are pending.
 
 ## Running the Project Locally (When Docker is available)
 

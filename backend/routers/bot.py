@@ -2,7 +2,7 @@ from fastapi import APIRouter, Request, HTTPException, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from database import get_db
-from models import Order, PaymentProof, Customer, Staff, OrderEvent, StoreSettings
+from models import Order, PaymentProof, PaymentReview, Customer, Staff, OrderEvent, StoreSettings
 import os
 import httpx
 
@@ -55,11 +55,10 @@ def get_order_inline_keyboard(order_id: int, status: str, payment_status: str):
 
 @router.post("/webhook")
 async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db)):
-    bot_token = os.getenv("BOT_TOKEN")
     secret_token = request.headers.get("X-Telegram-Bot-Api-Secret-Token")
-    expected_secret = os.getenv("WEBHOOK_SECRET", "dummy_secret")
+    expected_secret = os.getenv("WEBHOOK_SECRET")
     
-    if secret_token != expected_secret:
+    if not expected_secret or secret_token != expected_secret:
         raise HTTPException(status_code=401, detail="Invalid secret token")
         
     update = await request.json()
@@ -113,8 +112,8 @@ async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db))
         data = cb.get("data")
         
         # Validate Group ID
-        if staff_group_id and chat_id != staff_group_id:
-            return {"ok": True} # Ignore callbacks from unauthorized groups
+        if not staff_group_id or chat_id != str(staff_group_id):
+            raise HTTPException(status_code=403, detail="Callback is not from the configured staff group")
         
         # Verify staff
         result = await db.execute(select(Staff).filter(Staff.telegram_user_id == tg_user_id, Staff.active == True))
@@ -140,7 +139,11 @@ async def telegram_webhook(request: Request, db: AsyncSession = Depends(get_db))
                 elif action == "confirmpay" and old_status == "ACCEPTED" and payment_status == "PROOF_SUBMITTED":
                     order.payment_status = "PAID_CONFIRMED"
                     new_status = "PREPARING"
-                    # We should also log PaymentReview here ideally
+                    proof_result = await db.execute(select(PaymentProof).filter(PaymentProof.order_id == order.id, PaymentProof.review_status == "PENDING"))
+                    proof = proof_result.scalars().first()
+                    if proof:
+                        proof.review_status = "APPROVED"
+                    db.add(PaymentReview(order_id=order.id, staff_id=staff.id, decision="APPROVED", reason="Confirmed in staff group"))
                 elif action == "ready" and (old_status == "PREPARING" or (old_status == "ACCEPTED" and payment_status == "PAID_CONFIRMED")):
                     new_status = "READY"
                 elif action == "deliver" and old_status == "READY":

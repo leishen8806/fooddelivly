@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import { Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from './api';
 import { TelegramProvider } from './components/TelegramProvider';
@@ -30,14 +30,13 @@ function AdminPage() {
   const { t } = useTranslation(); 
   const { isAdminAuthenticated, logoutAdmin } = useAuthStore(); 
   const [orders, setOrders] = useState<any[]>([]); 
-  const [error, setError] = useState(''); 
-  const [settings, setSettings] = useState<any>(null);
+  const [error, setError] = useState('');
+  const [reviewError, setReviewError] = useState('');
   const [stats, setStats] = useState<any>(null);
 
   const fetchDashboard = () => {
     if (!isAdminAuthenticated) return; 
     api.get('/api/v1/admin/orders').then((r) => setOrders(r.data)).catch(() => setError(t('error.network'))); 
-    api.get('/api/v1/admin/settings').then((r) => setSettings(r.data)).catch(console.error);
     api.get('/api/v1/admin/analytics').then((r) => setStats(r.data)).catch(console.error);
   };
 
@@ -47,10 +46,11 @@ function AdminPage() {
 
   const reviewPayment = async (orderId: number, decision: 'APPROVED'|'REJECTED') => {
     try {
+      setReviewError('');
       await api.post(`/api/v1/admin/orders/${orderId}/payment-review`, { decision, reason: decision === 'REJECTED' ? 'Manual rejection' : undefined });
       fetchDashboard();
     } catch (e) {
-      alert('Failed to review payment');
+      setReviewError(t('error.generic'));
     }
   };
 
@@ -76,6 +76,7 @@ function AdminPage() {
           <div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('nav.orders')}</h2></div>
         </div>
         {error && <p className="error">{error}</p>}
+        {reviewError && <p className="error" role="alert">{reviewError}</p>}
         {orders.length === 0 ? <p className="state">{t('common.loading')}</p> : 
           <div className="order-list">
             {orders.map((order) => (
