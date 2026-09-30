@@ -19,4 +19,11 @@ i18n
     }
   });
 
+const syncDocumentLanguage = (language: string) => {
+  document.documentElement.lang = language;
+};
+
+syncDocumentLanguage(i18n.resolvedLanguage || i18n.language || 'en');
+i18n.on('languageChanged', syncDocumentLanguage);
+
 export default i18n;
