@@ -1694,6 +1694,18 @@ small {
   font-weight: var(--weight-bold);
 }
 
+.category-rail-item > span {
+  display: -webkit-box;
+  width: 4em;
+  max-width: 100%;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
 .category-rail-item small {
   color: var(--color-muted);
   font-variant-numeric: tabular-nums;
@@ -1758,9 +1770,17 @@ small {
 }
 
 .menu-product-row .product-foot button {
-  min-width: 0;
-  min-height: 2.5rem;
-  padding: var(--space-2) var(--space-3);
+  display: grid;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  flex: none;
+  place-items: center;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  font-size: 1.25rem;
+  line-height: 1;
   white-space: normal;
 }
 
