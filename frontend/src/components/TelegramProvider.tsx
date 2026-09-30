@@ -9,16 +9,16 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const { i18n, t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<'telegram' | 'session' | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (window.location.pathname.startsWith('/admin')) {
       setLoading(false);
       return;
     }
-    WebApp.ready();
-
     const authenticate = async () => {
       try {
+        WebApp.ready();
         const initData = WebApp.initData;
         
         if (!initData) {
@@ -43,14 +43,14 @@ export const TelegramProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
 
     authenticate();
-  }, [setCustomerAuth, i18n]);
-
-  if (error) {
-    return <div style={{ padding: 20, textAlign: 'center', color: 'red' }}>{error === 'telegram' ? t('auth.openFromTelegram') : t('auth.sessionExpired')}</div>;
-  }
+  }, [setCustomerAuth, i18n, retryCount]);
 
   if (loading) {
-    return <div style={{ padding: 20, textAlign: 'center' }}>{t('common.loading')}</div>;
+    return <main className="auth-shell"><section className="auth-card" role="status"><img className="login-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><p>{t('common.loading')}</p></section></main>;
+  }
+
+  if (error) {
+    return <main className="auth-shell"><section className="auth-card" role="alert"><img className="login-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><span className="eyebrow">TEA CAFE</span><h1>{t('brand')}</h1><p>{error === 'telegram' ? t('auth.openFromTelegram') : t('auth.sessionExpired')}</p><button className="primary" type="button" onClick={() => { setLoading(true); setError(null); setRetryCount((count) => count + 1); }}>{t('common.retry')}</button></section></main>;
   }
 
   return <>{children}</>;
