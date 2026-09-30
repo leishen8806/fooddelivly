@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from aiogram.types import KeyboardButton, ReplyKeyboardMarkup, WebAppInfo
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from database import get_db
 from models import Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff, StoreSettings
@@ -69,9 +69,9 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
         miniapp_url = os.getenv("MINI_APP_URL", "https://food.workline.ink/")
         if not miniapp_url.startswith("https://"):
             miniapp_url = "https://food.workline.ink/"
-        keyboard = ReplyKeyboardMarkup(keyboard=[[KeyboardButton(
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(
             text=tr("nav.menu", language), web_app=WebAppInfo(url=miniapp_url)
-        )]], resize_keyboard=True)
+        )]])
         await send_bot_message(tg_user_id, tr("bot.hello", language), keyboard)
         return
 
