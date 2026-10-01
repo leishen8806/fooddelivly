@@ -14,6 +14,9 @@ class Customer(Base):
     preferred_language = Column(String, nullable=True)
     # The Telegram deep link selects the exact order whose proof is being sent.
     pending_payment_order_id = Column(Integer, nullable=True)
+    # 同理：用户在 /wallet 里发起充值后，接下来发的那张截图属于哪张充值单。
+    # （不建外键，与上面的 pending_payment_order_id 保持一致；wallet schema 可独立迁移）
+    pending_recharge_order_id = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class Staff(Base):
@@ -62,6 +65,8 @@ class Order(Base):
     room_number = Column(String, nullable=False)
     order_status = Column(String, default="NEW")
     payment_status = Column(String, default="UNPAID")
+    # 'MANUAL'（人工转账 + 截图审核）或 'WALLET'（下单时用钱包余额抵扣）
+    payment_method = Column(String, nullable=False, default="MANUAL", server_default="MANUAL")
     currency = Column(String, default="USD")
     customer_language = Column(String, nullable=False, default="en")
     total_minor = Column(Integer, nullable=False)

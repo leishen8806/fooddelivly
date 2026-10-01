@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { ClipboardList, ShoppingCart, Store, UserRound } from 'lucide-react';
+import { ClipboardList, ShoppingCart, Store, UserRound, Wallet } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from './api';
 import { TelegramProvider } from './components/TelegramProvider';
+import CustomerWallet from './components/CustomerWallet';
+import AdminRecharges from './components/AdminRecharges';
 import { useAuthStore } from './store/authStore';
 import './index.css';
 
@@ -92,7 +94,7 @@ function LanguageSwitch() {
 
 function CustomerPage() {
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'orders' | 'me'>('menu');
+  const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'orders' | 'wallet' | 'me'>('menu');
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -110,6 +112,9 @@ function CustomerPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  // 钱包余额（最小单位）。只有 > 0 时才在结算页提供「用余额支付」。
+  const [walletTotal, setWalletTotal] = useState(0);
+  const [payWithWallet, setPayWithWallet] = useState(false);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileError, setProfileError] = useState('');
@@ -124,7 +129,20 @@ function CustomerPage() {
   const languageDialogOpen = profileLoaded && Boolean(profile) && !profile?.preferred_language;
 
   const loadMenu = useCallback(() => api.get('/api/v1/menu').then((response) => setCategories(response.data)).catch(() => setError(t('error.network'))).finally(() => setLoading(false)), [t]);
+  const loadWalletTotal = useCallback(async () => {
+    try {
+      const response = await api.get('/api/v1/wallet');
+      setWalletTotal(response.data.total_minor);
+      if (response.data.total_minor <= 0) setPayWithWallet(false);
+    } catch {
+      // 钱包接口失败不影响点单主流程，降级为「不用余额」
+      setWalletTotal(0);
+      setPayWithWallet(false);
+    }
+  }, []);
+
   useEffect(() => { void loadMenu(); }, [loadMenu]);
+  useEffect(() => { void loadWalletTotal(); }, [loadWalletTotal]);
 
   const loadCustomerOrders = useCallback(async () => {
     setOrdersLoading(true);
@@ -204,9 +222,10 @@ function CustomerPage() {
     return () => document.removeEventListener('keydown', keepDialogModal);
   }, [languageDialogOpen]);
 
-  const selectTab = (tab: 'menu' | 'cart' | 'orders' | 'me') => {
+  const selectTab = (tab: 'menu' | 'cart' | 'orders' | 'wallet' | 'me') => {
     setActiveTab(tab);
     if (tab === 'orders' || tab === 'me') void loadCustomerOrders();
+    if (tab === 'wallet') void loadWalletTotal();
     if (tab === 'me') {
       setProfileLoading(true);
       setProfileError('');
@@ -259,6 +278,8 @@ function CustomerPage() {
       setStatus(t('checkout.submitting'));
       const response = await api.post('/api/v1/orders', {
         room_number: room.trim(), items: cart.map((line) => ({ product_id: line.product.id, quantity: line.quantity, ...(line.sweetness === null ? {} : { options: { sweetness: line.sweetness } }) })),
+        // 用钱包余额支付：后端在与建单同一个事务里扣款，余额不足则整单回滚
+        ...(payWithWallet ? { pay_with_wallet: true } : {}),
       }, { headers: { 'Idempotency-Key': idempotencyKey.current } });
       setCart([]);
       idempotencyKey.current = null;
@@ -267,8 +288,16 @@ function CustomerPage() {
       await loadCustomerOrders();
       await openCustomerOrder(response.data.public_code);
     } catch (requestError: any) {
-      if (requestError?.response?.status === 409) idempotencyKey.current = null;
-      setStatus(requestError?.response?.status === 409 ? t('cart.priceChanged') : t('checkout.failed'));
+      const status = requestError?.response?.status;
+      const detail: string = requestError?.response?.data?.detail || '';
+      if (status === 409) idempotencyKey.current = null;
+      if (detail.includes('余额')) {
+        setStatus(t('wallet.balanceInsufficient'));
+      } else {
+        setStatus(status === 409 ? t('cart.priceChanged') : t('checkout.failed'));
+      }
+    } finally {
+      void loadWalletTotal();
     }
   };
 
@@ -296,7 +325,7 @@ function CustomerPage() {
   const paymentLabel = (paymentStatus: string) => paymentStatus === 'PAID_CONFIRMED' ? t('payment.confirmed') : paymentStatus === 'PROOF_SUBMITTED' ? t('payment.pending') : paymentStatus === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid');
 
   return <main className="customer-shell">
-    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
+    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : activeTab === 'wallet' ? 'wallet.title' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
 
     {activeTab === 'menu' && <>
       <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>
@@ -328,6 +357,7 @@ function CustomerPage() {
         <div className="cart-lines">{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}<small>{amount(line.product.price_minor * line.quantity, line.product.currency, i18n.language)}</small></span><div className="quantity-control"><button type="button" aria-label={t('common.delete')} onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)}>−</button><strong>{line.quantity}</strong><button type="button" aria-label={t('common.add')} onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></div></div>)}</div>
         <button className="continue-shopping" type="button" onClick={() => selectTab('menu')}>{t('menu.addMore')}</button>
         <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); if (profile) localStorage.setItem(`teacafe.roomNumber.${profile.customer_id}`, event.target.value); }} autoComplete="off" maxLength={32} required />
+        {walletTotal > 0 && <label className="wallet-pay-toggle"><input type="checkbox" checked={payWithWallet} onChange={(event) => setPayWithWallet(event.target.checked)} /><span><strong>{t('wallet.payWithWallet')}</strong><small>{t('wallet.total')}: {amount(walletTotal, cart[0].product.currency, i18n.language)}</small></span></label>}
         <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button>
         {status && <p className="status" role="status">{status}</p>}
       </form>}
@@ -344,6 +374,8 @@ function CustomerPage() {
         <div className="customer-order-total"><span>{paymentLabel(customerOrder.payment_status)}</span><strong>{amount(customerOrder.total_minor, customerOrder.currency, i18n.language)}</strong></div>
       </button>)}</div>
     </section>}
+
+    {activeTab === 'wallet' && <CustomerWallet onBalanceChange={() => void loadWalletTotal()} />}
 
     {activeTab === 'me' && <section className="customer-page-section customer-profile">
       <div className="customer-page-heading"><span className="eyebrow">{t('profile.telegramConnected')}</span><h2>{t('profile.title')}</h2></div>
@@ -363,6 +395,7 @@ function CustomerPage() {
       <button type="button" className={activeTab === 'menu' ? 'active' : ''} aria-current={activeTab === 'menu' ? 'page' : undefined} onClick={() => selectTab('menu')}><Store size={20} aria-hidden="true" /><span>{t('nav.menu')}</span></button>
       <button type="button" className={activeTab === 'cart' ? 'active' : ''} aria-current={activeTab === 'cart' ? 'page' : undefined} onClick={() => selectTab('cart')}><span className="nav-icon-wrap"><ShoppingCart size={20} aria-hidden="true" />{itemCount > 0 && <span className="cart-badge">{itemCount > 99 ? '99+' : itemCount}</span>}</span><span>{t('nav.cart')}</span></button>
       <button type="button" className={activeTab === 'orders' ? 'active' : ''} aria-current={activeTab === 'orders' ? 'page' : undefined} onClick={() => selectTab('orders')}><ClipboardList size={20} aria-hidden="true" /><span>{t('nav.orders')}</span></button>
+      <button type="button" className={activeTab === 'wallet' ? 'active' : ''} aria-current={activeTab === 'wallet' ? 'page' : undefined} onClick={() => selectTab('wallet')}><Wallet size={20} aria-hidden="true" /><span>{t('nav.wallet')}</span></button>
       <button type="button" className={activeTab === 'me' ? 'active' : ''} aria-current={activeTab === 'me' ? 'page' : undefined} onClick={() => selectTab('me')}><UserRound size={20} aria-hidden="true" /><span>{t('nav.me')}</span></button>
     </nav>
 
@@ -417,7 +450,7 @@ function AdminPage() {
   const [stats, setStats] = useState<any>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [section, setSection] = useState<'overview' | 'orders' | 'products' | 'finance' | 'settings' | 'staff' | 'customers' | 'audit'>('overview');
+  const [section, setSection] = useState<'overview' | 'orders' | 'recharges' | 'products' | 'finance' | 'settings' | 'staff' | 'customers' | 'audit'>('overview');
   const [orderFilter, setOrderFilter] = useState('ALL');
   const [error, setError] = useState('');
   const [from, setFrom] = useState(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
@@ -585,6 +618,7 @@ function AdminPage() {
     <aside className="admin-sidebar"><div className="admin-sidebar-brand"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><strong>Tea Cafe</strong><small>STORE CONSOLE</small></div></div>
       <nav className="admin-nav" aria-label={t('admin.navigation')}>
         <button className={section === 'overview' ? 'active' : ''} onClick={() => setSection('overview')}><span aria-hidden="true">▦</span>{t('nav.overview')}</button>
+        <button className={section === 'recharges' ? 'active' : ''} onClick={() => setSection('recharges')}><span aria-hidden="true">💰</span>{t('admin.recharges')}</button>
         <button className={section === 'orders' ? 'active' : ''} onClick={() => setSection('orders')}><span aria-hidden="true">▤</span>{t('nav.orders')}</button>
         {role === 'MANAGER' && <button className={section === 'customers' ? 'active' : ''} onClick={() => setSection('customers')}><span aria-hidden="true">♧</span>{t('nav.customers')}</button>}
         {role === 'MANAGER' && <button className={section === 'products' ? 'active' : ''} onClick={() => setSection('products')}><span aria-hidden="true">▧</span>{t('nav.products')}</button>}
@@ -594,7 +628,7 @@ function AdminPage() {
         {role === 'MANAGER' && <button className={section === 'settings' ? 'active' : ''} onClick={() => setSection('settings')}><span aria-hidden="true">⌘</span>{t('nav.settings')}</button>}
       </nav><div className="sidebar-footer"><span>{role === 'MANAGER' ? t('admin.manager') : t('admin.waiter')}</span><span>TEA CAFE</span></div>
     </aside>
-    <div className="admin-main"><header className="admin-header"><div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t(section === 'audit' ? 'nav.auditLogs' : section === 'staff' ? 'admin.staffAccess' : `nav.${section}`)}</h1></div><div className="header-actions"><LanguageSwitch /><button onClick={() => void signOut()}>{t('auth.logout')}</button></div></header>
+    <div className="admin-main"><header className="admin-header"><div><span className="eyebrow">FOOD.WORKLINE.INK/ADMIN</span><h1>{t(section === 'audit' ? 'nav.auditLogs' : section === 'staff' ? 'admin.staffAccess' : section === 'recharges' ? 'admin.recharges' : `nav.${section}`)}</h1></div><div className="header-actions"><LanguageSwitch /><button onClick={() => void signOut()}>{t('auth.logout')}</button></div></header>
     <div className="admin-content">{error && <p className="error" role="alert">{error}</p>}
     {section === 'overview' && <section className="overview-grid"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><button className="metric metric-action warning" onClick={() => { setOrderFilter('ALL'); setSection('orders'); }}><span>{t('admin.needsReview')}</span><strong>{orders.filter((order) => order.payment_status === 'PROOF_SUBMITTED').length}</strong></button><div className="metric"><span>{t('admin.confirmedPaid')}</span><strong>{orders.filter((order) => order.payment_status === 'PAID_CONFIRMED').length}</strong></div><div className="metric"><span>{t('admin.cancelledCount')}</span><strong>{stats?.cancelled_count ?? '—'}</strong></div><section className="panel overview-recent"><div className="panel-heading"><div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('admin.recentOrders')}</h2></div><button onClick={() => setSection('orders')}>{t('admin.viewOrders')}</button></div>{orders.slice(0, 6).map((order) => <div className="overview-order" key={order.id}><strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span>{t(`order.status.${order.order_status.toLowerCase()}`)}</span><b>{amount(order.total_minor, order.currency, i18n.language)}</b></div>)}</section></section>}
     {section === 'orders' && <>
@@ -607,6 +641,7 @@ function AdminPage() {
         </article>)}</div>}
       </section>
     </>}
+    {section === 'recharges' && <AdminRecharges role={role} />}
     {section === 'customers' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><div><span className="eyebrow">{t('admin.customerList')}</span><h2>{t('nav.customers')}</h2></div><label>{t('common.search')}<input type="search" value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('admin.searchCustomers')} /></label></div>
       {customers.length === 0 ? <p className="state">{t('admin.noCustomers')}</p> : <div className="customer-table-wrap"><table className="customer-table"><thead><tr><th>{t('admin.telegramName')}</th><th>{t('admin.telegramId')}</th><th>{t('admin.telegramChat')}</th><th>{t('admin.orderCount')}</th><th>{t('admin.completedOrderCount')}</th></tr></thead><tbody>{customers.filter((customer) => `${customer.display_name || ''} ${customer.username || ''} ${customer.telegram_user_id}`.toLowerCase().includes(customerSearch.trim().toLowerCase())).map((customer) => <tr key={customer.id}><td>{customer.display_name || customer.username || '—'}{customer.username && <small>@{customer.username}</small>}</td><td>{customer.telegram_user_id}</td><td><a href={customer.telegram_chat_url}>{t('admin.telegramChat')}</a></td><td>{customer.order_count}</td><td>{customer.completed_order_count}</td></tr>)}</tbody></table></div>}
     </section>}

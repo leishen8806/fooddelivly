@@ -28,6 +28,9 @@ class OrderItemCreate(BaseModel):
 class OrderCreate(BaseModel):
     room_number: str = Field(min_length=1, max_length=32)
     items: List[OrderItemCreate] = Field(min_length=1, max_length=50)
+    #: 用钱包余额直接支付：下单即扣款、即 PAID_CONFIRMED，不需要上传转账截图。
+    #: 余额不足返回 409，订单不会创建（扣款与建单在同一个事务里）。
+    pay_with_wallet: bool = False
 
     @field_validator("room_number")
     @classmethod
@@ -48,6 +51,18 @@ def payment_handoff(public_code: str, settings: StoreSettings | None) -> dict:
     bot_username = (os.getenv("BOT_USERNAME") or "").lstrip("@")
     bot_deeplink = f"https://t.me/{bot_username}?start=pay_{public_code}" if bot_username else None
     return {"payment_link": payment_link, "payment_qr_url": qr_url, "bot_deeplink": bot_deeplink}
+
+
+def order_handoff(order: Order, settings: StoreSettings | None) -> dict:
+    """钱包支付的单已经付清了，就不要再给客户转账信息（否则会被重复付款）。"""
+    if order.payment_method == "WALLET" and order.payment_status == "PAID_CONFIRMED":
+        return {"payment_link": None, "payment_qr_url": None, "bot_deeplink": None}
+    return payment_handoff(order.public_code, settings)
+
+
+async def _handoff_for(db, order: Order) -> dict:
+    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
+    return order_handoff(order, settings)
 
 @router.post("/orders")
 async def create_order(
@@ -81,7 +96,8 @@ async def create_order(
                 "currency": existing_order.currency,
                 "status": existing_order.order_status,
                 "payment_status": existing_order.payment_status,
-                **payment_handoff(existing_order.public_code, (await db.execute(select(StoreSettings).limit(1))).scalars().first()),
+                "payment_method": existing_order.payment_method,
+                **await _handoff_for(db, existing_order),
                 "message": "Order already exists"
             }
 
@@ -129,6 +145,7 @@ async def create_order(
             room_number=order_req.room_number,
             order_status="NEW",
             payment_status="UNPAID",
+            payment_method="WALLET" if order_req.pay_with_wallet else "MANUAL",
             currency=currency,
             customer_language=customer.preferred_language or ("zh-CN" if (customer.language_code or "").lower().startswith("zh") else "km" if (customer.language_code or "").lower().startswith("km") else "en"),
             total_minor=total_minor,
@@ -137,11 +154,31 @@ async def create_order(
         )
         db.add(new_order)
         await db.flush() # get new_order.id
-        
+
         for oi in order_items:
             oi.order_id = new_order.id
             db.add(oi)
-            
+
+        if order_req.pay_with_wallet:
+            # 余额抵扣：与建单在**同一个事务**里，钱和订单要么都成功、要么都回滚。
+            # 扣款幂等锚点是订单号，所以即使调用被重试也不会重复扣。
+            from wallet_service import WalletError, spend_balance
+
+            try:
+                await spend_balance(
+                    db,
+                    customer_id=customer_id,
+                    amount_minor=total_minor,
+                    biz_id=new_order.public_code,
+                    idem=f"pay:{new_order.public_code}",
+                    currency=currency,
+                    remark=f"下单余额支付 {new_order.public_code}",
+                )
+            except WalletError as exc:
+                await db.rollback()
+                raise HTTPException(status_code=exc.http_status, detail=exc.message)
+            new_order.payment_status = "PAID_CONFIRMED"
+
         await db.commit()
         await db.refresh(new_order)
         settings_result = await db.execute(select(StoreSettings).limit(1))
@@ -175,7 +212,8 @@ async def create_order(
                     "currency": existing_order.currency,
                     "status": existing_order.order_status,
                     "payment_status": existing_order.payment_status,
-                    **payment_handoff(existing_order.public_code, (await db.execute(select(StoreSettings).limit(1))).scalars().first()),
+                    "payment_method": existing_order.payment_method,
+                    **await _handoff_for(db, existing_order),
                     "message": "Order already exists"
                 }
         raise
@@ -188,7 +226,8 @@ async def create_order(
         "currency": new_order.currency,
         "status": new_order.order_status,
         "payment_status": new_order.payment_status,
-        **payment_handoff(new_order.public_code, settings),
+        "payment_method": new_order.payment_method,
+        **order_handoff(new_order, settings),
     }
 
 @router.get("/orders")
@@ -203,7 +242,8 @@ async def get_orders(
     )
     orders = result.scalars().all()
     return [{"public_code": o.public_code, "room_number": o.room_number, "order_status": o.order_status,
-             "payment_status": o.payment_status, "currency": o.currency, "total_minor": o.total_minor,
+             "payment_status": o.payment_status, "payment_method": o.payment_method,
+             "currency": o.currency, "total_minor": o.total_minor,
              "created_at": o.created_at} for o in orders]
 
 @router.get("/orders/{public_code}")
@@ -218,8 +258,9 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
     return {
         "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
+        "payment_method": order.payment_method,
         "currency": order.currency, "total_minor": order.total_minor, "created_at": order.created_at,
-        **payment_handoff(order.public_code, (await db.execute(select(StoreSettings).limit(1))).scalars().first()),
+        **await _handoff_for(db, order),
         "items": [{"name": x.product_name_snapshot, "quantity": x.quantity, "unit_price_minor": x.unit_price_minor,
                    "line_total_minor": x.line_total_minor, "options": x.options_json or {}} for x in items_result.scalars().all()],
         "proof_status": proof.review_status if proof else None,

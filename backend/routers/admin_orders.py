@@ -21,6 +21,7 @@ async def list_orders(
     return [{
         "id": order.id, "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
+        "payment_method": order.payment_method,
         "currency": order.currency, "total_minor": order.total_minor, "created_at": order.created_at,
         "items": [{"name": item.product_name_snapshot, "quantity": item.quantity,
                    "options": item.options_json or {},
@@ -78,12 +79,17 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
     order = result.scalars().first()
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    staff_id = staff_info["staff_id"]
+    wallet_paid = order.payment_method == "WALLET" and order.payment_status == "PAID_CONFIRMED"
     transitions = {
         "ACCEPTED": order.order_status == "NEW",
         "READY": order.order_status == "PREPARING" and order.payment_status == "PAID_CONFIRMED",
         "DELIVERED": order.order_status == "READY",
         "COMPLETED": order.order_status == "DELIVERED",
-        "CANCELLED": order.order_status not in {"CANCELLED", "COMPLETED"} and order.payment_status != "PAID_CONFIRMED",
+        # 钱包支付的订单可以取消并自动退回余额；人工转账的已确认付款订单不行
+        # （那种要线下退款，不能误操作一键把钱退进钱包）。
+        "CANCELLED": order.order_status not in {"CANCELLED", "COMPLETED"} and (
+            order.payment_status != "PAID_CONFIRMED" or wallet_paid),
     }
     if not transitions.get(req.status, False):
         raise HTTPException(status_code=409, detail="Order status transition is not allowed")
@@ -92,8 +98,28 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
     old_state = f"{order.order_status}/{order.payment_status}"
     order.order_status = req.status
     reason = req.reason.strip()[:500] if req.reason else None
+
+    if req.status == "ACCEPTED" and order.payment_status == "PAID_CONFIRMED":
+        # 下单即已付清（钱包余额抵扣）：接单后直接进入制作。
+        # 这与「员工确认收款后 PAID_CONFIRMED + PREPARING」的既有行为保持一致。
+        order.order_status = "PREPARING"
+
+    if req.status == "CANCELLED" and wallet_paid:
+        # 退款与状态变更在同一个事务里：要么都成功，要么都回滚
+        from wallet_service import WalletError, refund_payment
+
+        try:
+            await refund_payment(
+                db, biz_id=order.public_code, amount_minor=order.total_minor,
+                idem=f"refund:{order.public_code}", operator_staff_id=staff_id,
+                reason=reason or "Order cancelled",
+            )
+        except WalletError as exc:
+            await db.rollback()
+            raise HTTPException(status_code=exc.http_status, detail=exc.message)
+        order.payment_status = "REFUNDED"
+
     event_name = f"ORDER_{req.status}" + (f": {reason}" if reason else "")
-    staff_id = staff_info["staff_id"]
     db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff_id, event=event_name,
                       from_state=old_state, to_state=f"{order.order_status}/{order.payment_status}"))
     db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id), action="status_changed",

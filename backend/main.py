@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy import text
 from pathlib import Path
-from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads
+from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet
 from dotenv import load_dotenv
 import os
 
@@ -51,6 +51,8 @@ app.include_router(admin_stats.router)
 app.include_router(admin_settings.router)
 app.include_router(admin_staff.router)
 app.include_router(uploads.router)
+app.include_router(wallet.router)
+app.include_router(wallet.admin_router)
 
 @app.get("/health")
 async def health_check():

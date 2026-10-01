@@ -52,7 +52,7 @@ def order_keyboard(order_id: int, order_status: str, payment_status: str, langua
 def order_text(order, payment_status: str | None = None, language: str = "en", items=None) -> str:
     payment = payment_status or order.payment_status
     status_label = tr(f"order.status.{order.order_status.lower()}", language)
-    payment_key = "order.status.paid" if payment == "PAID_CONFIRMED" else "order.status.paymentReview" if payment == "PROOF_SUBMITTED" else "payment.rejected" if payment == "REJECTED" else "order.status.unpaid"
+    payment_key = "order.status.refunded" if payment == "REFUNDED" else "order.status.paid" if payment == "PAID_CONFIRMED" else "order.status.paymentReview" if payment == "PROOF_SUBMITTED" else "payment.rejected" if payment == "REJECTED" else "order.status.unpaid"
     lines = [
         f"TEA CAFE · {tr('payment.order', language)} {order.public_code}",
         f"{tr('bot.room', language)}: {order.room_number}",
@@ -72,6 +72,8 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
         f"{tr('nav.orders', language)}: {status_label}",
         f"{tr('payment.title', language)}: {tr(payment_key, language)}",
     ])
+    if getattr(order, "payment_method", "MANUAL") == "WALLET":
+        lines.append(f"{tr('payment.method', language)}: {tr('payment.method.wallet', language)}")
     return "\n".join(lines)
 
 
@@ -150,3 +152,118 @@ async def notify_payment_review(customer, order, decision: str, reason: str | No
     else:
         result = f"{tr('payment.rejected', order.customer_language)}: {reason or ''}\n{tr('payment.resubmit', order.customer_language)}"
     await send_bot_message(customer.telegram_user_id, f"{order.public_code} · {result}")
+
+
+# ===========================================================================
+# 钱包 / 充值
+# ===========================================================================
+
+def _recharge_language(customer) -> str:
+    return getattr(customer, "preferred_language", None) or "en"
+
+
+def wallet_text(summary, language: str = "en") -> str:
+    """钱包卡片：本金 / 赠送 / 赠送到期时间。"""
+    lines = [
+        f"💰 {tr('wallet.title', language)}",
+        f"{tr('wallet.principal', language)}: {_currency_amount(summary['principal_minor'], summary['currency'])}",
+        f"{tr('wallet.bonus', language)}: {_currency_amount(summary['bonus_minor'], summary['currency'])}",
+        f"{tr('wallet.total', language)}: {_currency_amount(summary['total_minor'], summary['currency'])}",
+    ]
+    if summary["bonus_minor"] and summary.get("bonus_expire_at"):
+        lines.append(tr("wallet.bonusExpire", language, date=summary["bonus_expire_at"].strftime("%Y-%m-%d %H:%M")))
+    if summary["bonus_minor"]:
+        lines.append(tr("wallet.bonusFirst", language))
+    return "\n".join(lines)
+
+
+def wallet_keyboard(presets_minor, language: str = "en") -> InlineKeyboardMarkup:
+    """充值档位按钮。金额只是「档位下标」，实际金额永远回库校验。"""
+    rows = [[InlineKeyboardButton(
+        text=_currency_amount(minor, "USD"), callback_data=f"wamount_{minor}"
+    )] for minor in presets_minor]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def recharge_instruction_text(recharge, language: str = "en") -> str:
+    """转账指引：**备注必须填订单号**，否则人工对不上账。"""
+    lines = [
+        tr("wallet.orderCreated", language,
+           order=recharge["order_no"],
+           amount=_currency_amount(recharge["amount"], recharge["currency"])),
+    ]
+    if recharge["bonus_amount"]:
+        lines.append(tr("wallet.bonusPreview", language,
+                        bonus=_currency_amount(recharge["bonus_amount"], recharge["currency"])))
+    lines.append(tr("wallet.remarkHint", language, order=recharge["order_no"]))
+    lines.append(tr("wallet.sendProofPrompt", language, order=recharge["order_no"]))
+    return "\n".join(lines)
+
+
+def recharge_proof_keyboard(order_id: int, language: str = "en") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=tr("wallet.uploadProof", language), callback_data=f"wproof_{order_id}"),
+    ], [
+        InlineKeyboardButton(text=tr("wallet.cancelOrder", language), callback_data=f"wcancel_{order_id}"),
+    ]])
+
+
+def recharge_review_text(recharge, customer, language: str = "en") -> str:
+    state = "wallet.groupProof" if recharge["proof_count"] else "wallet.groupWaiting"
+    lines = [
+        f"💰 {tr('wallet.groupTitle', language, order=recharge['order_no'])}",
+        f"{tr('wallet.groupCustomer', language)}: {getattr(customer, 'display_name', None) or customer.telegram_user_id}",
+        f"{tr('wallet.groupAmount', language)}: {_currency_amount(recharge['amount'], recharge['currency'])}",
+    ]
+    if recharge["bonus_amount"]:
+        lines.append(f"{tr('wallet.groupBonus', language)}: "
+                     f"{_currency_amount(recharge['bonus_amount'], recharge['currency'])}")
+    lines.append(tr(state, language))
+    return "\n".join(lines)
+
+
+def recharge_group_keyboard(order_id: int, language: str = "en") -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=tr("wallet.approve", language), callback_data=f"walletok_{order_id}"),
+        InlineKeyboardButton(text=tr("wallet.reject", language), callback_data=f"walletno_{order_id}"),
+    ]])
+
+
+async def notify_new_recharge(group_id: str | None, recharge, customer, language: str = "en",
+                               file_id: str | None = None) -> str | None:
+    """把充值单推到员工群（带截图 + 审核按钮）。推送失败不影响用户流程。"""
+    if not group_id:
+        return None
+    bot = _bot()
+    if not bot:
+        return None
+    text = recharge_review_text(recharge, customer, language)
+    keyboard = recharge_group_keyboard(recharge["id"], language)
+    try:
+        if file_id:
+            message = await bot.send_photo(chat_id=group_id, photo=file_id, caption=text,
+                                           reply_markup=keyboard, protect_content=True)
+        else:
+            message = await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
+        return str(message.message_id)
+    except Exception:  # noqa: BLE001 - 通知失败不影响用户
+        return None
+    finally:
+        await bot.session.close()
+
+
+async def notify_recharge_review(customer, recharge, decision: str) -> None:
+    """审核结果通知客户。"""
+    language = _recharge_language(customer)
+    if decision == "APPROVED":
+        amount = recharge["received_amount"] or recharge["amount"]
+        text = tr("wallet.credited", language, order=recharge["order_no"],
+                  amount=_currency_amount(amount, recharge["currency"]))
+        if recharge["bonus_amount"]:
+            text += "\n" + tr("wallet.creditedWithBonus", language,
+                              bonus=_currency_amount(recharge["bonus_amount"], recharge["currency"]))
+    else:
+        text = tr("wallet.rejected", language, order=recharge["order_no"],
+                  reason=recharge["reject_reason"] or "")
+    await send_bot_message(customer.telegram_user_id, text)
+

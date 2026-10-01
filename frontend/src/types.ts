@@ -37,3 +37,56 @@ export interface Order {
   total_minor: number;
   currency: string;
 }
+
+/** 钱包余额概览（GET /api/v1/wallet） */
+export interface WalletSummary {
+  currency: string;
+  principal_minor: number;
+  bonus_minor: number;
+  total_minor: number;
+  bonus_expire_at: string | null;
+  presets_minor: number[];
+  min_recharge_minor: number;
+  max_recharge_minor: number;
+  max_open_orders: number;
+}
+
+/** 充值单。所有金额都是最小货币单位（USD cents）。 */
+export interface RechargeOrder {
+  id: number;
+  order_no: string;
+  currency: string;
+  amount_minor: number;
+  bonus_amount_minor: number;
+  status: 'awaiting_proof' | 'under_review' | 'credited' | 'rejected' | 'expired' | 'cancelled';
+  received_amount_minor: number | null;
+  pending_received_amount_minor?: number | null;
+  proof_count: number;
+  pay_reference: string | null;
+  expires_at: string;
+  submitted_at: string | null;
+  reviewed_at: string | null;
+  reject_reason: string | null;
+  created_at: string;
+  payment_link?: string | null;
+  payment_qr_url?: string | null;
+  bot_deeplink?: string | null;
+  customer_id?: number;
+  telegram_user_id?: string;
+  display_name?: string | null;
+}
+
+/** 账本流水（只读） */
+export interface LedgerEntry {
+  id: number;
+  currency?: string;
+  bucket: 'principal' | 'bonus';
+  direction: 1 | -1;
+  amount_minor: number;
+  balance_after_minor: number;
+  entry_type: string;
+  biz_type: string | null;
+  biz_id: string | null;
+  remark: string | null;
+  created_at: string;
+}
