@@ -13,7 +13,7 @@ import './index.css';
 type Product = { id: number; category_id: number; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean; sweetness_enabled: boolean };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
 type CartLine = { product: Product; quantity: number; sweetness: number | null };
-type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: { sweetness?: number } }> };
+type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: { sweetness?: number } }> };
 type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; created_at: string };
 type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null };
 type LanguageCode = 'zh-CN' | 'en' | 'km';
@@ -583,6 +583,18 @@ function AdminPage() {
     try { await api.patch('/api/v1/admin/settings/', storeSettings); await fetchData(); }
     catch { setError(t('error.generic')); }
   };
+  const refundOrder = async (order: Order) => {
+    // 出餐后的钱包订单不能用「取消」退款，必须走这条仅 MANAGER 的退款路径
+    const reason = window.prompt(t('admin.refundReasonPrompt'));
+    if (!reason || !reason.trim()) return;
+    try {
+      await api.post(`/api/v1/admin/orders/${order.id}/refund`, { reason: reason.trim() });
+      await fetchData();
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.detail || t('error.generic'));
+    }
+  };
+
   const addStaff = async (event: FormEvent) => {
     event.preventDefault();
     try {
@@ -635,7 +647,7 @@ function AdminPage() {
           <strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span>{t(`order.status.${order.order_status.toLowerCase()}`)}</span><span>{order.payment_status === 'PAID_CONFIRMED' ? t('payment.confirmed') : order.payment_status === 'PROOF_SUBMITTED' ? t('payment.pending') : order.payment_status === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid')}</span><b>{amount(order.total_minor, order.currency, i18n.language)}</b>
           {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined ? ` · ${t('order.sweetnessValue', { value: item.options.sweetness })}` : ''} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>)}</div> : null}
           {order.payment_status === 'PROOF_SUBMITTED' && <details><summary>{t('admin.openPaymentProof')}</summary>{imageErrors.has(order.id) ? <p className="error">{t('admin.paymentImageUnavailable')} <button type="button" onClick={() => setImageErrors((current) => { const next = new Set(current); next.delete(order.id); return next; })}>{t('common.retry')}</button></p> : <img className="payment-proof" src={`/api/v1/admin/orders/${order.id}/payment-proof`} alt={t('admin.paymentImage')} onError={() => setImageErrors((current) => new Set(current).add(order.id))} />}<p>{t('admin.checkActualPayment')}</p>{order.order_status === 'ACCEPTED' && <div className="actions"><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'APPROVED')}>{t('order.confirmPayment')}</button><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'REJECTED')}>{t('order.reject')}</button></div>}</details>}
-          <div className="actions">{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}</div>
+          <div className="actions">{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{order.payment_method === 'WALLET' && order.payment_status === 'PAID_CONFIRMED' && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
         </article>)}</div>}
       </section>
     </>}

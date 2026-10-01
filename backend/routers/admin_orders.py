@@ -86,10 +86,13 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
         "READY": order.order_status == "PREPARING" and order.payment_status == "PAID_CONFIRMED",
         "DELIVERED": order.order_status == "READY",
         "COMPLETED": order.order_status == "DELIVERED",
-        # 钱包支付的订单可以取消并自动退回余额；人工转账的已确认付款订单不行
-        # （那种要线下退款，不能误操作一键把钱退进钱包）。
+        # 钱包支付的订单：只在「餐还没做出去」的阶段允许取消并退款
+        # （NEW/ACCEPTED/PREPARING）。到了 READY/DELIVERED 说明已经出餐/送出，
+        # 这时候把钱退回去应该走单独的、仅 MANAGER 的退款接口，而不是点一下「取消」。
+        # 人工转账的已确认付款订单仍然禁止取消（退款走线下）。
         "CANCELLED": order.order_status not in {"CANCELLED", "COMPLETED"} and (
-            order.payment_status != "PAID_CONFIRMED" or wallet_paid),
+            order.payment_status != "PAID_CONFIRMED"
+            or (wallet_paid and order.order_status in {"NEW", "ACCEPTED", "PREPARING"})),
     }
     if not transitions.get(req.status, False):
         raise HTTPException(status_code=409, detail="Order status transition is not allowed")
@@ -148,6 +151,73 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
         except Exception:
             pass
     return {"order_status": order.order_status, "payment_status": order.payment_status}
+
+
+class RefundRequest(BaseModel):
+    reason: str
+    amount_minor: int | None = None
+
+
+@router.post("/{order_id}/refund")
+async def refund_wallet_order(order_id: int, req: RefundRequest,
+                              staff_info: dict = Depends(get_current_staff),
+                              db: AsyncSession = Depends(get_db)):
+    """把已用钱包余额支付的订单退款回钱包。
+
+    为什么单独开接口而不是复用「取消」：
+      * 取消 = 单子没做成；退款 = 钱要退回去。出餐后（READY/DELIVERED）不该还能
+        一点「取消」就把钱退回去，那是典型的内部勾结路径；
+      * 所以这条路径**仅 MANAGER**，且必须填原因，全程进 audit_logs；
+      * 幂等：同一订单重复调用由 `refund:{订单号}` 的幂等键兜底，只退一次。
+    """
+    if staff_info.get("role") != "MANAGER":
+        raise HTTPException(status_code=403, detail="Manager access required")
+    reason = (req.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="A refund reason is required")
+
+    result = await db.execute(
+        select(Order).options(selectinload(Order.items)).filter(Order.id == order_id).with_for_update())
+    order = result.scalars().first()
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.payment_method != "WALLET" or order.payment_status != "PAID_CONFIRMED":
+        raise HTTPException(status_code=409, detail="Order was not paid from the wallet balance")
+
+    staff_id = staff_info["staff_id"]
+    amount = req.amount_minor or order.total_minor
+    if amount <= 0 or amount > order.total_minor:
+        raise HTTPException(status_code=422, detail="Refund amount is invalid")
+
+    from wallet_service import WalletError, refund_payment
+
+    old_state = f"{order.order_status}/{order.payment_status}"
+    try:
+        payment = await refund_payment(
+            db, biz_id=order.public_code, amount_minor=amount,
+            idem=f"refund:{order.public_code}", operator_staff_id=staff_id, reason=reason,
+        )
+    except WalletError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=exc.http_status, detail=exc.message)
+
+    order.payment_status = "REFUNDED"
+    db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff_id,
+                      event=f"ORDER_REFUNDED: {reason}", from_state=old_state,
+                      to_state=f"{order.order_status}/{order.payment_status}"))
+    db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
+                    action="wallet_refund",
+                    details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
+                             "operator_telegram_id": staff_info.get("telegram_user_id"),
+                             "public_code": order.public_code, "amount_minor": amount,
+                             "reason": reason, "from_state": old_state,
+                             "to_state": f"{order.order_status}/{order.payment_status}"}))
+    await db.commit()
+    return {
+        "order_status": order.order_status,
+        "payment_status": order.payment_status,
+        "refunded_amount_minor": payment["refunded_amount"],
+    }
 
 @router.post("/{order_id}/payment-review")
 async def review_payment(

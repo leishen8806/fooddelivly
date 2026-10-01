@@ -203,6 +203,69 @@ wallet.is_order_owner_staff(p_staff_id, p_customer_id)
 
 ---
 
+## 5.1 安全边界（充值涉及真金白银，这一节别跳过）
+
+### 权限与身份
+
+| 攻击面 | 保护 |
+|---|---|
+| 未登录访问钱包接口 | 全部端点要求会话 Cookie（客户 `session_token` / 员工 `admin_session_token`），否则 401 |
+| 客户访问员工接口 | JWT 里带 `type`，客户令牌拿不到员工身份 → 401 |
+| STAFF 做 MANAGER 的事 | 调账 / 退款 / 运维任务在 API 与数据库**两层**校验角色 → 403 |
+| 水平越权（读/改别人的单） | 所有客户侧读写都回库校验 `customer_id` 归属 → 404/403 |
+| Telegram 回调伪造 | 群里审核必须同时满足：来自配置的员工群 + 该 Telegram 账号有 `staff` 记录且在职；私聊只能操作自己的单 |
+| 伪造金额按钮 | `callback_data` 只带档位下标，金额用服务端白名单校验；真实金额永远回库读 |
+| Webhook 伪造 | 校验 `X-Telegram-Bot-Api-Secret-Token`（`hmac.compare_digest`），缺失/错误 → 401 |
+
+### 资金完整性
+
+| 攻击面 | 保护 |
+|---|---|
+| 改金额（0/负数/天文数字/字符串/布尔） | API 层 `strict=True` 整数 + 上下界（422）；数据库层再校验单笔上下限（400/409） |
+| 重复提交 / 网络重放 | 每个资金操作都有幂等键（建单 / 审核 / 扣款 / 退款），重放返回同一结果 |
+| 幂等键跨客户串单 | 幂等键前缀带 `customer_id`，两个客户用同一个键各自建单 |
+| SQL 注入 | 全部走绑定参数；`wallet_service` 里没有任何拼接进 SQL 的用户输入 |
+| 同一张截图刷两次 | `recharge_proofs.tg_file_unique_id` 全局唯一索引，跨客户也拒绝 |
+| **自己批自己** | `wallet.is_order_owner_staff()` 按 `telegram_user_id` 判定本人，见下 |
+
+### 「自己批自己」的四条路径（都被堵死）
+
+判定「员工是不是这笔单的客户本人」必须用 `telegram_user_id`：`staff.id` 与
+`customers.id` 是两套独立序列，直接比 id 会误判也会漏判。
+
+| 路径 | 函数 | 违反时 |
+|---|---|---|
+| 审核自己名下的充值单 | `approve_recharge` / `reject_recharge` | `SELF_APPROVE_FORBIDDEN` → 403 |
+| 改自己单的**实收金额**（等别人点通过就按被放大的金额入账） | `set_received_amount` | `SELF_APPROVE_FORBIDDEN` → 403 |
+| 给自己的账户调账 | `adjust_balance` | `SELF_APPROVE_FORBIDDEN` → 403 |
+| 给自己的订单退款 | `refund_payment` | `SELF_APPROVE_FORBIDDEN` → 403 |
+
+后三条是安全审计时实测发现的（前两条当时确实能过），修复在迁移 `b0123456789a`。
+
+### 退款与取消的边界
+
+- 钱包支付的订单：**只有 NEW / ACCEPTED / PREPARING**（餐还没出）能点「取消」并自动退款；
+- 出餐后（READY / DELIVERED）要走 `POST /api/v1/admin/orders/{id}/refund`，**仅 MANAGER**、
+  必须填原因、全程进 `audit_logs`，幂等键保证只退一次；
+- 人工转账的已确认付款订单始终禁止取消（退款走线下）。
+
+### 审计
+
+所有资金动作都写 `wallet.ledger_entries`（append-only，触发器禁止 UPDATE/DELETE）
++ `wallet.audit_log`；员工侧动作同时写应用自己的 `audit_logs`（带操作人、Telegram id、来源）。
+`wallet.reconcile()` 随时能重算「账本累加 vs 钱包余额」，必须恒为空。
+
+### 还没做的（需要你们定）
+
+1. **限流**：单用户每秒几次这类限流应在网关/中间件做；数据库侧只有单笔上下限、
+   未完成单数、单日累计、凭证唯一性。
+2. **大额双人复核**：目前一笔大额充值仍可由单个在职员工确认入账。要更严可以加
+   「超过 N 元需要第二个员工确认」的流程。
+3. **前端本地化的 `{{x}}` / Python 的 `{x}`** 两套插值语法不能共用同一个带占位符的键，
+   新增文案时注意（`tr()` 现在两种都支持，i18next 只认 `{{x}}`）。
+
+---
+
 ## 6. 运维
 
 本项目没有内置调度器，所以运维入口是幂等 HTTP 接口，交给外部 cron：
@@ -242,7 +305,8 @@ wallet.is_order_owner_staff(p_staff_id, p_customer_id)
 | `frontend/src/index.css` | 钱包样式 + 底部导航改 5 列 |
 | `backend/tests/wallet_tests.sql` | 77 项 SQL 功能用例 |
 | `backend/tests/wallet_concurrency_test.py` | 19 项 8 线程并发用例 |
-| `backend/tests/wallet_api_e2e.py` | 51 项 API + Telegram webhook 端到端用例 |
+| `backend/tests/wallet_api_e2e.py` | 63 项 API + Telegram webhook 端到端用例 |
+| `backend/tests/wallet_security_test.py` | 49 项安全用例（越权/IDOR/金额篡改/回调伪造/反作弊/自我交易） |
 | `backend/tests/run_wallet_tests.sh` | 一键回归 |
 | `backend/tests/seed_wallet_fixture.sql` | 端到端验证用的种子数据 |
 

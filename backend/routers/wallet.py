@@ -39,6 +39,10 @@ admin_router = APIRouter(prefix="/api/v1/admin", tags=["Admin Wallet"])
 
 PENDING_STATUSES = ("awaiting_proof", "under_review")
 
+#: 单次资金操作的金额上界（最小货币单位）。数据库是 BIGINT，但业务上不需要更大；
+#: 卡在 API 层可以避免「误输入一个天文数字」或 BIGINT 溢出变成 500。
+MAX_AMOUNT_MINOR = 10_000_000  # $100,000.00
+
 #: 默认充值档位（最小货币单位）。运营以后可以从 wallet.recharge_rules 读，
 #: 这里先给一组固定档位，前端/Bot 都用它渲染按钮。
 DEFAULT_PRESETS = (500, 1000, 2000, 5000)
@@ -112,8 +116,9 @@ async def get_wallet_ledger(
     customer_id: int = Depends(get_current_customer),
     db: AsyncSession = Depends(get_db),
 ):
-    if not 1 <= limit <= 100 or offset < 0:
-        raise HTTPException(status_code=422, detail="limit must be 1..100 and offset >= 0")
+    if not 1 <= limit <= 100 or not 0 <= offset <= 100_000:
+        raise HTTPException(status_code=422,
+                            detail="limit must be 1..100 and offset must be 0..100000")
     rows = await wallet.list_ledger(db, customer_id, limit=limit, offset=offset)
     return {
         "entries": [
@@ -153,7 +158,8 @@ async def list_my_recharges(
 
 
 class RechargeCreate(BaseModel):
-    amount_minor: int = Field(gt=0, le=10_000_000, description="充值金额，最小货币单位")
+    amount_minor: int = Field(gt=0, le=MAX_AMOUNT_MINOR, strict=True,
+                              description="充值金额，最小货币单位（整数，不接受字符串/布尔）")
 
 
 @router.post("/wallet/recharges")
@@ -320,7 +326,7 @@ async def fetch_telegram_photo(file_id: str) -> tuple[bytes, str]:
 
 
 class RechargeApprove(BaseModel):
-    received_minor: Optional[int] = Field(default=None, gt=0,
+    received_minor: Optional[int] = Field(default=None, gt=0, le=MAX_AMOUNT_MINOR, strict=True,
                                           description="实收金额；缺省时按暂存值 / 订单金额")
     remark: Optional[str] = None
 
@@ -330,7 +336,7 @@ class RechargeReject(BaseModel):
 
 
 class ReceivedAmount(BaseModel):
-    amount_minor: Optional[int] = Field(default=None, gt=0,
+    amount_minor: Optional[int] = Field(default=None, gt=0, le=MAX_AMOUNT_MINOR, strict=True,
                                         description="None = 清除暂存，回到订单金额")
 
 
@@ -444,7 +450,8 @@ async def admin_get_wallet(
 
 class AdjustRequest(BaseModel):
     bucket: str = Field(pattern="^(principal|bonus)$")
-    delta_minor: int = Field(description="正数加钱，负数扣钱")
+    delta_minor: int = Field(ge=-MAX_AMOUNT_MINOR, le=MAX_AMOUNT_MINOR, strict=True,
+                             description="正数加钱，负数扣钱")
     reason: str = Field(min_length=1, max_length=500)
 
 

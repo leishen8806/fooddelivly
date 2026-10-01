@@ -59,11 +59,14 @@ echo "== 3/4 并发用例（19 项）=="
 
 if [ -n "${E2E_URL:-}" ]; then
   echo
-  echo "== 4/4 端到端用例（34 项，${E2E_URL}）=="
+  echo "== 4/5 端到端用例（63 项，${E2E_URL}）=="
   "$PYTHON" "$HERE/wallet_api_e2e.py" "$E2E_URL" | tail -5
+  echo
+  echo "== 5/5 安全用例（49 项，${E2E_URL}）=="
+  "$PYTHON" "$HERE/wallet_security_test.py" "$E2E_URL" | tail -5
 else
   echo
-  echo "== 4/4 端到端用例 =="
+  echo "== 4/5 端到端 / 5/5 安全用例 =="
   echo "跳过（未设置 E2E_URL）。要跑：先 alembic upgrade head + 灌种子 + 起服务，然后"
   echo "  E2E_URL=http://127.0.0.1:8000 ./run_wallet_tests.sh"
 fi

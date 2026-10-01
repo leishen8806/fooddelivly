@@ -357,7 +357,9 @@
     "wallet.balance": "余额",
     "wallet.available": "可用",
     "wallet.frozen": "冻结",
-    "wallet.myWallet": "我的钱包"
+    "wallet.myWallet": "我的钱包",
+    "admin.refundOrder": "退款回钱包",
+    "admin.refundReasonPrompt": "把这张订单的钱退回客户钱包，请填写原因："
   },
   "en": {
     "brand": "Tea Cafe",
@@ -717,7 +719,9 @@
     "wallet.balance": "Balance",
     "wallet.available": "Available",
     "wallet.frozen": "Frozen",
-    "wallet.myWallet": "My wallet"
+    "wallet.myWallet": "My wallet",
+    "admin.refundOrder": "Refund to wallet",
+    "admin.refundReasonPrompt": "Reason for refunding this order to the customer's wallet:"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1077,6 +1081,8 @@
     "wallet.balance": "សមតុល្យ",
     "wallet.available": "អាចប្រើ",
     "wallet.frozen": "កក់ទុក",
-    "wallet.myWallet": "កាបូបរបស់ខ្ញុំ"
+    "wallet.myWallet": "កាបូបរបស់ខ្ញុំ",
+    "admin.refundOrder": "សងប្រាក់ចូលកាបូប",
+    "admin.refundReasonPrompt": "ហេតុផលសងប្រាក់ចូលកាបូបអតិថិជន៖"
   }
 }

@@ -12,12 +12,19 @@ VALUES ('USD', 'Asia/Phnom_Penh', '-1001234567890', 'en', 'https://pay.example.c
 ON CONFLICT DO NOTHING;
 
 INSERT INTO customers (id, telegram_user_id, display_name, language_code, preferred_language)
-VALUES (1, '555000111', 'Somchai', 'en', 'en')
+VALUES (1, '555000111', 'Somchai', 'en', 'en'),
+       -- 第二个客户：安全用例要验证「A 不能读/改 B 的充值单」
+       (2, '555000222', 'Dara',    'en', 'en'),
+       -- 第三个客户 = 员工 manager1 本人的 Telegram 账号：
+       -- 安全用例要验证「员工不能审核自己的充值单」
+       (3, '999000111', 'Manager own account', 'en', 'en')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO staff (id, telegram_user_id, login_name, password_hash, role, active)
 VALUES (1, '999000111', 'manager1', 'x', 'MANAGER', true),
-       (2, '999000222', 'staff1',   'x', 'STAFF',   true)
+       (2, '999000222', 'staff1',   'x', 'STAFF',   true),
+       -- 非 MANAGER 的在职员工：安全用例验证调账/退款权限
+       (3, '999000333', 'staff2',   'x', 'STAFF',   true)
 ON CONFLICT (id) DO UPDATE SET role = EXCLUDED.role, active = EXCLUDED.active;
 
 -- 让后续 INSERT 不会撞上写死的 id
