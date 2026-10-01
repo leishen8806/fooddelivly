@@ -119,7 +119,7 @@ export default function AdminRecharges({ role }: { role: string | null }) {
 
   return <section className="panel recharge-panel">
     <div className="panel-heading">
-      <div><span className="eyebrow">{t('admin.recharges')}</span><h2>{t('nav.wallet')}</h2></div>
+      <div><span className="eyebrow">{t('nav.wallet')}</span><h2>{t('admin.recharges')}</h2></div>
       <label>{t('admin.rechargeStatusFilter')}
         <select value={pendingOnly ? 'PENDING' : 'ALL'} onChange={(event) => setPendingOnly(event.target.value === 'PENDING')}>
           <option value="PENDING">{t('admin.pendingOnly')}</option>

@@ -266,8 +266,8 @@
     "wallet.bonusFirst": "付款时先扣赠送余额。",
     "wallet.chooseAmount": "请选择充值金额：",
     "wallet.orderCreated": "充值单 {order} 已创建，请转账 {amount}。",
-    "wallet.bonusPreview": "到账赠送：{bonus}",
-    "wallet.remarkHint": "转账备注 / 流水号请填 {order}。",
+    "wallet.bonusPreview": "到账赠送：{{bonus}}",
+    "wallet.remarkHint": "转账备注 / 流水号请填 {{order}}。",
     "wallet.sendProofPrompt": "转好后把截图发到本对话（订单号 {order}）。",
     "wallet.uploadProof": "我已转账，上传凭证",
     "wallet.cancelOrder": "取消这笔充值",
@@ -308,8 +308,8 @@
     "wallet.none": "还没有充值记录。",
     "wallet.noLedger": "还没有交易记录。",
     "wallet.created": "充值单已创建",
-    "wallet.expiresAt": "有效期至 {date}",
-    "wallet.bonusWillExpire": "赠送到期 {date}",
+    "wallet.expiresAt": "有效期至 {{date}}",
+    "wallet.bonusWillExpire": "赠送到期 {{date}}",
     "wallet.cancelConfirm": "确定取消这张充值单？",
     "wallet.payWithWallet": "用钱包余额支付",
     "wallet.balanceInsufficient": "余额不足，请先充值。",
@@ -353,7 +353,8 @@
     "admin.rechargeStatus": "状态",
     "admin.rechargeTime": "提交时间",
     "admin.rechargeActions": "操作",
-    "admin.rechargeDetail": "详情"
+    "admin.rechargeDetail": "详情",
+    "wallet.balance": "钱包余额"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -622,8 +623,8 @@
     "wallet.bonusFirst": "Bonus is used before your top-up balance.",
     "wallet.chooseAmount": "Choose a top-up amount:",
     "wallet.orderCreated": "Top-up {order} created. Please transfer {amount}.",
-    "wallet.bonusPreview": "Bonus on confirmation: {bonus}",
-    "wallet.remarkHint": "Put {order} in the transfer remark / reference.",
+    "wallet.bonusPreview": "Bonus on confirmation: {{bonus}}",
+    "wallet.remarkHint": "Put {{order}} in the transfer remark / reference.",
     "wallet.sendProofPrompt": "Then send the transfer screenshot to this chat (reference {order}).",
     "wallet.uploadProof": "I have paid - upload screenshot",
     "wallet.cancelOrder": "Cancel this top-up",
@@ -664,8 +665,8 @@
     "wallet.none": "No top-up orders yet.",
     "wallet.noLedger": "No transactions yet.",
     "wallet.created": "Top-up order created",
-    "wallet.expiresAt": "Valid until {date}",
-    "wallet.bonusWillExpire": "Bonus expires {date}",
+    "wallet.expiresAt": "Valid until {{date}}",
+    "wallet.bonusWillExpire": "Bonus expires {{date}}",
     "wallet.cancelConfirm": "Cancel this top-up order?",
     "wallet.payWithWallet": "Pay with wallet balance",
     "wallet.balanceInsufficient": "Not enough balance, please top up first.",
@@ -709,7 +710,8 @@
     "admin.rechargeStatus": "Status",
     "admin.rechargeTime": "Submitted",
     "admin.rechargeActions": "Actions",
-    "admin.rechargeDetail": "Detail"
+    "admin.rechargeDetail": "Detail",
+    "wallet.balance": "Wallet balance"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -978,8 +980,8 @@
     "wallet.bonusFirst": "ពេលបង់ប្រាក់ ប្រាក់ថែមកាត់មុន។",
     "wallet.chooseAmount": "សូមជ្រើសរើសចំនួនទឹកប្រាក់ដាក់ចូល៖",
     "wallet.orderCreated": "បង្កើតការដាក់ប្រាក់ {order} រួចរាល់។ សូមផ្ទេរ {amount}។",
-    "wallet.bonusPreview": "ប្រាក់ថែមពេលអនុម័ត៖ {bonus}",
-    "wallet.remarkHint": "សូមសរសេរ {order} ក្នុងចំណាំនៃការផ្ទេរប្រាក់។",
+    "wallet.bonusPreview": "ប្រាក់ថែមពេលអនុម័ត៖ {{bonus}}",
+    "wallet.remarkHint": "សូមសរសេរ {{order}} ក្នុងចំណាំនៃការផ្ទេរប្រាក់។",
     "wallet.sendProofPrompt": "បន្ទាប់មក សូមផ្ញើរូបភាពផ្ទេរប្រាក់មកកាន់ការសន្ទនានេះ (លេខ {order})។",
     "wallet.uploadProof": "ខ្ញុំបានផ្ទេររួច - ផ្ញើរូបភាព",
     "wallet.cancelOrder": "បោះបង់ការដាក់ប្រាក់នេះ",
@@ -1020,8 +1022,8 @@
     "wallet.none": "មិនទាន់មានការដាក់ប្រាក់ទេ។",
     "wallet.noLedger": "មិនទាន់មានប្រតិបត្តិការទេ។",
     "wallet.created": "បានបង្កើតការដាក់ប្រាក់",
-    "wallet.expiresAt": "មានសុពលភាពដល់ {date}",
-    "wallet.bonusWillExpire": "ប្រាក់ថែមផុតកំណត់ {date}",
+    "wallet.expiresAt": "មានសុពលភាពដល់ {{date}}",
+    "wallet.bonusWillExpire": "ប្រាក់ថែមផុតកំណត់ {{date}}",
     "wallet.cancelConfirm": "បោះបង់ការដាក់ប្រាក់នេះ?",
     "wallet.payWithWallet": "បង់ដោយសមតុល្យកាបូប",
     "wallet.balanceInsufficient": "សមតុល្យមិនគ្រប់គ្រាន់ សូមដាក់ប្រាក់ជាមុន។",
@@ -1065,6 +1067,7 @@
     "admin.rechargeStatus": "ស្ថានភាព",
     "admin.rechargeTime": "ពេលផ្ញើ",
     "admin.rechargeActions": "សកម្មភាព",
-    "admin.rechargeDetail": "លម្អិត"
+    "admin.rechargeDetail": "លម្អិត",
+    "wallet.balance": "សមតុល្យកាបូប"
   }
 }

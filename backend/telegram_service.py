@@ -1,10 +1,13 @@
 import json
+import logging
 import os
 from functools import lru_cache
 from pathlib import Path
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyParameters
+
+log = logging.getLogger("teacafe.telegram")
 
 
 @lru_cache(maxsize=1)
@@ -18,6 +21,13 @@ def _locales():
 def tr(key: str, language: str = "en", **values) -> str:
     lang = language if language in {"en", "zh-CN", "km"} else "en"
     text = _locales().get(lang, {}).get(key) or _locales()["en"].get(key) or key
+    # 文案文件同时被两套渲染器使用：
+    #   * 这里（Python）历史上用单花括号 {name}
+    #   * 前端 i18next 用双花括号 {{name}}
+    # 只替换单花括号会把 "{{value}}% sweetness" 变成 "{25}% sweetness"（群里真的这样显示过），
+    # 所以先替换双花括号，再替换单花括号。两遍都做，两种写法在两边都能正确渲染。
+    for name, value in values.items():
+        text = text.replace("{{" + name + "}}", str(value))
     for name, value in values.items():
         text = text.replace("{" + name + "}", str(value))
     return text
@@ -131,6 +141,11 @@ async def send_bot_message(chat_id: str, text: str, reply_markup=None) -> None:
         return
     try:
         await bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
+    except Exception as exc:  # noqa: BLE001
+        # 发消息失败（用户拉黑机器人 -> 403、token 失效 -> 401、网络抖动）
+        # 绝不能让 webhook 变成 5xx：Telegram 会重试整个 update，而订单/资金
+        # 状态早已提交，重试只会撞幂等约束、给用户弹出「重复提交」之类的错提示。
+        log.warning("发送 Telegram 消息失败 chat=%s: %s", chat_id, exc)
     finally:
         await bot.session.close()
 
@@ -141,6 +156,8 @@ async def answer_callback(callback_id: str, text: str | None = None, alert: bool
         return
     try:
         await bot.answer_callback_query(callback_id, text=text, show_alert=alert)
+    except Exception as exc:  # noqa: BLE001 - 同上，回执失败不影响业务
+        log.warning("回执 Telegram callback 失败 id=%s: %s", callback_id, exc)
     finally:
         await bot.session.close()
 

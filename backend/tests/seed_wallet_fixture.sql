@@ -27,10 +27,14 @@ SELECT setval(pg_get_serial_sequence('staff', 'id'),
               GREATEST((SELECT COALESCE(max(id), 1) FROM staff), 1000));
 
 -- 一个可下单的商品（验证「原有订单流程没被钱包改动破坏」）
-INSERT INTO categories (id, name) VALUES (1, '{"en": "Drinks"}') ON CONFLICT (id) DO NOTHING;
-INSERT INTO products (id, category_id, name, price_minor, currency, available)
-VALUES (1, 1, '{"en": "Milk Tea"}', 500, 'USD', true)
-ON CONFLICT (id) DO NOTHING;
+-- 注意 active 必须显式给 true：`categories.active` 没有 server_default，
+-- 不写就是 NULL，而 /api/v1/menu 会过滤掉未启用的分类 —— 菜单会变成空的。
+INSERT INTO categories (id, name, sort_order, active)
+VALUES (1, '{"en": "Drinks"}', 0, true)
+ON CONFLICT (id) DO UPDATE SET active = true, sort_order = EXCLUDED.sort_order;
+INSERT INTO products (id, category_id, name, price_minor, currency, available, sort_order)
+VALUES (1, 1, '{"en": "Milk Tea"}', 500, 'USD', true, 0)
+ON CONFLICT (id) DO UPDATE SET sort_order = EXCLUDED.sort_order, available = true;
 SELECT setval(pg_get_serial_sequence('categories', 'id'),
               GREATEST((SELECT COALESCE(max(id), 1) FROM categories), 100));
 SELECT setval(pg_get_serial_sequence('products', 'id'),
