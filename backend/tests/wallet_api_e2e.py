@@ -121,6 +121,15 @@ def main() -> None:
     check("GET /wallet 200", bool(start), json.dumps(start, default=str)[:140])
     check("返回档位与限额", bool(start["presets_minor"]) and start["min_recharge_minor"] == 100,
           str(start.get("presets_minor")))
+    check("可用 = 本金 + 赠送",
+          start["available_minor"] == start["principal_minor"] + start["bonus_minor"],
+          f'{start["available_minor"]} vs {start["principal_minor"]}+{start["bonus_minor"]}')
+    check("余额 = 可用 + 冻结",
+          start["balance_minor"] == start["available_minor"] + start["frozen_minor"],
+          f'{start["balance_minor"]} vs {start["available_minor"]}+{start["frozen_minor"]}')
+    check("total_minor 与 available_minor 同值（既有调用方兼容）",
+          start["total_minor"] == start["available_minor"],
+          f'{start["total_minor"]} vs {start["available_minor"]}')
 
     print("\n[2] 建充值单 + 幂等 + 限额")
     hdr = {"Idempotency-Key": f"e2e-{run}-a"}
@@ -206,16 +215,17 @@ def main() -> None:
     listed = admin.get("/api/v1/admin/recharges").json()
     row = [x for x in listed if x["id"] == o1["id"]][0]
     wallet_total = cust.get("/api/v1/wallet").json()["total_minor"]
-    check("管理端列表带客户ID/名称/Telegram/当前余额",
+    check("管理端列表带客户ID/名称/Telegram/余额与可用",
           row["customer_id"] == CUSTOMER_ID
           and row["telegram_user_id"] == CUSTOMER_TG
           and "username" in row
-          and row["balance_minor"] == wallet_total,
-          f'customer={row["customer_id"]} tg={row["telegram_user_id"]} '
-          f'balance={row["balance_minor"]} vs {wallet_total}')
-    check("余额拆分（本金+赠送=合计）",
-          row["principal_minor"] + row["bonus_minor"] == row["balance_minor"],
-          f'{row["principal_minor"]}+{row["bonus_minor"]}={row["balance_minor"]}')
+          and row["available_minor"] == wallet_total
+          and row["balance_minor"] == row["available_minor"] + row["frozen_minor"],
+          f'customer={row["customer_id"]} balance={row["balance_minor"]} '
+          f'available={row["available_minor"]} vs {wallet_total}')
+    check("余额拆分（本金+赠送=可用）",
+          row["principal_minor"] + row["bonus_minor"] == row["available_minor"],
+          f'{row["principal_minor"]}+{row["bonus_minor"]}={row["available_minor"]}')
 
     print("\n[6] 机器人链路：/wallet -> 点档位 -> 发截图 -> 群里确认到账")
     before_ids = {x["id"] for x in admin.get("/api/v1/admin/recharges").json()}

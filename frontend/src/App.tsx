@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { ClipboardList, ShoppingCart, Store, UserRound, Wallet } from 'lucide-react';
+import { ClipboardList, ShoppingCart, Store, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from './api';
 import { TelegramProvider } from './components/TelegramProvider';
@@ -94,7 +94,7 @@ function LanguageSwitch() {
 
 function CustomerPage() {
   const { t, i18n } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'orders' | 'wallet' | 'me'>('menu');
+  const [activeTab, setActiveTab] = useState<'menu' | 'cart' | 'orders' | 'me'>('menu');
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -222,10 +222,9 @@ function CustomerPage() {
     return () => document.removeEventListener('keydown', keepDialogModal);
   }, [languageDialogOpen]);
 
-  const selectTab = (tab: 'menu' | 'cart' | 'orders' | 'wallet' | 'me') => {
+  const selectTab = (tab: 'menu' | 'cart' | 'orders' | 'me') => {
     setActiveTab(tab);
     if (tab === 'orders' || tab === 'me') void loadCustomerOrders();
-    if (tab === 'wallet') void loadWalletTotal();
     if (tab === 'me') {
       setProfileLoading(true);
       setProfileError('');
@@ -325,7 +324,7 @@ function CustomerPage() {
   const paymentLabel = (paymentStatus: string) => paymentStatus === 'PAID_CONFIRMED' ? t('payment.confirmed') : paymentStatus === 'PROOF_SUBMITTED' ? t('payment.pending') : paymentStatus === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid');
 
   return <main className="customer-shell">
-    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : activeTab === 'wallet' ? 'wallet.title' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
+    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
 
     {activeTab === 'menu' && <>
       <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>
@@ -357,7 +356,7 @@ function CustomerPage() {
         <div className="cart-lines">{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}<small>{amount(line.product.price_minor * line.quantity, line.product.currency, i18n.language)}</small></span><div className="quantity-control"><button type="button" aria-label={t('common.delete')} onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)}>−</button><strong>{line.quantity}</strong><button type="button" aria-label={t('common.add')} onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></div></div>)}</div>
         <button className="continue-shopping" type="button" onClick={() => selectTab('menu')}>{t('menu.addMore')}</button>
         <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); if (profile) localStorage.setItem(`teacafe.roomNumber.${profile.customer_id}`, event.target.value); }} autoComplete="off" maxLength={32} required />
-        {walletTotal > 0 && <label className="wallet-pay-toggle"><input type="checkbox" checked={payWithWallet} onChange={(event) => setPayWithWallet(event.target.checked)} /><span><strong>{t('wallet.payWithWallet')}</strong><small>{t('wallet.total')}: {amount(walletTotal, cart[0].product.currency, i18n.language)}</small></span></label>}
+        {walletTotal > 0 && <label className="wallet-pay-toggle"><input type="checkbox" checked={payWithWallet} onChange={(event) => setPayWithWallet(event.target.checked)} /><span><strong>{t('wallet.payWithWallet')}</strong><small>{t('wallet.available')}: {amount(walletTotal, cart[0].product.currency, i18n.language)}</small></span></label>}
         <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button>
         {status && <p className="status" role="status">{status}</p>}
       </form>}
@@ -375,8 +374,6 @@ function CustomerPage() {
       </button>)}</div>
     </section>}
 
-    {activeTab === 'wallet' && <CustomerWallet onBalanceChange={() => void loadWalletTotal()} />}
-
     {activeTab === 'me' && <section className="customer-page-section customer-profile">
       <div className="customer-page-heading"><span className="eyebrow">{t('profile.telegramConnected')}</span><h2>{t('profile.title')}</h2></div>
       {profileLoading && <p className="state" role="status">{t('common.loading')}</p>}
@@ -389,13 +386,14 @@ function CustomerPage() {
         <label className="profile-language">{t('common.language')}<select aria-label={t('common.language')} value={profile.preferred_language || languageDraft} disabled={languageSaving} onChange={(event) => { const language = event.target.value as LanguageCode; setLanguageDraft(language); void saveLanguage(language); }}><option value="en">English</option><option value="zh-CN">中文</option><option value="km">ខ្មែរ</option></select></label>
         {languageError && <p className="error" role="alert">{languageError}</p>}
       </>}
+      {/* 钱包（余额 / 可用 / 充值 / 充值单 / 明细）就在「我的」页里 */}
+      <CustomerWallet onBalanceChange={() => void loadWalletTotal()} />
     </section>}
 
     <nav className="customer-bottom-nav" aria-label={t('common.navigation')}>
       <button type="button" className={activeTab === 'menu' ? 'active' : ''} aria-current={activeTab === 'menu' ? 'page' : undefined} onClick={() => selectTab('menu')}><Store size={20} aria-hidden="true" /><span>{t('nav.menu')}</span></button>
       <button type="button" className={activeTab === 'cart' ? 'active' : ''} aria-current={activeTab === 'cart' ? 'page' : undefined} onClick={() => selectTab('cart')}><span className="nav-icon-wrap"><ShoppingCart size={20} aria-hidden="true" />{itemCount > 0 && <span className="cart-badge">{itemCount > 99 ? '99+' : itemCount}</span>}</span><span>{t('nav.cart')}</span></button>
       <button type="button" className={activeTab === 'orders' ? 'active' : ''} aria-current={activeTab === 'orders' ? 'page' : undefined} onClick={() => selectTab('orders')}><ClipboardList size={20} aria-hidden="true" /><span>{t('nav.orders')}</span></button>
-      <button type="button" className={activeTab === 'wallet' ? 'active' : ''} aria-current={activeTab === 'wallet' ? 'page' : undefined} onClick={() => selectTab('wallet')}><Wallet size={20} aria-hidden="true" /><span>{t('nav.wallet')}</span></button>
       <button type="button" className={activeTab === 'me' ? 'active' : ''} aria-current={activeTab === 'me' ? 'page' : undefined} onClick={() => selectTab('me')}><UserRound size={20} aria-hidden="true" /><span>{t('nav.me')}</span></button>
     </nav>
 

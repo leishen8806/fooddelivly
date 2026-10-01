@@ -92,6 +92,10 @@ async def get_wallet(
     }
     return {
         "currency": summary["currency"],
+        # 余额 = 本金 + 赠送 + 冻结；可用 = 本金 + 赠送（能消费的部分）
+        "balance_minor": summary["balance_minor"],
+        "available_minor": summary["available_minor"],
+        "frozen_minor": summary["frozen_minor"],
         "principal_minor": summary["principal_minor"],
         "bonus_minor": summary["bonus_minor"],
         "total_minor": summary["total_minor"],
@@ -256,8 +260,11 @@ async def admin_list_recharges(
             "telegram_user_id": r["telegram_user_id"],
             "display_name": r["display_name"],
             "username": r["username"],
-            # 客户**当前**钱包余额，审核时用来判断这个客户的账户状态
+            # 客户**当前**账户状态，审核时用来判断这个客户
+            # balance = 本金 + 赠送 + 冻结；available = 本金 + 赠送
             "balance_minor": r["balance_minor"],
+            "available_minor": r["available_minor"],
+            "frozen_minor": r["frozen_minor"],
             "principal_minor": r["principal_minor"],
             "bonus_minor": r["bonus_minor"],
         }
@@ -416,7 +423,11 @@ async def admin_get_wallet(
         "customer_id": customer_id,
         "telegram_user_id": customer.telegram_user_id,
         "display_name": customer.display_name,
+        "username": customer.username,
         "currency": summary["currency"],
+        "balance_minor": summary["balance_minor"],
+        "available_minor": summary["available_minor"],
+        "frozen_minor": summary["frozen_minor"],
         "principal_minor": summary["principal_minor"],
         "bonus_minor": summary["bonus_minor"],
         "total_minor": summary["total_minor"],

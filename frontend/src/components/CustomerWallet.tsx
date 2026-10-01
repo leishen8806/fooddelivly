@@ -5,15 +5,16 @@ import { formatAmount, formatDateTime, toMinorUnits } from '../format';
 import type { LedgerEntry, RechargeOrder, WalletSummary } from '../types';
 
 /**
- * 客户钱包页：余额 / 充值 / 我的充值单 / 交易明细。
+ * 钱包区块 —— 挂在「我的」页面里（不再单独占一个底部导航 tab）。
  *
- * 与后端的分工：
- *   * 金额一律用最小货币单位整数（USD cents）传输，这里只负责展示与输入换算；
- *   * 余额、赠送、可充值档位、限额全部由 `GET /api/v1/wallet` 决定，
- *     前端不做任何金额计算（下单金额也回后端按规则快照）。
+ * 两个金额要分清（对应后端 get_summary 的两个字段）：
+ *   * 余额 balance   = 本金 + 赠送 + 冻结  —— 账户总额
+ *   * 可用 available = 本金 + 赠送         —— 现在能花的部分
+ * 冻结目前恒为 0（预留提现/风控冻结），所以两个数通常相等；一旦有冻结就会分开。
  *
- * 幂等：建单带 `Idempotency-Key`，只在「开始一笔新充值」时重新生成，
- * 网络重试/重复点击不会建出第二张单。
+ * 与后端的分工：金额一律用最小货币单位整数（USD cents）传输，这里只做展示
+ * 与输入换算；档位、限额、赠送额全部由后端决定，前端不参与任何资金计算。
+ * 建单带 `Idempotency-Key`，重复点击 / 网络重试不会建出第二张单。
  */
 export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: () => void }) {
   const { t, i18n } = useTranslation();
@@ -66,14 +67,11 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
       idempotencyKey.current = null;
       setCustom('');
       setCreated(response.data);
-      setNotice('');
       await load();
       onBalanceChange?.();
     } catch (requestError: any) {
-      const status = requestError?.response?.status;
-      // 业务错误（限额/未完成单过多）后端已经给了可读文案，直接用
+      // 业务错误（限额 / 未完成单过多 / 来源校验）后端已经给了可读文案
       setNotice(requestError?.response?.data?.detail || t('error.network'));
-      if (status === 409 && !requestError?.response?.data?.detail) idempotencyKey.current = null;
     } finally {
       setBusy(false);
     }
@@ -104,15 +102,27 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
   const statusLabel = (status: string) => t(`wallet.status.${status}`, { defaultValue: status });
   const entryLabel = (entry: LedgerEntry) => t(`wallet.entry.${entry.entry_type}`, { defaultValue: entry.entry_type });
 
-  return <section className="customer-page-section wallet-page">
-    <div className="customer-page-heading"><span className="eyebrow">{t('wallet.balance')}</span><h2>{t('wallet.title')}</h2></div>
+  return <section className="wallet-section">
+    {/* 「我的」页里已经有页面标题了，这里只放一个区块标题，避免重复 */}
+    <div className="customer-page-heading"><h2>{t('wallet.myWallet')}</h2></div>
 
     {loading && <p className="state" role="status">{t('common.loading')}</p>}
     {error && <p className="error" role="alert">{error} <button type="button" onClick={() => void load()}>{t('common.retry')}</button></p>}
 
     {summary && <>
       <article className="wallet-card">
-        <div className="wallet-card-total"><span>{t('wallet.total')}</span><strong>{formatAmount(summary.total_minor, currency, i18n.language)}</strong></div>
+        <div className="wallet-card-line">
+          <span>{t('wallet.balance')}</span>
+          <strong className="wallet-card-primary">{formatAmount(summary.balance_minor, currency, i18n.language)}</strong>
+        </div>
+        <div className="wallet-card-line">
+          <span>{t('wallet.available')}</span>
+          <strong>{formatAmount(summary.available_minor, currency, i18n.language)}</strong>
+        </div>
+        {summary.frozen_minor > 0 && <div className="wallet-card-line">
+          <span>{t('wallet.frozen')}</span>
+          <strong>{formatAmount(summary.frozen_minor, currency, i18n.language)}</strong>
+        </div>}
         <div className="wallet-card-split">
           <div><span>{t('wallet.bucket.principal')}</span><strong>{formatAmount(summary.principal_minor, currency, i18n.language)}</strong></div>
           <div><span>{t('wallet.bucket.bonus')}</span><strong>{formatAmount(summary.bonus_minor, currency, i18n.language)}</strong></div>

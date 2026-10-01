@@ -608,6 +608,32 @@ BEGIN
 END $$;
 
 -- ===========================================================================
+-- T16  钱包概览：余额（含冻结） vs 可用
+-- ===========================================================================
+DO $$
+DECLARE r RECORD;
+BEGIN
+  -- 7001 在 T13 里有本金与赠送；这里再冻结 300，验证「余额 - 可用 = 冻结」
+  UPDATE wallet.wallets SET frozen = 300 WHERE customer_id = 7001 AND currency = 'USD';
+
+  SELECT * INTO r FROM wallet.get_summary(7001, 'USD');
+  PERFORM public.t_ok('T16.1 可用 = 本金 + 赠送',
+                      r.total = r.principal + r.bonus, format('total=%s', r.total));
+  PERFORM public.t_ok('T16.2 余额 = 本金 + 赠送 + 冻结',
+                      r.balance = r.principal + r.bonus + r.frozen, format('balance=%s', r.balance));
+  PERFORM public.t_ok('T16.3 余额 - 可用 = 冻结',
+                      r.balance - r.total = 300, format('%s - %s', r.balance, r.total));
+
+  -- 没有钱包的客户：函数返回 0 行（后端会兜底成全 0）
+  PERFORM public.t_ok('T16.4 无钱包客户返回 0 行',
+                      (SELECT count(*) FROM wallet.get_summary(123456, 'USD')) = 0);
+
+  UPDATE wallet.wallets SET frozen = 0 WHERE customer_id = 7001 AND currency = 'USD';
+  SELECT * INTO r FROM wallet.get_summary(7001, 'USD');
+  PERFORM public.t_ok('T16.5 无冻结时余额 = 可用', r.balance = r.total, format('%s/%s', r.balance, r.total));
+END $$;
+
+-- ===========================================================================
 -- 汇总
 -- ===========================================================================
 DO $$

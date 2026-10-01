@@ -176,10 +176,13 @@ async def get_summary(
 ) -> dict[str, Any]:
     """余额概览。没有钱包时返回全 0（不建空钱包，等第一次入账再建）。
 
-    注意列名归一化：数据库函数返回的是 `principal / bonus / total`，
-    而 API 对外统一用 `*_minor` 后缀（与 orders.total_minor 一致）。
-    两条分支必须返回同样的键，否则「钱包已建」和「钱包未建」两种状态下
-    调用方会拿到不同的字典。
+    两个数要分清（前端「我的」页就是展示这两个）：
+      * `balance_minor`   余额 = 本金 + 赠送 + 冻结（账户总额）
+      * `available_minor` 可用 = 本金 + 赠送（现在能花的）
+      * `total_minor`     与 available_minor 同值，保留给既有调用方
+
+    列名归一化：数据库函数返回 `principal / bonus / frozen / total / balance`，
+    API 对外统一 `*_minor` 后缀；两条分支（有钱包 / 没钱包）必须返回同样的键。
     """
     row = await _fetchrow(
         db,
@@ -187,12 +190,19 @@ async def get_summary(
         {"customer_id": customer_id, "currency": currency},
     )
     data = dict(row) if row is not None else {}
+    principal = data.get("principal", 0) or 0
+    bonus = data.get("bonus", 0) or 0
+    frozen = data.get("frozen", 0) or 0
+    available = data.get("total", principal + bonus) or 0
     return {
         "customer_id": data.get("customer_id", customer_id),
         "currency": data.get("currency", currency),
-        "principal_minor": data.get("principal", 0) or 0,
-        "bonus_minor": data.get("bonus", 0) or 0,
-        "total_minor": data.get("total", 0) or 0,
+        "principal_minor": principal,
+        "bonus_minor": bonus,
+        "frozen_minor": frozen,
+        "available_minor": available,
+        "balance_minor": data.get("balance", available + frozen) or 0,
+        "total_minor": available,
         "bonus_expire_at": data.get("bonus_expire_at"),
     }
 
@@ -360,9 +370,12 @@ async def list_recharges_admin(db: AsyncSession, status: str | None, limit: int 
     base = """
         SELECT o.*,
                c.telegram_user_id, c.display_name, c.username,
-               COALESCE(w.principal, 0) + COALESCE(w.bonus, 0) AS balance_minor,
-               COALESCE(w.principal, 0) AS principal_minor,
-               COALESCE(w.bonus, 0)     AS bonus_minor
+               COALESCE(w.principal, 0) + COALESCE(w.bonus, 0) AS available_minor,
+               COALESCE(w.principal, 0) + COALESCE(w.bonus, 0)
+                 + COALESCE(w.frozen, 0)                          AS balance_minor,
+               COALESCE(w.frozen, 0)     AS frozen_minor,
+               COALESCE(w.principal, 0)  AS principal_minor,
+               COALESCE(w.bonus, 0)      AS bonus_minor
           FROM wallet.recharge_orders o
           JOIN public.customers c ON c.id = o.customer_id
           LEFT JOIN wallet.wallets w

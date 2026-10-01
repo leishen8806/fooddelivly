@@ -354,7 +354,10 @@
     "admin.rechargeTime": "提交时间",
     "admin.rechargeActions": "操作",
     "admin.rechargeDetail": "详情",
-    "wallet.balance": "钱包余额"
+    "wallet.balance": "余额",
+    "wallet.available": "可用",
+    "wallet.frozen": "冻结",
+    "wallet.myWallet": "我的钱包"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -711,7 +714,10 @@
     "admin.rechargeTime": "Submitted",
     "admin.rechargeActions": "Actions",
     "admin.rechargeDetail": "Detail",
-    "wallet.balance": "Wallet balance"
+    "wallet.balance": "Balance",
+    "wallet.available": "Available",
+    "wallet.frozen": "Frozen",
+    "wallet.myWallet": "My wallet"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1068,6 +1074,9 @@
     "admin.rechargeTime": "ពេលផ្ញើ",
     "admin.rechargeActions": "សកម្មភាព",
     "admin.rechargeDetail": "លម្អិត",
-    "wallet.balance": "សមតុល្យកាបូប"
+    "wallet.balance": "សមតុល្យ",
+    "wallet.available": "អាចប្រើ",
+    "wallet.frozen": "កក់ទុក",
+    "wallet.myWallet": "កាបូបរបស់ខ្ញុំ"
   }
 }

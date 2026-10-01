@@ -41,8 +41,15 @@ export interface Order {
 /** 钱包余额概览（GET /api/v1/wallet） */
 export interface WalletSummary {
   currency: string;
+  /** 余额 = 本金 + 赠送 + 冻结（账户总额） */
+  balance_minor: number;
+  /** 可用 = 本金 + 赠送（现在能花的部分） */
+  available_minor: number;
+  /** 冻结（预留提现/风控，目前恒为 0） */
+  frozen_minor: number;
   principal_minor: number;
   bonus_minor: number;
+  /** 与 available_minor 同值，保留给既有调用方 */
   total_minor: number;
   bonus_expire_at: string | null;
   presets_minor: number[];

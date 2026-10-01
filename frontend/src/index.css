@@ -624,9 +624,9 @@ small {
   bottom: 0;
   left: 0;
   display: grid;
-  /* 菜单 / 购物车 / 订单 / 钱包 / 我的 */
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-1);
+  /* 菜单 / 购物车 / 订单 / 我的 */
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
   padding: var(--space-2) max(var(--space-4), env(safe-area-inset-left)) calc(var(--space-2) + env(safe-area-inset-bottom));
   border-top: 1px solid var(--color-border);
   background: rgb(251 252 252 / 96%);
@@ -1835,7 +1835,7 @@ small {
    钱包 / 充值
    ========================================================================== */
 
-.wallet-page {
+.wallet-section {
   display: grid;
   gap: var(--space-4);
 }
@@ -1851,22 +1851,30 @@ small {
   box-shadow: 0 0.5rem 1.5rem rgb(37 56 61 / 12%);
 }
 
-.wallet-card-total {
+.wallet-card-line {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--space-3);
 }
 
-.wallet-card-total span {
+.wallet-card-line span {
   font-size: var(--type-small);
   opacity: 0.8;
 }
 
-.wallet-card-total strong {
+.wallet-card-line strong {
+  font-size: var(--type-title);
+  line-height: var(--line-title);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-card-line strong.wallet-card-primary {
   font-size: var(--type-display);
   line-height: var(--line-display);
   font-weight: var(--weight-heavy);
+  opacity: 1;
 }
 
 .wallet-card-split {
