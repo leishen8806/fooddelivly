@@ -344,7 +344,16 @@
     "admin.allRecharges": "全部",
     "admin.pendingOnly": "只看待审核",
     "admin.openRechargeProof": "查看转账截图",
-    "admin.rechargeStatusFilter": "筛选"
+    "admin.rechargeStatusFilter": "筛选",
+    "admin.rechargeCustomerId": "用户ID",
+    "admin.rechargeCustomerName": "用户名称",
+    "admin.rechargeTelegram": "Telegram",
+    "admin.rechargeBalance": "余额",
+    "admin.rechargeAmount": "充值金额",
+    "admin.rechargeStatus": "状态",
+    "admin.rechargeTime": "提交时间",
+    "admin.rechargeActions": "操作",
+    "admin.rechargeDetail": "详情"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -691,7 +700,16 @@
     "admin.allRecharges": "All",
     "admin.pendingOnly": "Only waiting for review",
     "admin.openRechargeProof": "Open transfer screenshot",
-    "admin.rechargeStatusFilter": "Filter"
+    "admin.rechargeStatusFilter": "Filter",
+    "admin.rechargeCustomerId": "User ID",
+    "admin.rechargeCustomerName": "Name",
+    "admin.rechargeTelegram": "Telegram",
+    "admin.rechargeBalance": "Balance",
+    "admin.rechargeAmount": "Top-up amount",
+    "admin.rechargeStatus": "Status",
+    "admin.rechargeTime": "Submitted",
+    "admin.rechargeActions": "Actions",
+    "admin.rechargeDetail": "Detail"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1038,6 +1056,15 @@
     "admin.allRecharges": "ទាំងអស់",
     "admin.pendingOnly": "តែរង់ចាំពិនិត្យ",
     "admin.openRechargeProof": "បើករូបភាពផ្ទេរប្រាក់",
-    "admin.rechargeStatusFilter": "តម្រង"
+    "admin.rechargeStatusFilter": "តម្រង",
+    "admin.rechargeCustomerId": "លេខអតិថិជន",
+    "admin.rechargeCustomerName": "ឈ្មោះ",
+    "admin.rechargeTelegram": "តេឡេក្រាម",
+    "admin.rechargeBalance": "សមតុល្យ",
+    "admin.rechargeAmount": "ចំនួនដាក់ប្រាក់",
+    "admin.rechargeStatus": "ស្ថានភាព",
+    "admin.rechargeTime": "ពេលផ្ញើ",
+    "admin.rechargeActions": "សកម្មភាព",
+    "admin.rechargeDetail": "លម្អិត"
   }
 }

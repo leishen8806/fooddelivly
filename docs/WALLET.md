@@ -160,10 +160,25 @@ wallet.is_order_owner_staff(p_staff_id, p_customer_id)
 | POST | `/api/v1/admin/wallets/{customer_id}/adjust` | 手动调账（仅 MANAGER） |
 | POST | `/api/v1/admin/wallet/maintenance` | 运维：过期单清理 + 对账（见 §6） |
 
-**C. 管理端「充值审核」页**（`frontend/src/components/AdminRecharges.tsx`）：
-默认只看 `under_review`，可切「全部」；每行展开后能看到转账截图、
-填实收金额、确认到账、填驳回原因、查看该客户钱包与账本
-（调账表单仅 MANAGER 可见，后端与数据库还会再校验一次）。
+**C. 管理端「充值管理」页**（`frontend/src/components/AdminRecharges.tsx`）：
+默认只看 `under_review`，可切「全部」。表格列：
+
+| 列 | 说明 |
+|---|---|
+| 用户ID | `customers.id` |
+| 用户名称 | `display_name`，缺失时回退 `username` |
+| Telegram | `@username`（可点开）+ `telegram_user_id` |
+| **余额** | 客户**当前**钱包余额，并在下方拆出本金 / 赠送（后端 LEFT JOIN `wallet.wallets`，没有钱包按 0） |
+| 充值金额 | 本单金额 + 赠送额 + 订单号 |
+| 状态 | 充值单状态 + 已传凭证张数 |
+| 提交时间 | 建单时间 + 提交凭证时间 |
+| 操作 | 「确认到账」「驳回」（仅未完成的单）+「详情」 |
+
+「详情」展开后：转账截图、实收金额输入（暂存）、驳回原因输入、
+查看该客户钱包与账本（调账表单仅 MANAGER 可见，后端与数据库还会再校验一次）。
+
+> 余额取的是**当前**值，不是充值当时的快照——审核时要看的是
+> 「这个客户账户里现在有多少钱、是不是老客户」，而不是历史值。
 
 **实收金额**：员工可以先改实收（`set_received_amount` 持久化到
 `recharge_orders.pending_received_amount`），点通过时由数据库按

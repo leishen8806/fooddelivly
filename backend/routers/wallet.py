@@ -255,6 +255,11 @@ async def admin_list_recharges(
             "customer_id": r["customer_id"],
             "telegram_user_id": r["telegram_user_id"],
             "display_name": r["display_name"],
+            "username": r["username"],
+            # 客户**当前**钱包余额，审核时用来判断这个客户的账户状态
+            "balance_minor": r["balance_minor"],
+            "principal_minor": r["principal_minor"],
+            "bonus_minor": r["bonus_minor"],
         }
         for r in rows
     ]

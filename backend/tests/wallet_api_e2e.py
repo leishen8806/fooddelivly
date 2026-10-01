@@ -202,6 +202,21 @@ def main() -> None:
     check("员工可查客户钱包与账本", r.status_code == 200 and len(r.json()["ledger"]) >= 3,
           str(r.status_code))
 
+    # 管理端「充值管理」表格依赖这些字段：用户ID / 名称 / Telegram / 当前余额
+    listed = admin.get("/api/v1/admin/recharges").json()
+    row = [x for x in listed if x["id"] == o1["id"]][0]
+    wallet_total = cust.get("/api/v1/wallet").json()["total_minor"]
+    check("管理端列表带客户ID/名称/Telegram/当前余额",
+          row["customer_id"] == CUSTOMER_ID
+          and row["telegram_user_id"] == CUSTOMER_TG
+          and "username" in row
+          and row["balance_minor"] == wallet_total,
+          f'customer={row["customer_id"]} tg={row["telegram_user_id"]} '
+          f'balance={row["balance_minor"]} vs {wallet_total}')
+    check("余额拆分（本金+赠送=合计）",
+          row["principal_minor"] + row["bonus_minor"] == row["balance_minor"],
+          f'{row["principal_minor"]}+{row["bonus_minor"]}={row["balance_minor"]}')
+
     print("\n[6] 机器人链路：/wallet -> 点档位 -> 发截图 -> 群里确认到账")
     before_ids = {x["id"] for x in admin.get("/api/v1/admin/recharges").json()}
     r = webhook(msg("/wallet"))

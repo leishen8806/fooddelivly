@@ -74,6 +74,11 @@ export interface RechargeOrder {
   customer_id?: number;
   telegram_user_id?: string;
   display_name?: string | null;
+  username?: string | null;
+  /** 客户**当前**钱包余额（管理端列表用，LEFT JOIN wallets 得到，没有钱包为 0） */
+  balance_minor?: number;
+  principal_minor?: number;
+  bonus_minor?: number;
 }
 
 /** 账本流水（只读） */

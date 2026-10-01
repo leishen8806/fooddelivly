@@ -351,27 +351,31 @@ async def cancel_recharge(db: AsyncSession, *, order_id: int, customer_id: int):
 # ---------------------------------------------------------------------------
 
 async def list_recharges_admin(db: AsyncSession, status: str | None, limit: int = 50):
+    """管理端充值单列表。
+
+    除了单据本身，还带出客户信息与**当前钱包余额**——审核时要能一眼看出
+    这个客户是不是老用户、账户里已经有多少钱。余额用 LEFT JOIN 取，
+    没有钱包的客户按 0 处理（不建空钱包）。
+    """
+    base = """
+        SELECT o.*,
+               c.telegram_user_id, c.display_name, c.username,
+               COALESCE(w.principal, 0) + COALESCE(w.bonus, 0) AS balance_minor,
+               COALESCE(w.principal, 0) AS principal_minor,
+               COALESCE(w.bonus, 0)     AS bonus_minor
+          FROM wallet.recharge_orders o
+          JOIN public.customers c ON c.id = o.customer_id
+          LEFT JOIN wallet.wallets w
+                 ON w.customer_id = o.customer_id AND w.currency = o.currency
+    """
     if status:
         return await _fetchall(
             db,
-            """
-            SELECT o.*, c.telegram_user_id, c.display_name
-              FROM wallet.recharge_orders o
-              JOIN public.customers c ON c.id = o.customer_id
-             WHERE o.status = :status
-             ORDER BY o.created_at DESC LIMIT :limit
-            """,
+            base + " WHERE o.status = :status ORDER BY o.created_at DESC LIMIT :limit",
             {"status": status, "limit": limit},
         )
     return await _fetchall(
-        db,
-        """
-        SELECT o.*, c.telegram_user_id, c.display_name
-          FROM wallet.recharge_orders o
-          JOIN public.customers c ON c.id = o.customer_id
-         ORDER BY o.created_at DESC LIMIT :limit
-        """,
-        {"limit": limit},
+        db, base + " ORDER BY o.created_at DESC LIMIT :limit", {"limit": limit}
     )
 
 
