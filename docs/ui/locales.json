@@ -414,7 +414,8 @@
     "admin.addOption": "加选项",
     "admin.addGroup": "加分组",
     "admin.removeGroup": "删分组",
-    "admin.rulesSaved": "已保存"
+    "admin.rulesSaved": "已保存",
+    "menu.notOrderableShort": "未开售"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -831,7 +832,8 @@
     "admin.addOption": "Add option",
     "admin.addGroup": "Add group",
     "admin.removeGroup": "Remove group",
-    "admin.rulesSaved": "Saved"
+    "admin.rulesSaved": "Saved",
+    "menu.notOrderableShort": "Closed"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1248,6 +1250,7 @@
     "admin.addOption": "បន្ថែមជម្រើស",
     "admin.addGroup": "បន្ថែមក្រុម",
     "admin.removeGroup": "លុបក្រុម",
-    "admin.rulesSaved": "បានរក្សាទុក"
+    "admin.rulesSaved": "បានរក្សាទុក",
+    "menu.notOrderableShort": "បិទ"
   }
 }

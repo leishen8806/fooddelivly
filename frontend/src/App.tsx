@@ -8,7 +8,8 @@ import { TelegramProvider } from './components/TelegramProvider';
 import CustomerWallet from './components/CustomerWallet';
 import AdminRecharges from './components/AdminRecharges';
 import AdminDailyReport from './components/AdminDailyReport';
-import ProductOptionsPicker, { type OptionGroup } from './components/ProductOptionsPicker';
+import { type OptionGroup } from './components/ProductOptionsPicker';
+import ProductOptionsModal from './components/ProductOptionsModal';
 import AdminProductRules from './components/AdminProductRules';
 import { useAuthStore } from './store/authStore';
 import './index.css';
@@ -109,8 +110,7 @@ function CustomerPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
-  const [sweetnessByProduct, setSweetnessByProduct] = useState<Record<number, number>>({});
-  const [optionsByProduct, setOptionsByProduct] = useState<Record<number, Picked>>({});
+  const [optionsProduct, setOptionsProduct] = useState<Product | null>(null);   // 规格弹窗当前商品
   const [room, setRoom] = useState('');
   const [orderDetails, setOrderDetails] = useState<CustomerOrderDetails | null>(null);
   const [orderLoading, setOrderLoading] = useState(false);
@@ -257,39 +257,9 @@ function CustomerPage() {
     }
   };
 
-  // 没选过就用 is_default 初始化（不写 state，避免每次渲染都 setState）
-  const defaultsFor = (product: Product): Picked => {
-    const out: Picked = {};
-    (product.option_groups ?? []).forEach((group) => {
-      out[group.id] = group.options.filter((option) => option.is_default).map((option) => option.id);
-    });
-    return out;
-  };
-  const selectionsFor = (product: Product): Picked => optionsByProduct[product.id] ?? defaultsFor(product);
-
-  const optionDelta = (product: Product, picked: Picked) =>
-    (product.option_groups ?? []).reduce((sum, group) => sum
-      + group.options.filter((option) => (picked[group.id] ?? []).includes(option.id))
-          .reduce((inner, option) => inner + option.price_delta_minor, 0), 0);
-
-  const toggleOption = (product: Product, group: OptionGroup, optionId: number) => {
-    setOptionsByProduct((current) => {
-      const state = current[product.id] ?? defaultsFor(product);
-      const picked = state[group.id] ?? [];
-      let next: number[];
-      if (group.multi_select) {
-        next = picked.includes(optionId) ? picked.filter((id) => id !== optionId) : [...picked, optionId];
-        if (group.max_select && next.length > group.max_select) {
-          setStatus(t('menu.optionMax', { max: group.max_select }));
-          return current;
-        }
-      } else {
-        // 单选：必选项点已选中的不取消，避免用户把自己卡在「没选」的状态
-        next = group.required && picked.includes(optionId) ? picked : [optionId];
-      }
-      return { ...current, [product.id]: { ...state, [group.id]: next } };
-    });
-  };
+  // 有规格/附加、或者需要选甜度的商品，点加购时先弹窗配置
+  const needsConfig = (product: Product) =>
+    (product.option_groups ?? []).length > 0 || product.sweetness_enabled;
 
   const toSelections = (picked: Picked): CartSelection[] =>
     Object.entries(picked).flatMap(([groupId, optionIds]) =>
@@ -324,37 +294,44 @@ function CustomerPage() {
     return t('menu.saleWindow', { hours });
   };
 
-  const add = (product: Product) => {
-    if (cart.length && cart[0].product.currency !== product.currency) {
-      setStatus(t('cart.mixedCurrency'));
-      return;
-    }
-    if (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined) {
-      setStatus(t('menu.selectSweetnessFirst'));
-      return;
-    }
-    // 必选规格没选就不让加：服务端也会拦，但别让用户走到结算才被拒
-    const picked = selectionsFor(product);
-    const missing = (product.option_groups ?? []).find(
-      (group) => group.required && !(picked[group.id] ?? []).length);
-    if (missing) {
-      setStatus(t('menu.optionChooseRequired', { name: localizeName(missing.name, missing.name_text) }));
-      return;
-    }
+  // 把一行配置好的商品放进购物车（同菜不同规格分行）
+  const pushLine = (product: Product, selections: CartSelection[], sweetness: number | null, unitPrice: number, quantity: number) => {
     setStatus('');
     idempotencyKey.current = null;
-    const selections = toSelections(picked);
-    const unitPrice = product.price_minor + optionDelta(product, picked);
     setCart((current) => {
-      const selectedSweetness = product.sweetness_enabled ? sweetnessByProduct[product.id] : null;
-      const line: CartLine = { product, quantity: 1, sweetness: selectedSweetness, selections, unitPrice };
+      const line: CartLine = { product, quantity, sweetness, selections, unitPrice };
       const key = cartLineKey(line);
       const found = current.find((item) => cartLineKey(item) === key);
       return found
-        ? current.map((item) => cartLineKey(item) === key ? { ...item, quantity: Math.min(99, item.quantity + 1) } : item)
+        ? current.map((item) => cartLineKey(item) === key ? { ...item, quantity: Math.min(99, item.quantity + quantity) } : item)
         : [...current, line];
     });
   };
+
+  const guardCurrency = (product: Product) => {
+    if (cart.length && cart[0].product.currency !== product.currency) {
+      setStatus(t('cart.mixedCurrency'));
+      return false;
+    }
+    return true;
+  };
+
+  // 无规格、不需要选甜度的商品：一键加购
+  const add = (product: Product) => {
+    if (!guardCurrency(product)) return;
+    pushLine(product, [], null, product.price_minor, 1);
+  };
+
+  // 弹窗确认：规格/附加/甜度都在这里定下来
+  const confirmOptions = (product: Product, picked: Picked, sweetness: number | null, quantity: number) => {
+    if (!guardCurrency(product)) { setOptionsProduct(null); return; }
+    const delta = (product.option_groups ?? []).reduce((sum, group) => sum
+      + group.options.filter((option) => (picked[group.id] ?? []).includes(option.id))
+          .reduce((inner, option) => inner + option.price_delta_minor, 0), 0);
+    pushLine(product, toSelections(picked), sweetness, product.price_minor + delta, quantity);
+    setOptionsProduct(null);
+  };
+
   const setQuantity = (key: string, quantity: number) => {
     idempotencyKey.current = null;
     setCart((current) => quantity < 1 ? current.filter((line) => cartLineKey(line) !== key) : current.map((line) => cartLineKey(line) === key ? { ...line, quantity: Math.min(99, quantity) } : line));
@@ -437,17 +414,13 @@ function CustomerPage() {
           <h2 id={`category-${selectedCategory.id}`} className="category-products-title">{label(selectedCategory.name, i18n.language)}</h2>
           {(selectedCategory.products || []).length === 0 ? <p className="category-products-empty">{t('menu.emptyDescription')}</p> : <div className="menu-product-list">{(selectedCategory.products || []).map((product) => <article className="product-card menu-product-row" key={product.id}>
             {product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}
-            <div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p>
-              {product.sweetness_enabled && <label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? ''} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="" disabled>{t('menu.chooseSweetness')}</option><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label>}
-            </div>
-            {(product.option_groups ?? []).length > 0 && <ProductOptionsPicker groups={product.option_groups ?? []} value={selectionsFor(product)} onChange={(groupId, optionId) => {
-                const group = (product.option_groups ?? []).find((item) => item.id === groupId);
-                if (group) toggleOption(product, group, optionId);
-              }} currency={product.currency} />}
+            <div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p></div>
             {orderable(product) === false && <p className="product-window-note">{saleWindowNote(product)}</p>}
             <div className="product-foot">
-              <strong>{amount(product.price_minor + optionDelta(product, selectionsFor(product)), product.currency, i18n.language)}</strong>
-              <button type="button" aria-label={orderable(product) ? t('menu.addToCart') : t('menu.notOrderable')} title={orderable(product) ? t('menu.addToCart') : t('menu.notOrderable')} disabled={!orderable(product) || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{orderable(product) ? '➕' : t('menu.notOrderable')}</button>
+              <strong>{amount(product.price_minor, product.currency, i18n.language)}</strong>
+              {orderable(product)
+                ? <button type="button" aria-label={t('menu.addToCart')} title={t('menu.addToCart')} onClick={() => needsConfig(product) ? setOptionsProduct(product) : add(product)}>➕</button>
+                : <span className="product-closed" aria-label={t('menu.notOrderable')}>{t('menu.notOrderableShort')}</span>}
             </div>
           </article>)}</div>}
         </section>}
@@ -479,6 +452,15 @@ function CustomerPage() {
       </button>)}</div>
     </section>}
 
+    {optionsProduct && <ProductOptionsModal
+      product={optionsProduct}
+      currency={optionsProduct.currency}
+      language={i18n.language}
+      orderable={orderable(optionsProduct)}
+      note={saleWindowNote(optionsProduct)}
+      onClose={() => setOptionsProduct(null)}
+      onConfirm={(picked, sweetness, quantity) => confirmOptions(optionsProduct, picked, sweetness, quantity)}
+    />}
     {activeTab === 'me' && <section className="customer-page-section customer-profile">
       <div className="customer-page-heading"><span className="eyebrow">{t('profile.telegramConnected')}</span><h2>{t('profile.title')}</h2></div>
       {profileLoading && <p className="state" role="status">{t('common.loading')}</p>}
