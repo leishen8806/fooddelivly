@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func
+from sqlalchemy import func, text
 
 from database import get_db
 from dependencies import get_current_staff
@@ -49,6 +49,26 @@ async def get_analytics(
         .group_by(Order.currency)
     )
     confirmed_by_currency = {currency: int(amount or 0) for currency, amount in reviews_result.all()}
+
+    # 钱包余额支付的订单没有 PaymentReview 记录（下单即扣款），
+    # 只按 PaymentReview 汇总会让财务日报**漏掉这部分收入**。
+    # 这里按订单号关联钱包支付记录，并扣掉已退金额，得到净收款。
+    wallet_result = await db.execute(
+        text(
+            """
+            SELECT o.currency,
+                   sum(o.total_minor - COALESCE(p.refunded_amount, 0)) AS net_minor
+              FROM public.orders o
+              LEFT JOIN wallet.order_payments p ON p.biz_id = o.public_code
+             WHERE o.payment_method = 'WALLET'
+               AND o.created_at >= :start_utc AND o.created_at < :end_utc
+             GROUP BY o.currency
+            """
+        ),
+        {"start_utc": start_utc, "end_utc": end_utc},
+    )
+    for currency, net in wallet_result.all():
+        confirmed_by_currency[currency] = confirmed_by_currency.get(currency, 0) + int(net or 0)
 
     totals: dict[str, dict[str, int]] = {}
     for order in orders:

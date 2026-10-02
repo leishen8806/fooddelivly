@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
@@ -138,6 +138,23 @@ class AuditLog(Base):
     action = Column(String, nullable=False)
     details = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ReportDelivery(Base):
+    """每日报表的投递记录：保证「一天一份」不重复发。
+
+    (report_key, chat_id) 上有唯一约束——调度器与外部 cron 都先抢占这一行，
+    抢不到就说明当天已经发过，直接跳过。
+    """
+    __tablename__ = "report_deliveries"
+
+    id = Column(Integer, primary_key=True, index=True)
+    report_key = Column(String, nullable=False)   # 例如 daily_sales:2026-10-01
+    report_date = Column(Date, nullable=False)
+    chat_id = Column(String, nullable=False)
+    message_id = Column(String, nullable=True)
+    payload = Column(JSON, nullable=False)
+    sent_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
 
 class StoreSettings(Base):
     __tablename__ = "store_settings"

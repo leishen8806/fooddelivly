@@ -2143,3 +2143,40 @@ small {
   font-weight: var(--weight-semibold);
 }
 
+/* 每日报表卡片 */
+.daily-report-panel {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.daily-report-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.daily-report-status small {
+  color: var(--color-muted);
+  font-size: var(--type-caption);
+}
+
+.daily-report-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--space-3);
+}
+
+.daily-report-text {
+  margin: 0;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-canvas);
+  font-family: inherit;
+  font-size: var(--type-small);
+  line-height: var(--line-small);
+  white-space: pre-wrap;
+  overflow-x: auto;
+}
+

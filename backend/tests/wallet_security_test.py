@@ -365,6 +365,27 @@ def main() -> None:
     check("入账金额 = 20000 + 10% 赠送 2000", after_total == before_total + 22000,
           f"{before_total} -> {after_total}")
 
+    print("\n[13b] 每日报表：权限矩阵与投递幂等")
+    check("未登录看日报 -> 401",
+          anon().get("/api/v1/admin/reports/daily").status_code == 401)
+    check("客户看日报 -> 401",
+          a.get("/api/v1/admin/reports/daily").status_code == 401)
+    check("STAFF 可以预览日报（只读）",
+          staff.get("/api/v1/admin/reports/daily").status_code == 200)
+    check("STAFF 不能发送日报 -> 403",
+          staff.post("/api/v1/admin/reports/daily/send", json={}).status_code == 403)
+    check("未登录不能发送日报 -> 401",
+          anon().post("/api/v1/admin/reports/daily/send", json={}).status_code == 401)
+    check("伪造 cron 密钥 -> 401",
+          httpx.post(f"{BASE}/api/v1/admin/reports/daily/send", json={}, timeout=20,
+                     headers={"X-Cron-Secret": "wrong"}).status_code == 401)
+    # 报表要按「店铺时区的自然日」切分：预览必须带上时区与日期
+    preview = manager.get("/api/v1/admin/reports/daily").json()
+    check("日报带日期/时区/统计字段",
+          preview["report"]["date"] and preview["report"]["timezone"] == "Asia/Phnom_Penh"
+          and "orders" in preview["report"] and "received_total_minor" in preview["report"],
+          str(preview["report"])[:90])
+
     print("\n[14] 限流（探针打管理员登录接口，同时验证防撞库）")
     # 用登录接口做探针：这条规则只有本用例会碰，不会污染其它用例的身份桶。
     # 限流是 10 次/5 分钟/IP，所以最多打 15 次一定能看到 429。

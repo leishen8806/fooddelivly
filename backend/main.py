@@ -4,19 +4,44 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy import text
 from pathlib import Path
+from daily_report import start_scheduler
 from rate_limit import RateLimitMiddleware
-from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet
+from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet, admin_reports
+import logging
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+# 应用自己的日志（限流命中、报表投递、审核动作…）默认没有 handler 会被直接丢弃，
+# uvicorn 只配置它自己的 logger。这里在没有 handler 时兜一个，级别可用 LOG_LEVEL 调整。
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 # Startup safety checks
 if not os.getenv("JWT_SECRET"):
     raise RuntimeError("CRITICAL: JWT_SECRET environment variable is not set. Refusing to start.")
 
 production = os.getenv("APP_ENV", "development").lower() == "production"
-app = FastAPI(title="Tea Cafe API", docs_url=None if production else "/docs", redoc_url=None if production else "/redoc", openapi_url=None if production else "/openapi.json")
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # 进程内定时：每天早上 DAILY_REPORT_HOUR（默认 8 点，店铺时区）发前一天的报表。
+    # 发送本身幂等（report_deliveries 唯一约束），所以重启/多副本只会送达一次。
+    task = start_scheduler()
+    try:
+        yield
+    finally:
+        if task is not None:
+            task.cancel()
+
+
+app = FastAPI(title="Tea Cafe API", lifespan=lifespan, docs_url=None if production else "/docs", redoc_url=None if production else "/redoc", openapi_url=None if production else "/openapi.json")
 
 allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,https://food.workline.ink").split(",")
 allowed_origins = [origin.strip().rstrip("/") for origin in allowed_origins if origin.strip()]
@@ -58,6 +83,7 @@ app.include_router(admin_staff.router)
 app.include_router(uploads.router)
 app.include_router(wallet.router)
 app.include_router(wallet.admin_router)
+app.include_router(admin_reports.router)
 
 @app.get("/health")
 async def health_check():

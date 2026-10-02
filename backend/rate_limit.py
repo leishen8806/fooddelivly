@@ -43,7 +43,9 @@ RULES: tuple[tuple[str, re.Pattern[str], int, int], ...] = (
     ("POST", re.compile(r"^/api/v1/orders$"), 20, 60),
     # 登录：防撞库/暴力破解（按 IP）
     ("POST", re.compile(r"^/api/v1/auth/admin/login$"), 10, 300),
-    ("POST", re.compile(r"^/api/v1/auth/telegram$"), 30, 60),
+    # 登录前只能按 IP 限流：店里 WiFi 会让很多顾客共用一个出口 IP，
+    # 所以这条给得宽（120/分），它的作用是挡脚本，不是卡正常顾客
+    ("POST", re.compile(r"^/api/v1/auth/telegram$"), 120, 60),
     # 员工审核动作
     ("POST", re.compile(r"^/api/v1/admin/recharges/\d+/(approve|reject|received)$"), 60, 60),
     ("POST", re.compile(r"^/api/v1/admin/wallets/\d+/adjust$"), 20, 60),

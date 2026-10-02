@@ -352,6 +352,22 @@ def main() -> None:
     check("退款回到钱包", cust.get("/api/v1/wallet").json()["total_minor"] == bal,
           str(cust.get("/api/v1/wallet").json()["total_minor"]))
 
+    # 财务日报必须把钱包支付的收入算进去（钱包单没有 PaymentReview 记录），
+    # 并且要扣掉已退款的部分 —— 否则日报会静默少算收入。
+    def confirmed_usd() -> int:
+        rows = admin.get("/api/v1/admin/analytics/").json()["by_currency"]
+        return next((int(r["confirmed_receipts_minor"]) for r in rows if r["currency"] == "USD"), 0)
+
+    baseline = confirmed_usd()
+    kept = cust.post("/api/v1/orders",
+                     json={"room_number": "W3", "items": [{"product_id": 1, "quantity": 2}],
+                           "pay_with_wallet": True},
+                     headers={"Idempotency-Key": f"wallet-keep-{run}"})
+    check("再下一单钱包支付 200", kept.status_code == 200, f"{kept.status_code} {kept.text[:60]}")
+    delta = confirmed_usd() - baseline
+    check("日报的确认收款包含钱包支付（退款单净额为 0）", delta == 1000,
+          f"baseline={baseline} now={baseline + delta} delta={delta}（应为 1000）")
+
     before_count = len(cust.get("/api/v1/orders").json())
     r = cust.post("/api/v1/orders",
                   json={"room_number": "W2", "items": [{"product_id": 1, "quantity": 99}],
@@ -361,6 +377,32 @@ def main() -> None:
     check("余额不足时订单没有被创建",
           len(cust.get("/api/v1/orders").json()) == before_count,
           str(len(cust.get("/api/v1/orders").json())))
+
+    print("\n[9] 回归：既有 Telegram 群按钮流程（accept / confirmpay / ready）")
+    # 钱包功能改动了 _handle_callback 的分发，这里守住「人工转账订单」的群按钮链路
+    def group_cb(action: str, oid_: int) -> httpx.Response:
+        return webhook({"callback_query": {"id": f"e2e-{action}-{oid_}", "from": {"id": int(STAFF_TG)},
+                                           "message": {"message_id": 9001,
+                                                       "chat": {"id": int(GROUP_ID), "type": "supergroup"}},
+                                           "data": f"{action}_{oid_}"}})
+
+    legacy = cust.post("/api/v1/orders",
+                       json={"room_number": "L1", "items": [{"product_id": 1, "quantity": 1}]},
+                       headers={"Idempotency-Key": f"legacy-{run}"}).json()
+    legacy_id = [o for o in admin.get("/api/v1/admin/orders").json()
+                 if o["public_code"] == legacy["public_code"]][0]["id"]
+    check("群里 accept 回调 200", group_cb("accept", legacy_id).status_code == 200, "")
+    state = [o for o in admin.get("/api/v1/admin/orders").json() if o["id"] == legacy_id][0]
+    check("订单被接单 ACCEPTED", state["order_status"] == "ACCEPTED", state["order_status"])
+
+    webhook(msg(f"/start pay_{legacy['public_code']}"))
+    webhook(photo(f"LEG-{run}", f"LEGU-{run}"))
+    check("群里 confirmpay 回调 200", group_cb("confirmpay", legacy_id).status_code == 200, "")
+    state = [o for o in admin.get("/api/v1/admin/orders").json() if o["id"] == legacy_id][0]
+    check("确认收款后 PAID_CONFIRMED + PREPARING",
+          state["payment_status"] == "PAID_CONFIRMED" and state["order_status"] == "PREPARING",
+          f'{state["order_status"]}/{state["payment_status"]}')
+    check("群里 ready 回调 200", group_cb("ready", legacy_id).status_code == 200, "")
 
     fails = [x for x in RESULTS if not x[1]]
     print("\n" + "=" * 64)
