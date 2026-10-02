@@ -2229,6 +2229,10 @@ small {
 .rules-hint { margin: 0; font-size: var(--type-caption); color: var(--color-muted); }
 .rules-rows { display: grid; gap: var(--space-2); }
 .rules-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+/* 时间输入不该占满整行（全局 input 样式是给文本框用的），否则时间段会竖排 */
+.rules-row input[type="time"] { width: auto; min-width: 7rem; flex: 1 1 7rem; }
+.rules-row input[type="number"] { width: auto; min-width: 6rem; flex: 0 1 6rem; }
+.rules-row > span { flex: none; }
 .rules-row input[type="text"], .rules-row input:not([type]) { min-width: 7rem; }
 .rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-2); }
 .rules-group { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-3); display: grid; gap: var(--space-2); }
@@ -2336,4 +2340,9 @@ small {
   font-size: var(--type-caption);
   white-space: nowrap;
 }
+
+/* 设置页里的分组块（营业时间等） */
+.settings-block { display: grid; gap: var(--space-2); grid-column: 1 / -1; }
+.settings-block > strong { font-size: var(--type-body); }
+.settings-block > small { color: var(--color-muted); font-size: var(--type-caption); }
 

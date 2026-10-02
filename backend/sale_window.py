@@ -67,3 +67,24 @@ def describe(windows) -> list[dict]:
     items = sorted((_as_window(w) for w in windows), key=lambda w: w.start)
     return [{"start": w.start.strftime("%H:%M"), "end": w.end.strftime("%H:%M"),
              "overnight": w.start > w.end} for w in items]
+
+
+def windows_from_json(raw) -> list[Window]:
+    """把 `[{"start": "08:00", "end": "20:00"}]` 解析成窗口列表。
+
+    解析失败的那一条直接忽略——宁可「不限制」也不要因为一条脏配置
+    把整个店的下单全锁死。
+    """
+    out: list[Window] = []
+    for item in raw or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            start = time.fromisoformat(str(item.get("start", "")).strip())
+            end = time.fromisoformat(str(item.get("end", "")).strip())
+        except ValueError:
+            continue
+        out.append(Window(start.replace(second=0, microsecond=0),
+                          end.replace(second=0, microsecond=0)))
+    return out
+

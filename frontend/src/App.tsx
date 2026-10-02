@@ -30,7 +30,10 @@ type CustomerOrder = { public_code: string; room_number: string; order_status: s
 type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null };
 type LanguageCode = 'zh-CN' | 'en' | 'km';
 type CustomerProfile = { customer_id: number; display_name: string | null; username: string | null; language: LanguageCode; preferred_language: LanguageCode | null };
-type StoreSettings = { currency: string; timezone: string; aba_qr_asset_key: string | null; payment_link: string | null; telegram_staff_group_id: string | null; staff_group_language: string; open_hours: string | null };
+type BusinessHourRow = { start: string; end: string };
+type StoreSettings = { currency: string; timezone: string; aba_qr_asset_key: string | null; payment_link: string | null; telegram_staff_group_id: string | null; staff_group_language: string; open_hours: string | null;
+  // 经营参数：下单时由服务端强制校验
+  is_accepting_orders: boolean; business_hours: BusinessHourRow[]; min_order_minor: number; delivery_fee_minor: number; service_fee_minor: number };
 type Staff = { id: number; login_name: string; role: string; active: boolean; telegram_user_id: string | null };
 type Customer = { id: number; telegram_user_id: string; display_name: string | null; username: string | null; telegram_chat_url: string; order_count: number; completed_order_count: number; created_at: string };
 type AuditEntry = { id: number; entity_type: string; entity_id: string; action: string; operator_name: string; operator_telegram_id: string | null; source: string; details: Record<string, any>; created_at: string };
@@ -44,6 +47,11 @@ const amount = (minor: number, currency: string, locale = 'en') => {
     return `${minor} ${currency}`;
   }
 };
+const fromMinor = (minor: number, currency: string) => {
+  try { return minor / (10 ** (new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2)); }
+  catch { return minor / 100; }
+};
+
 const toMinor = (value: number, currency: string) => {
   try { return Math.round(value * (10 ** (new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2))); }
   catch { return Math.round(value * 100); }
@@ -570,7 +578,8 @@ function AdminPage() {
   const [newCategory, setNewCategory] = useState({ en: '', zh: '', km: '' });
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
-  const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null });
+  const [feeInputs, setFeeInputs] = useState({ minOrder: '', delivery: '', service: '' });
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null, is_accepting_orders: true, business_hours: [], min_order_minor: 0, delivery_fee_minor: 0, service_fee_minor: 0 });
   const [staff, setStaff] = useState<Staff[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -595,7 +604,15 @@ function AdminPage() {
     if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
     if (productResult.status === 'fulfilled') setProducts(productResult.value.data);
     if (categoryResult.status === 'fulfilled') setCategories(categoryResult.value.data);
-    if (settingsResult.status === 'fulfilled') setStoreSettings(settingsResult.value.data);
+    if (settingsResult.status === 'fulfilled') {
+      const loaded = settingsResult.value.data as StoreSettings;
+      setStoreSettings(loaded);
+      setFeeInputs({
+        minOrder: String(fromMinor(loaded.min_order_minor ?? 0, loaded.currency)),
+        delivery: String(fromMinor(loaded.delivery_fee_minor ?? 0, loaded.currency)),
+        service: String(fromMinor(loaded.service_fee_minor ?? 0, loaded.currency)),
+      });
+    }
     if (staffResult.status === 'fulfilled') setStaff(staffResult.value.data);
     if (customerResult.status === 'fulfilled') setCustomers(customerResult.value.data);
   }, [from, to, role, t]);
@@ -691,8 +708,19 @@ function AdminPage() {
   };
   const saveSettings = async (event: FormEvent) => {
     event.preventDefault();
-    try { await api.patch('/api/v1/admin/settings/', storeSettings); await fetchData(); }
-    catch { setError(t('error.generic')); }
+    try {
+      await api.patch('/api/v1/admin/settings/', {
+        ...storeSettings,
+        // 金额输入是主单位，提交前换成最小单位
+        min_order_minor: toMinor(Number(feeInputs.minOrder || 0), storeSettings.currency),
+        delivery_fee_minor: toMinor(Number(feeInputs.delivery || 0), storeSettings.currency),
+        service_fee_minor: toMinor(Number(feeInputs.service || 0), storeSettings.currency),
+      });
+      await fetchData();
+      setError('');
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.detail || t('error.generic'));
+    }
   };
   const refundOrder = async (order: Order) => {
     // 出餐后的钱包订单不能用「取消」退款，必须走这条仅 MANAGER 的退款路径
@@ -793,7 +821,25 @@ function AdminPage() {
       <ImageUpload label={t('admin.qrImageUrl')} value={storeSettings.aba_qr_asset_key} onChange={(aba_qr_asset_key) => setStoreSettings((current) => ({ ...current, aba_qr_asset_key }))} />
       <label>{t('admin.groupId')}<input inputMode="numeric" value={storeSettings.telegram_staff_group_id || ''} onChange={(event) => setStoreSettings({ ...storeSettings, telegram_staff_group_id: event.target.value || null })} /><small>{t('admin.groupIdHelp')}</small></label>
       <label>{t('admin.groupLanguage')}<select value={storeSettings.staff_group_language} onChange={(event) => setStoreSettings({ ...storeSettings, staff_group_language: event.target.value })}><option value="en">English</option><option value="zh-CN">中文</option><option value="km">ខ្មែរ</option></select></label>
-      <label>{t('admin.openHours')}<input value={storeSettings.open_hours || ''} onChange={(event) => setStoreSettings({ ...storeSettings, open_hours: event.target.value || null })} /></label>
+      <label className="product-sweetness-toggle"><input type="checkbox" checked={storeSettings.is_accepting_orders} onChange={(event) => setStoreSettings({ ...storeSettings, is_accepting_orders: event.target.checked })} /><span><strong>{t('admin.acceptingOrders')}</strong><small>{t('admin.acceptingOrdersHint')}</small></span></label>
+
+      <div className="settings-block">
+        <strong>{t('admin.businessHours')}</strong>
+        <small>{t('admin.businessHoursHint')}</small>
+        <div className="rules-rows">
+          {(storeSettings.business_hours ?? []).map((window, index) => <div className="rules-row" key={index}>
+            <input type="time" value={window.start} onChange={(event) => setStoreSettings({ ...storeSettings, business_hours: (storeSettings.business_hours ?? []).map((w, i) => i === index ? { ...w, start: event.target.value } : w) })} />
+            <span>–</span>
+            <input type="time" value={window.end} onChange={(event) => setStoreSettings({ ...storeSettings, business_hours: (storeSettings.business_hours ?? []).map((w, i) => i === index ? { ...w, end: event.target.value } : w) })} />
+            <button type="button" onClick={() => setStoreSettings({ ...storeSettings, business_hours: (storeSettings.business_hours ?? []).filter((_, i) => i !== index) })}>{t('common.delete')}</button>
+          </div>)}
+        </div>
+        <div className="actions"><button type="button" onClick={() => setStoreSettings({ ...storeSettings, business_hours: [...(storeSettings.business_hours ?? []), { start: '08:00', end: '22:00' }] })}>{t('admin.addWindow')}</button></div>
+      </div>
+
+      <label>{t('admin.minOrder')}<input type="number" min="0" step="0.01" value={feeInputs.minOrder} onChange={(event) => setFeeInputs({ ...feeInputs, minOrder: event.target.value })} /><small>{t('admin.minOrderHint')}</small></label>
+      <label>{t('admin.deliveryFee')}<input type="number" min="0" step="0.01" value={feeInputs.delivery} onChange={(event) => setFeeInputs({ ...feeInputs, delivery: event.target.value })} /></label>
+      <label>{t('admin.serviceFee')}<input type="number" min="0" step="0.01" value={feeInputs.service} onChange={(event) => setFeeInputs({ ...feeInputs, service: event.target.value })} /></label>
       <button className="primary" type="submit">{t('admin.updateSettings')}</button>
     </form></section>}
     {section === 'staff' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('admin.staffList')}</h2></div><form className="product-form" onSubmit={addStaff}>

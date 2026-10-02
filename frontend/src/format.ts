@@ -20,6 +20,15 @@ export const toMinorUnits = (value: number, currency: string) => {
   }
 };
 
+export const toMajorUnits = (minor: number, currency: string) => {
+  try {
+    const digits = new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().maximumFractionDigits ?? 2;
+    return minor / (10 ** digits);
+  } catch {
+    return minor / 100;
+  }
+};
+
 export const formatDateTime = (value: string | null | undefined, locale = 'en') => {
   if (!value) return '—';
   try {

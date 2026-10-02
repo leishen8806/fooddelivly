@@ -76,6 +76,9 @@ if [ -n "${E2E_URL:-}" ]; then
   echo
   echo "== 7/7 菜品端到端用例（27 项，${E2E_URL}）=="
   "$PYTHON" "$HERE/menu_options_e2e.py" "$E2E_URL" | tail -5
+  echo
+  echo "== 7/7 店铺经营参数用例（14 项，${E2E_URL}）=="
+  "$PYTHON" "$HERE/operating_settings_e2e.py" "$E2E_URL" | tail -5
 else
   echo
   echo "== 6/7 端到端 / 7/7 安全用例 =="

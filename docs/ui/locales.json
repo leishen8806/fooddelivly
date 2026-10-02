@@ -415,7 +415,15 @@
     "admin.addGroup": "加分组",
     "admin.removeGroup": "删分组",
     "admin.rulesSaved": "已保存",
-    "menu.notOrderableShort": "未开售"
+    "menu.notOrderableShort": "未开售",
+    "admin.acceptingOrders": "接单开关",
+    "admin.acceptingOrdersHint": "关掉后所有下单都会被拒绝",
+    "admin.businessHours": "营业时间",
+    "admin.businessHoursHint": "留空 = 全天营业。可配多段；开始时间大于结束时间表示跨午夜。",
+    "admin.minOrder": "最低起送",
+    "admin.minOrderHint": "按商品小计判断，不含配送费/服务费",
+    "admin.deliveryFee": "配送费",
+    "admin.serviceFee": "服务费"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -833,7 +841,15 @@
     "admin.addGroup": "Add group",
     "admin.removeGroup": "Remove group",
     "admin.rulesSaved": "Saved",
-    "menu.notOrderableShort": "Closed"
+    "menu.notOrderableShort": "Closed",
+    "admin.acceptingOrders": "Accepting orders",
+    "admin.acceptingOrdersHint": "Turn off to pause all orders",
+    "admin.businessHours": "Business hours",
+    "admin.businessHoursHint": "Empty = open 24h. Multiple ranges allowed; start after end crosses midnight.",
+    "admin.minOrder": "Minimum order",
+    "admin.minOrderHint": "Checked against item subtotal, excluding fees",
+    "admin.deliveryFee": "Delivery fee",
+    "admin.serviceFee": "Service fee"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1251,6 +1267,14 @@
     "admin.addGroup": "បន្ថែមក្រុម",
     "admin.removeGroup": "លុបក្រុម",
     "admin.rulesSaved": "បានរក្សាទុក",
-    "menu.notOrderableShort": "បិទ"
+    "menu.notOrderableShort": "បិទ",
+    "admin.acceptingOrders": "បើកទទួលកម្មង់",
+    "admin.acceptingOrdersHint": "បិទ = មិនទទួលកម្មង់",
+    "admin.businessHours": "ម៉ោងបើកដំណើរការ",
+    "admin.businessHoursHint": "ទទេ = ២៤ ម៉ោង",
+    "admin.minOrder": "កម្មង់អប្បបរមា",
+    "admin.minOrderHint": "គិតលើតម្លៃម្ហូប",
+    "admin.deliveryFee": "ថ្លៃដឹកជញ្ជូន",
+    "admin.serviceFee": "ថ្លៃសេវា"
   }
 }

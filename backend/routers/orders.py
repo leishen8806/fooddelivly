@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import selectinload
 from database import get_db
 from product_options import OptionError, load_groups, resolve_selections
-from sale_window import describe, is_on_sale
+from sale_window import describe, is_on_sale, windows_from_json
 from models import Order, OrderItem, Product
 from models import StoreSettings, Customer, PaymentProof
 from dependencies import get_current_customer
@@ -111,6 +111,9 @@ async def create_order(
             return {
                 "public_code": existing_order.public_code,
                 "total_minor": existing_order.total_minor,
+                "subtotal_minor": existing_order.subtotal_minor if existing_order.subtotal_minor is not None else existing_order.total_minor,
+                "delivery_fee_minor": existing_order.delivery_fee_minor or 0,
+                "service_fee_minor": existing_order.service_fee_minor or 0,
                 "currency": existing_order.currency,
                 "status": existing_order.order_status,
                 "payment_status": existing_order.payment_status,
@@ -140,6 +143,15 @@ async def create_order(
     except ZoneInfoNotFoundError:
         store_tz = ZoneInfo("Asia/Phnom_Penh")
     now_local = datetime.now(store_tz)
+
+    # 店铺级经营校验：暂停接单 / 营业时间。同样必须在服务端做。
+    if _settings is not None:
+        if not _settings.is_accepting_orders:
+            raise HTTPException(status_code=409, detail="店铺已暂停接单，请稍后再试")
+        business_hours = windows_from_json(_settings.business_hours)
+        if business_hours and not is_on_sale(business_hours, now_local.time()):
+            span = " / ".join(f'{w["start"]}-{w["end"]}' for w in describe(business_hours))
+            raise HTTPException(status_code=409, detail=f"当前不在营业时间内（{span}）")
 
     for item in order_req.items:
         result = await db.execute(
@@ -197,6 +209,17 @@ async def create_order(
             line_total_minor=line_total
         ))
         
+    # 最低起送按**商品小计**判断（不含配送费/服务费），再叠加费用得到应付总额
+    subtotal_minor = total_minor
+    min_order_minor = int(_settings.min_order_minor or 0) if _settings else 0
+    if min_order_minor and subtotal_minor < min_order_minor:
+        raise HTTPException(
+            status_code=409,
+            detail=f"最低起送 {min_order_minor / 100:.2f} {currency}，当前商品小计 {subtotal_minor / 100:.2f} {currency}")
+    delivery_fee_minor = int(_settings.delivery_fee_minor or 0) if _settings else 0
+    service_fee_minor = int(_settings.service_fee_minor or 0) if _settings else 0
+    total_minor = subtotal_minor + delivery_fee_minor + service_fee_minor
+
     try:
         new_order = Order(
             public_code=generate_public_code(),
@@ -208,6 +231,9 @@ async def create_order(
             currency=currency,
             customer_language=customer.preferred_language or ("zh-CN" if (customer.language_code or "").lower().startswith("zh") else "km" if (customer.language_code or "").lower().startswith("km") else "en"),
             total_minor=total_minor,
+            subtotal_minor=subtotal_minor,
+            delivery_fee_minor=delivery_fee_minor,
+            service_fee_minor=service_fee_minor,
             idempotency_key=idempotency_key,
             request_digest=request_digest
         )
@@ -282,6 +308,9 @@ async def create_order(
     return {
         "public_code": new_order.public_code,
         "total_minor": new_order.total_minor,
+        "subtotal_minor": new_order.subtotal_minor,
+        "delivery_fee_minor": new_order.delivery_fee_minor or 0,
+        "service_fee_minor": new_order.service_fee_minor or 0,
         "currency": new_order.currency,
         "status": new_order.order_status,
         "payment_status": new_order.payment_status,
@@ -318,7 +347,11 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
         "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
         "payment_method": order.payment_method,
-        "currency": order.currency, "total_minor": order.total_minor, "created_at": order.created_at,
+        "currency": order.currency, "total_minor": order.total_minor,
+        "subtotal_minor": order.subtotal_minor if order.subtotal_minor is not None else order.total_minor,
+        "delivery_fee_minor": order.delivery_fee_minor or 0,
+        "service_fee_minor": order.service_fee_minor or 0,
+        "created_at": order.created_at,
         **await _handoff_for(db, order),
         "items": [{"name": x.product_name_snapshot, "quantity": x.quantity, "unit_price_minor": x.unit_price_minor,
                    "line_total_minor": x.line_total_minor, "options": x.options_json or {}} for x in items_result.scalars().all()],

@@ -125,6 +125,10 @@ class Order(Base):
     currency = Column(String, default="USD")
     customer_language = Column(String, nullable=False, default="en")
     total_minor = Column(Integer, nullable=False)
+    # 金额构成（total = subtotal + delivery + service），对账与分店结算要用
+    subtotal_minor = Column(Integer, nullable=True)
+    delivery_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    service_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
     telegram_group_message_id = Column(String, nullable=True)
     idempotency_key = Column(String, index=True, nullable=True)
     request_digest = Column(String, nullable=True)
@@ -221,6 +225,12 @@ class StoreSettings(Base):
     payment_link = Column(String, nullable=True)
     telegram_staff_group_id = Column(String, nullable=True)
     staff_group_language = Column(String, nullable=False, default="en")
-    open_hours = Column(String, nullable=True)
+    open_hours = Column(String, nullable=True)          # 旧的自由文本，已由 business_hours 取代
     delivery_mode = Column(String, nullable=True)
+    # 经营参数：下单时服务端强制校验
+    is_accepting_orders = Column(Boolean, nullable=False, default=True, server_default="true")
+    business_hours = Column(JSON, nullable=False, default=list, server_default="[]")
+    min_order_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    delivery_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    service_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
 
