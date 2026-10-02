@@ -293,7 +293,12 @@ def main() -> None:
     check("提示文案是业务文案", "凭证" in rc3.json().get("detail", ""), rc3.json().get("detail", "")[:70])
 
     r = admin.post("/api/v1/admin/wallet/maintenance")
-    check("运维入口：对账无差异", r.status_code == 200 and r.json().get("healthy") is True,
+    # 门店经理的运维被限制在本店；全局对账只对总部开放（reconcile 会暴露别家客户余额），
+    # 所以这里 healthy 是 null 而不是 True —— 这是 P2 之后的预期语义。
+    body = r.json() if r.status_code == 200 else {}
+    check("运维入口：门店经理按店执行（不做全局对账）",
+          r.status_code == 200 and body.get("scope", "").startswith("STORE:")
+          and body.get("healthy") is None and body.get("reconcile_drift") is None,
           r.text[:140])
     r = staff.post("/api/v1/admin/wallet/maintenance")
     check("STAFF 不能跑运维任务 403", r.status_code == 403, str(r.status_code))
@@ -386,15 +391,18 @@ def main() -> None:
     check("日报的确认收款包含钱包支付（退款单净额为 0）", delta == 1000,
           f"baseline={baseline} now={baseline + delta} delta={delta}（应为 1000）")
 
-    before_count = len(cust.get("/api/v1/orders").json())
-    r = cust.post("/api/v1/orders",
+    # 余额不足必须用一个**从未充值过**的客户（夹具里的 id=4）：
+    # 同一个库反复跑套件时客户 1 的钱包会越充越多，「余额不足」就不成立了。
+    poor = client("customer", 4)
+    before_count = len(poor.get("/api/v1/orders").json())
+    r = poor.post("/api/v1/orders",
                   json={"room_number": "W2", "items": [{"product_id": 1, "quantity": 99}],
                         "pay_with_wallet": True},
                   headers={"Idempotency-Key": f"wallet-pay-poor-{run}"})
     check("余额不足时 409", r.status_code == 409, f"{r.status_code} {r.text[:80]}")
     check("余额不足时订单没有被创建",
-          len(cust.get("/api/v1/orders").json()) == before_count,
-          str(len(cust.get("/api/v1/orders").json())))
+          len(poor.get("/api/v1/orders").json()) == before_count,
+          str(len(poor.get("/api/v1/orders").json())))
 
     print("\n[9] 回归：既有 Telegram 群按钮流程（accept / confirmpay / ready）")
     # 钱包功能改动了 _handle_callback 的分发，这里守住「人工转账订单」的群按钮链路

@@ -97,9 +97,10 @@ async def main() -> None:
         await db.execute(
             text("""INSERT INTO orders (public_code, customer_id, room_number, order_status,
                                         payment_status, payment_method, currency, customer_language,
-                                        total_minor, created_at)
+                                        total_minor, created_at, store_id)
                     VALUES ('RPT-TEST-1', 9999, 'T1', 'COMPLETED', 'PAID_CONFIRMED', 'MANUAL',
-                            'USD', 'en', 2500, :ts)"""),
+                            'USD', 'en', 2500, :ts,
+                            (SELECT id FROM stores ORDER BY id LIMIT 1))"""),
             {"ts": inside.astimezone(timezone.utc)},
         )
         # 一条刚好在区间**外**的订单（次日 00:00:00），不能计入
@@ -107,9 +108,10 @@ async def main() -> None:
         await db.execute(
             text("""INSERT INTO orders (public_code, customer_id, room_number, order_status,
                                         payment_status, payment_method, currency, customer_language,
-                                        total_minor, created_at)
+                                        total_minor, created_at, store_id)
                     VALUES ('RPT-TEST-2', 9999, 'T2', 'NEW', 'UNPAID', 'MANUAL',
-                            'USD', 'en', 9900, :ts)"""),
+                            'USD', 'en', 9900, :ts,
+                            (SELECT id FROM stores ORDER BY id LIMIT 1))"""),
             {"ts": boundary.astimezone(timezone.utc)},
         )
         await db.commit()

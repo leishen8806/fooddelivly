@@ -267,7 +267,8 @@ async def review_payment(
         order_id=order.id,
         staff_id=staff_id,
         decision=req.decision,
-        reason=req.reason.strip() if req.reason else None
+        reason=req.reason.strip() if req.reason else None,
+        store_id=order.store_id,      # 结算与门店隔离都要用
     )
     db.add(review)
 

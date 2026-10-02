@@ -201,7 +201,8 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
     if not photos:
         return
     old_state = _message_status(order)
-    db.add(PaymentProof(order_id=order.id, telegram_file_id=photos[-1]["file_id"], submitted_by=customer.id))
+    db.add(PaymentProof(order_id=order.id, telegram_file_id=photos[-1]["file_id"],
+                        submitted_by=customer.id, store_id=order.store_id))
     order.payment_status = "PROOF_SUBMITTED"
     customer.pending_payment_order_id = None
     db.add(OrderEvent(order_id=order.id, actor_type="CUSTOMER", actor_id=customer.id,
@@ -303,7 +304,9 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
         order.payment_status = "PAID_CONFIRMED"
         order.order_status = "PREPARING"
         proof.review_status = "APPROVED"
-        db.add(PaymentReview(order_id=order.id, staff_id=staff.id, decision="APPROVED", reason="Staff confirmed ABA receipt in Telegram group"))
+        db.add(PaymentReview(order_id=order.id, staff_id=staff.id, decision="APPROVED",
+                             reason="Staff confirmed ABA receipt in Telegram group",
+                             store_id=order.store_id))
     elif action == "ready" and order.order_status == "PREPARING" and order.payment_status == "PAID_CONFIRMED":
         order.order_status = "READY"
     elif action == "deliver" and order.order_status == "READY":
@@ -389,6 +392,7 @@ async def _create_recharge(db: AsyncSession, customer: Customer, amount_minor: i
         order = await wallet_service.start_recharge(
             db, customer_id=customer.id, amount_minor=amount_minor,
             idem=f"recharge:{customer.id}:{token}", currency=_currency(settings),
+            store_id=customer.store_id,
         )
     except WalletError as exc:
         await db.rollback()

@@ -123,6 +123,35 @@ def main() -> None:
     check("二号店员工列表不含主店员工", 1 not in branch_staff_list, str(sorted(branch_staff_list))[:80])
     check("二号店员工列表含本店员工", 9002 in branch_staff_list, str(sorted(branch_staff_list))[:80])
 
+    # 运维任务：过期清理按店，对账只给总部
+    hq_manager = client("staff", 9003)      # store_id 为空 = 总部
+    r = main_manager.post("/api/v1/admin/wallet/maintenance", json={})
+    body = r.json() if r.status_code == 200 else {}
+    check("门店经理运维只覆盖本店", r.status_code == 200 and body.get("scope") == "STORE:1",
+          f"{r.status_code} {body.get('scope')}")
+    check("门店账号拿不到全局对账", body.get("reconcile_drift") is None,
+          str(body.get("reconcile_drift"))[:40])
+    r2 = branch_manager.post("/api/v1/admin/wallet/maintenance", json={})
+    check("二号店运维只覆盖二号店", r2.status_code == 200 and r2.json().get("scope") == "STORE:2",
+          f"{r2.status_code} {r2.json().get('scope') if r2.status_code == 200 else r2.text[:40]}")
+    r3 = hq_manager.post("/api/v1/admin/wallet/maintenance", json={})
+    check("总部可以跨店运维并对账",
+          r3.status_code == 200 and r3.json().get("scope") == "ALL"
+          and r3.json().get("reconcile_drift") is not None,
+          f"{r3.status_code} {r3.json().get('scope') if r3.status_code == 200 else r3.text[:40]}")
+
+    # 新建员工的归属默认继承创建者（否则默认变成总部账号 = 静默提权）
+    created = main_manager.post("/api/v1/admin/staff",
+                                json={"login_name": f"xs_{RUN}", "password": "xs-password-1234",
+                                      "role": "STAFF"})
+    check("新建员工成功", created.status_code == 200, f"{created.status_code} {created.text[:60]}")
+    if created.status_code == 200:
+        staff_list = main_manager.get("/api/v1/admin/staff").json()
+        new_row = next((s for s in staff_list if s["login_name"] == f"xs_{RUN}"), None)
+        check("新员工归属继承创建者门店（不是总部）",
+              new_row is not None and new_row.get("store_id") == 1,
+              str(new_row.get("store_id") if new_row else "未找到"))
+
     # 二号店 STAFF 也不能改主店的单
     r = branch_staff.post(f"/api/v1/admin/orders/{main_order_id}/status", json={"status": "ACCEPTED"})
     check("二号店 STAFF 改主店订单 -> 404", r.status_code == 404, f"{r.status_code}")

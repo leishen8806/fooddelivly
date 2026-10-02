@@ -68,7 +68,8 @@ class StaffUpdate(BaseModel):
 
 def _staff_row(staff: Staff) -> dict:
     return {"id": staff.id, "login_name": staff.login_name, "role": staff.role,
-            "active": staff.active, "telegram_user_id": staff.telegram_user_id}
+            "active": staff.active, "telegram_user_id": staff.telegram_user_id,
+            "store_id": staff.store_id}          # None = 总部账号（可跨店）
 
 
 @router.get("")

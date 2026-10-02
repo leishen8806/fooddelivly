@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import wallet_service as wallet
-from store_context import can_access_store, visible_store_id
+from store_context import can_access_store, default_store, visible_store_id
 from database import get_db
 from dependencies import get_current_customer, get_current_staff
 from models import AuditLog, Customer, StoreSettings, Staff
@@ -179,6 +179,12 @@ async def create_recharge(
     金额上下限、未完成单数量、单日累计都在数据库里校验。
     """
     currency = await _currency(db)
+    # 收款门店：客户绑定的门店（未绑定则落主店）。结算与门店隔离都要用。
+    customer_row = (await db.execute(select(Customer).filter(Customer.id == customer_id))).scalars().first()
+    store_id = customer_row.store_id if customer_row else None
+    if store_id is None:
+        default = await default_store(db)
+        store_id = default.id if default else None
     try:
         row = await wallet.start_recharge(
             db,
@@ -186,6 +192,7 @@ async def create_recharge(
             amount_minor=payload.amount_minor,
             idem=f"recharge:{customer_id}:{idempotency_key}",
             currency=currency,
+            store_id=store_id,
         )
     except wallet.WalletError as exc:
         raise _http(exc)
@@ -543,19 +550,23 @@ async def admin_wallet_maintenance(
 ):
     """运维任务：过期充值单清理 + 账实对账。仅 MANAGER。
 
-    TODO(P2)：这两个数据库函数目前是**全局**的，门店 MANAGER 也会走到别家店的数据。
-    跨店运维要等把 store_id 传进 wallet.expire_stale_orders / wallet.reconcile 之后再做。
+    * 过期清理**按调用者的门店**：门店经理只能作废本店的充值单（总部账号 = 全部）；
+    * 账实对账是**全局**的（钱包余额跨店通用，按门店过滤账本会算出假差异），
+      而且会暴露别家客户的余额，所以只对总部账号开放。
     """
     if staff_info.get("role") != "MANAGER":
         raise HTTPException(status_code=403, detail="Manager access required")
+    scope = visible_store_id(staff_info)
     try:
-        expired = await wallet.expire_stale_recharges(db)
-        drift = await wallet.reconcile(db)
+        expired = await wallet.expire_stale_recharges(db, store_id=scope)
+        drift = await wallet.reconcile(db) if scope is None else []
     except wallet.WalletError as exc:
         raise _http(exc)
     await db.commit()
     return {
         "expired_recharges": expired,
-        "reconcile_drift": [dict(row) for row in drift],
-        "healthy": len(drift) == 0,
+        # 门店账号看不到全局对账（返回 null 而不是空数组，避免误读成「对账通过」）
+        "reconcile_drift": [dict(row) for row in drift] if scope is None else None,
+        "healthy": (len(drift) == 0) if scope is None else None,
+        "scope": "ALL" if scope is None else f"STORE:{scope}",
     }

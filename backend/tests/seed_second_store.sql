@@ -30,3 +30,8 @@ INSERT INTO customers (id, telegram_user_id, display_name, language_code, prefer
 VALUES (9100, '555009100', 'Branch Two Customer', 'en', 'en',
         (SELECT id FROM stores WHERE code = 'ST02'))
 ON CONFLICT (id) DO UPDATE SET store_id = EXCLUDED.store_id;
+
+-- 总部账号（store_id 为空 = 可跨店），用于验证「总部能看全局对账」
+INSERT INTO staff (id, login_name, password_hash, role, active, store_id)
+VALUES (9003, 'hqadmin', 'x', 'MANAGER', true, NULL)
+ON CONFLICT (id) DO UPDATE SET store_id = NULL, active = true;

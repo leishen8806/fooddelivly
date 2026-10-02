@@ -121,9 +121,22 @@ def upgrade() -> None:
 
     for table in _WALLET_TABLES:
         op.add_column(table, sa.Column('store_id', sa.Integer(), nullable=True), schema='wallet')
-        op.execute(
-            f"UPDATE wallet.{table} SET store_id = (SELECT id FROM stores ORDER BY id LIMIT 1) WHERE store_id IS NULL"
-        )
+        if table == 'ledger_entries':
+            # 账本有「只允许 INSERT」的触发器（trg_ledger_immutable）——这是钱包的
+            # append-only 保护。回填补列是**迁移期的结构变更**，不是业务改账，
+            # 所以临时停掉 USER 触发器（内部/FK 触发器不受影响），回填完立刻恢复。
+            #
+            # 不停会怎样：空库能过（0 行不触发），但**生产库有历史账本时迁移直接失败**，
+            # 容器启动时 `alembic upgrade head` 挂掉 = 发布失败。
+            op.execute("ALTER TABLE wallet.ledger_entries DISABLE TRIGGER USER")
+            op.execute(
+                f"UPDATE wallet.{table} SET store_id = (SELECT id FROM stores ORDER BY id LIMIT 1) WHERE store_id IS NULL"
+            )
+            op.execute("ALTER TABLE wallet.ledger_entries ENABLE TRIGGER USER")
+        else:
+            op.execute(
+                f"UPDATE wallet.{table} SET store_id = (SELECT id FROM stores ORDER BY id LIMIT 1) WHERE store_id IS NULL"
+            )
 
     op.create_table(
         'store_product_overrides',

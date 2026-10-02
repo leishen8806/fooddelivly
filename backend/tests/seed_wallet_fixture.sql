@@ -17,7 +17,10 @@ VALUES (1, '555000111', 'Somchai', 'en', 'en'),
        (2, '555000222', 'Dara',    'en', 'en'),
        -- 第三个客户 = 员工 manager1 本人的 Telegram 账号：
        -- 安全用例要验证「员工不能审核自己的充值单」
-       (3, '999000111', 'Manager own account', 'en', 'en')
+       (3, '999000111', 'Manager own account', 'en', 'en'),
+       -- 第四个客户：钱包**永远为空**，专供「余额不足」用例。
+       -- 用客户 1 会被多轮套件越充越多，那个用例就不成立了。
+       (4, '555000444', 'Empty wallet', 'en', 'en')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO staff (id, telegram_user_id, login_name, password_hash, role, active)

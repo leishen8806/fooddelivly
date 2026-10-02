@@ -237,17 +237,23 @@ async def start_recharge(
     amount_minor: int,
     idem: str,
     currency: str = DEFAULT_CURRENCY,
+    store_id: int | None = None,
 ):
-    """创建充值单。同一个 idem 永远返回同一张单（并发下由唯一约束兜底）。"""
+    """创建充值单。同一个 idem 永远返回同一张单（并发下由唯一约束兜底）。
+
+    `store_id` 是**收款门店**，结算与门店隔离都要用；不传则落到主店。
+    """
     return await _call(
         db,
         """SELECT * FROM wallet.start_recharge(
-               :customer_id, :currency, :amount_minor, :idem)""",
+               :customer_id, :currency, :amount_minor, :idem,
+               CAST(:store_id AS BIGINT))""",
         {
             "customer_id": customer_id,
             "currency": currency,
             "amount_minor": amount_minor,
             "idem": idem,
+            "store_id": store_id,
         },
     )
 
@@ -554,13 +560,14 @@ async def refund_payment(
 # 运维
 # ---------------------------------------------------------------------------
 
-async def expire_stale_recharges(db: AsyncSession) -> int:
+async def expire_stale_recharges(db: AsyncSession, store_id: int | None = None) -> int:
     """把过期的**充值单**置为 expired（建议定时任务每 10 分钟跑一次）。
 
     注意：数据库里的函数名是 `wallet.expire_stale_orders()`（沿用了订单域的叫法），
     它只处理 wallet.recharge_orders，和订单表无关。
     """
-    row = await _fetchrow(db, "SELECT wallet.expire_stale_orders() AS n", {})
+    row = await _fetchrow(db, "SELECT wallet.expire_stale_orders(CAST(:store_id AS BIGINT)) AS n",
+                          {"store_id": store_id})
     return int(row["n"]) if row else 0
 
 

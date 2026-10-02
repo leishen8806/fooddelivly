@@ -707,6 +707,48 @@ BEGIN
 END $$;
 
 -- ===========================================================================
+-- T18  钱包运维按店（store_id 隔离）
+-- ===========================================================================
+DO $$
+DECLARE v_n INT; v_store INT; o_main wallet.recharge_orders; o_branch wallet.recharge_orders;
+BEGIN
+  INSERT INTO stores (code, name) VALUES ('ST99', '{"en": "T18 store"}'::json)
+  ON CONFLICT (code) DO NOTHING;
+  SELECT id INTO v_store FROM stores WHERE code = 'ST99';
+
+  -- 两店各一张过期的充值单
+  o_main   := wallet.start_recharge(1001, 'USD', 1000, 'idem-t18-main',
+                                   (SELECT id FROM stores WHERE code = 'MAIN'));
+  o_branch := wallet.start_recharge(1001, 'USD', 1000, 'idem-t18-branch', v_store);
+  UPDATE wallet.recharge_orders SET expires_at = now() - interval '1 hour'
+   WHERE id IN (o_main.id, o_branch.id);
+
+  -- 只清理指定门店
+  v_n := wallet.expire_stale_orders(v_store);
+  PERFORM public.t_ok('T18.1 只过期指定门店的充值单', v_n = 1, v_n::text);
+  PERFORM public.t_ok('T18.2 该店单已过期',
+                      (SELECT status FROM wallet.recharge_orders WHERE id = o_branch.id) = 'expired',
+                      (SELECT status::text FROM wallet.recharge_orders WHERE id = o_branch.id));
+  PERFORM public.t_ok('T18.3 别家店的单没被动',
+                      (SELECT status FROM wallet.recharge_orders WHERE id = o_main.id) = 'awaiting_proof',
+                      (SELECT status::text FROM wallet.recharge_orders WHERE id = o_main.id));
+
+  -- 总部（NULL）= 全部门店
+  v_n := wallet.expire_stale_orders(NULL);
+  PERFORM public.t_ok('T18.4 总部清理全部门店', v_n >= 1, v_n::text);
+  PERFORM public.t_ok('T18.5 主店的单也被清理',
+                      (SELECT status FROM wallet.recharge_orders WHERE id = o_main.id) = 'expired',
+                      (SELECT status::text FROM wallet.recharge_orders WHERE id = o_main.id));
+
+  -- 充值单必须带门店（NOT NULL 约束）
+  PERFORM public.t_ok('T18.6 新建充值单带上门店',
+                      (SELECT store_id FROM wallet.recharge_orders WHERE id = o_branch.id) = v_store);
+  PERFORM public.t_ok('T18.7 未指定门店时落到主店',
+                      (SELECT store_id FROM wallet.recharge_orders WHERE id = o_main.id)
+                        = (SELECT id FROM stores WHERE code = 'MAIN'));
+END $$;
+
+-- ===========================================================================
 -- 汇总
 -- ===========================================================================
 DO $$
