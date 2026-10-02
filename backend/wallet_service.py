@@ -361,7 +361,8 @@ async def cancel_recharge(db: AsyncSession, *, order_id: int, customer_id: int):
 # 充值单（员工侧）
 # ---------------------------------------------------------------------------
 
-async def list_recharges_admin(db: AsyncSession, status: str | None, limit: int = 50):
+async def list_recharges_admin(db: AsyncSession, status: str | None, limit: int = 50,
+                               store_id: int | None = None):
     """管理端充值单列表。
 
     除了单据本身，还带出客户信息与**当前钱包余额**——审核时要能一眼看出
@@ -383,15 +384,19 @@ async def list_recharges_admin(db: AsyncSession, status: str | None, limit: int 
           JOIN public.customers c ON c.id = o.customer_id
           LEFT JOIN wallet.wallets w
                  ON w.customer_id = o.customer_id AND w.currency = o.currency
+         WHERE (CAST(:store_id AS INTEGER) IS NULL
+                OR o.store_id = CAST(:store_id AS INTEGER)
+                OR o.store_id IS NULL)
     """
     if status:
         return await _fetchall(
             db,
-            base + " WHERE o.status = :status ORDER BY o.created_at DESC LIMIT :limit",
-            {"status": status, "limit": limit},
+            base + " AND o.status = :status ORDER BY o.created_at DESC LIMIT :limit",
+            {"status": status, "limit": limit, "store_id": store_id},
         )
     return await _fetchall(
-        db, base + " ORDER BY o.created_at DESC LIMIT :limit", {"limit": limit}
+        db, base + " ORDER BY o.created_at DESC LIMIT :limit",
+        {"limit": limit, "store_id": store_id},
     )
 
 

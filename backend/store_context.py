@@ -109,3 +109,47 @@ def product_sale_windows(product: Product) -> list:
         return []
     return [{"start": w.start_time.strftime("%H:%M"), "end": w.end_time.strftime("%H:%M")}
             for w in product.sale_windows]
+
+
+# ---------------------------------------------------------------------------
+# 门店可见范围（跨店越权的唯一判定入口）
+# ---------------------------------------------------------------------------
+
+def visible_store_id(staff_info) -> int | None:
+    """员工能看哪家店的数据。
+
+    返回 None 表示**不限制**（总部账号）；否则返回该员工所属门店 id。
+    所有管理端查询都必须走这里，不要各写各的判断。
+    """
+    if not staff_info:
+        return None
+    if staff_info.get("role") == "MANAGER" and staff_info.get("store_id") is None:
+        return None          # 总部 MANAGER 可跨店
+    return staff_info.get("store_id")
+
+
+def can_access_store(staff_info, row_store_id: int | None) -> bool:
+    """能否操作某条数据。
+
+    注意：历史数据（store_id 为空）对所有门店员工**可见**——
+    这是过渡期的刻意选择：隔离还没铺满时，宁可让老数据可见，
+    也不要让员工突然看不到自己昨天录的单。
+    """
+    scope = visible_store_id(staff_info)
+    if scope is None:
+        return True
+    if row_store_id is None:
+        return True          # 迁移前的历史数据
+    return int(row_store_id) == int(scope)
+
+
+def store_scope_clause(model, staff_info):
+    """给 select() 用的过滤条件：总部返回 None（不过滤），门店员工按 store_id 过滤。
+
+    用法：`query = query.filter(*filter(None, [store_scope_clause(Order, staff)]))`
+    """
+    scope = visible_store_id(staff_info)
+    if scope is None:
+        return None
+    # 历史数据（store_id IS NULL）保持可见
+    return (model.store_id == scope) | (model.store_id.is_(None))

@@ -9,6 +9,7 @@ from sqlalchemy.future import select
 from auth_utils import get_password_hash
 from database import get_db
 from dependencies import get_current_manager
+from store_context import store_scope_clause
 from models import AuditLog, Staff
 
 router = APIRouter(prefix="/api/v1/admin/staff", tags=["Admin Staff"])
@@ -19,6 +20,8 @@ class StaffCreate(BaseModel):
     password: str = Field(min_length=12, max_length=72)
     role: str = "STAFF"
     telegram_user_id: str | None = None
+    #: 归属门店；不传则继承创建者的门店（总部建人时显式指定）
+    store_id: int | None = None
 
     @field_validator("login_name")
     @classmethod
@@ -70,20 +73,29 @@ def _staff_row(staff: Staff) -> dict:
 
 @router.get("")
 async def list_staff(manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Staff).order_by(Staff.login_name))
+    # 门店隔离：门店经理只看本店员工；总部账号看全部
+    query = select(Staff).order_by(Staff.login_name)
+    clause = store_scope_clause(Staff, manager)
+    if clause is not None:
+        query = query.filter(clause)
+    result = await db.execute(query)
     return [_staff_row(row) for row in result.scalars().all()]
 
 
 @router.post("")
 async def create_staff(req: StaffCreate, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+    # 归属门店默认继承创建者：否则新员工 store_id 为空 = 总部账号，
+    # 能看所有门店的数据，是个静默提权。总部 MANAGER 建人可以显式指定门店。
     staff = Staff(login_name=req.login_name, password_hash=get_password_hash(req.password),
-                  role=req.role, telegram_user_id=req.telegram_user_id, active=True)
+                  role=req.role, telegram_user_id=req.telegram_user_id, active=True,
+                  store_id=req.store_id if req.store_id is not None else manager.get("store_id"))
     db.add(staff)
     try:
         await db.flush()
         db.add(AuditLog(actor_staff_id=manager["staff_id"], entity_type="staff", entity_id=str(staff.id),
                         action="created", details={"login_name": staff.login_name, "role": staff.role,
-                                                   "telegram_user_id": staff.telegram_user_id, "active": True}))
+                                                   "telegram_user_id": staff.telegram_user_id, "active": True,
+                                                   "store_id": staff.store_id}))
         await db.commit()
         await db.refresh(staff)
     except IntegrityError:

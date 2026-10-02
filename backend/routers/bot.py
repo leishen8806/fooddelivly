@@ -10,6 +10,7 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from database import get_db
 from models import AuditLog, Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff, StoreSettings
+from store_context import can_access_store
 from telegram_service import (
     answer_callback, notify_new_order, notify_new_recharge, notify_recharge_review,
     order_keyboard, recharge_instruction_text, recharge_proof_keyboard, send_bot_message,
@@ -279,7 +280,9 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
 
     result = await db.execute(select(Order).options(selectinload(Order.items)).filter(Order.id == order_id).with_for_update())
     order = result.scalars().first()
-    if not order:
+    # 门店隔离：群里的订单按钮只能操作本店订单（跨店按「无效」处理，不泄露存在性）
+    if not order or not can_access_store(
+            {"staff_id": staff.id, "role": staff.role, "store_id": staff.store_id}, order.store_id):
         await answer_callback(callback_id, tr("error.generic", group_language), alert=True)
         return
     old_order_status = order.order_status
@@ -537,7 +540,10 @@ async def _handle_wallet_review(db: AsyncSession, action: str, order_id: int, st
                                 callback_id: str) -> None:
     """员工在群里点「确认到账 / 驳回」。"""
     order = await wallet_service.get_recharge(db, order_id)
-    if order is None:
+    # 门店隔离：充值审核按钮也只能审本店的单
+    if order is None or not can_access_store(
+            {"staff_id": staff.id, "role": staff.role, "store_id": staff.store_id},
+            order.get("store_id")):
         await answer_callback(callback_id, tr("error.generic", group_language), alert=True)
         return
     old_status = order["status"]

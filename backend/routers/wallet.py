@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import wallet_service as wallet
+from store_context import can_access_store, visible_store_id
 from database import get_db
 from dependencies import get_current_customer, get_current_staff
 from models import AuditLog, Customer, StoreSettings, Staff
@@ -249,6 +250,17 @@ async def cancel_my_recharge(
 # 员工侧
 # ===========================================================================
 
+async def _ensure_recharge_in_scope(db: AsyncSession, order_id: int, staff_info: dict) -> dict:
+    """门店隔离：跨店审核一律按「不存在」处理。
+
+    返回订单行，调用方可以直接用。
+    """
+    row = await wallet.get_recharge(db, order_id)
+    if not row or not can_access_store(staff_info, row.get("store_id")):
+        raise HTTPException(status_code=404, detail="Recharge not found")
+    return row
+
+
 @admin_router.get("/recharges")
 async def admin_list_recharges(
     status: Optional[str] = None,
@@ -260,7 +272,9 @@ async def admin_list_recharges(
                                  "rejected", "expired", "cancelled"}:
         raise HTTPException(status_code=422, detail="Unknown status filter")
     limit = max(1, min(limit, 200))
-    rows = await wallet.list_recharges_admin(db, status, limit=limit)
+    # 门店隔离：门店员工只看本店充值单（总部账号不过滤）
+    rows = await wallet.list_recharges_admin(db, status, limit=limit,
+                                             store_id=visible_store_id(staff_info))
     return [
         {
             **_order_json(r),
@@ -289,6 +303,7 @@ async def admin_recharge_proof(
     db: AsyncSession = Depends(get_db),
 ):
     """把客户上传的转账截图代理回来（Telegram 的 file_id 不能直接给浏览器）。"""
+    await _ensure_recharge_in_scope(db, order_id, staff_info)
     proofs = await wallet.list_proofs(db, order_id)
     if not proofs:
         raise HTTPException(status_code=404, detail="Recharge proof not found")
@@ -352,6 +367,7 @@ async def admin_approve_recharge(
     db: AsyncSession = Depends(get_db),
 ):
     staff_id = staff_info["staff_id"]
+    await _ensure_recharge_in_scope(db, order_id, staff_info)
     try:
         row = await wallet.approve_recharge(
             db, order_id=order_id, staff_id=staff_id,
@@ -382,6 +398,7 @@ async def admin_reject_recharge(
     db: AsyncSession = Depends(get_db),
 ):
     staff_id = staff_info["staff_id"]
+    await _ensure_recharge_in_scope(db, order_id, staff_info)
     try:
         row = await wallet.reject_recharge(
             db, order_id=order_id, staff_id=staff_id, reason=payload.reason.strip()
@@ -407,6 +424,7 @@ async def admin_set_received(
     db: AsyncSession = Depends(get_db),
 ):
     """审核前暂存「实收金额」。入库持久化，多实例/重启都不会丢。"""
+    await _ensure_recharge_in_scope(db, order_id, staff_info)
     try:
         row = await wallet.set_received_amount(
             db, order_id=order_id, staff_id=staff_info["staff_id"],
@@ -426,7 +444,7 @@ async def admin_get_wallet(
 ):
     result = await db.execute(select(Customer).filter(Customer.id == customer_id))
     customer = result.scalars().first()
-    if customer is None:
+    if customer is None or not can_access_store(staff_info, customer.store_id):
         raise HTTPException(status_code=404, detail="Customer not found")
     currency = await _currency(db)
     summary = await wallet.get_summary(db, customer_id, currency)
@@ -471,6 +489,10 @@ async def admin_adjust_wallet(
     """手动调账。仅 MANAGER（数据库函数的 can_adjust 会再校验一次）。"""
     if payload.delta_minor == 0:
         raise HTTPException(status_code=422, detail="delta_minor must not be zero")
+    # 门店隔离：不能给别家店的客户调账（真钱操作）
+    customer = (await db.execute(select(Customer).filter(Customer.id == customer_id))).scalars().first()
+    if customer is None or not can_access_store(staff_info, customer.store_id):
+        raise HTTPException(status_code=404, detail="Customer not found")
     staff_id = staff_info["staff_id"]
     currency = await _currency(db)
     import uuid as _uuid
@@ -519,17 +541,10 @@ async def admin_wallet_maintenance(
     staff_info: dict = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    """运维任务入口：过期充值单 + 对账自检。
+    """运维任务：过期充值单清理 + 账实对账。仅 MANAGER。
 
-    本项目没有内置调度器，所以做成幂等接口，由外部 cron 定时调用即可：
-        */10 * * * * curl -fsS -X POST -H "Cookie: admin_session_token=..." \\
-            https://<host>/api/v1/admin/wallet/maintenance
-
-    返回的 `reconcile_drift` 必须恒为 0 行；非空说明账本与钱包余额不一致，
-    应当立刻告警（这是资金事故的第一信号）。
-
-    注：赠送金批次的到期待清理由 `wallet.expire_bonus(customer_id, currency)` 完成，
-    只影响「已经有人在看钱包」的对象；需要全量清理时按批次过期日扫描调用即可。
+    TODO(P2)：这两个数据库函数目前是**全局**的，门店 MANAGER 也会走到别家店的数据。
+    跨店运维要等把 store_id 传进 wallet.expire_stale_orders / wallet.reconcile 之后再做。
     """
     if staff_info.get("role") != "MANAGER":
         raise HTTPException(status_code=403, detail="Manager access required")

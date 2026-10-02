@@ -58,3 +58,11 @@ ON CONFLICT (id) DO UPDATE
       bonus_type = EXCLUDED.bonus_type, bonus_value = EXCLUDED.bonus_value,
       bonus_valid_days = EXCLUDED.bonus_valid_days, active = EXCLUDED.active;
 SELECT setval('wallet.recharge_rules_id_seq', 100);
+
+-- 多商家：把本夹具创建的员工/客户绑到主店（代表「门店账号」而不是总部）。
+-- id < 9000 是为了不碰 seed_second_store.sql 建的二号店账号（9001/9002/9100），
+-- 这样两个种子脚本谁先谁后都不会互相覆盖。
+UPDATE staff SET store_id = (SELECT id FROM stores WHERE code = 'MAIN')
+ WHERE store_id IS NULL AND id < 9000;
+UPDATE customers SET store_id = (SELECT id FROM stores WHERE code = 'MAIN')
+ WHERE store_id IS NULL AND id < 9000;

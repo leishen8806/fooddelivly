@@ -19,3 +19,14 @@ ON CONFLICT (store_id, product_id) DO UPDATE SET price_minor = EXCLUDED.price_mi
 
 -- 测试客户绑回主店，保证用例可重复
 UPDATE customers SET store_id = (SELECT id FROM stores WHERE code = 'MAIN') WHERE id = 1;
+
+-- 二号店的员工与客户（固定 id，方便测试直接签 JWT）
+INSERT INTO staff (id, login_name, password_hash, role, active, store_id)
+VALUES (9001, 'st02manager', 'x', 'MANAGER', true, (SELECT id FROM stores WHERE code = 'ST02')),
+       (9002, 'st02staff',   'x', 'STAFF',   true, (SELECT id FROM stores WHERE code = 'ST02'))
+ON CONFLICT (id) DO UPDATE SET store_id = EXCLUDED.store_id, active = true;
+
+INSERT INTO customers (id, telegram_user_id, display_name, language_code, preferred_language, store_id)
+VALUES (9100, '555009100', 'Branch Two Customer', 'en', 'en',
+        (SELECT id FROM stores WHERE code = 'ST02'))
+ON CONFLICT (id) DO UPDATE SET store_id = EXCLUDED.store_id;

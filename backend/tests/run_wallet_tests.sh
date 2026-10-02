@@ -83,6 +83,9 @@ if [ -n "${E2E_URL:-}" ]; then
   echo "== 7/7 多商家（模板+覆盖）用例（7 项，${E2E_URL}）=="
   psql -d "$DB" -q -v ON_ERROR_STOP=1 -f "$HERE/seed_second_store.sql" >/dev/null 2>&1 || true
   "$PYTHON" "$HERE/multi_store_e2e.py" "$E2E_URL" | tail -5
+  echo
+  echo "== 7/7 跨店越权用例（19 项，${E2E_URL}）=="
+  "$PYTHON" "$HERE/cross_store_security_test.py" "$E2E_URL" | tail -5
 else
   echo
   echo "== 6/7 端到端 / 7/7 安全用例 =="

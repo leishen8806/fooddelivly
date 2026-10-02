@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from database import get_db
 from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer, StoreSettings
 from dependencies import get_current_staff
+from store_context import can_access_store, store_scope_clause
 import os
 import httpx
 
@@ -16,7 +17,12 @@ async def list_orders(
     staff_info: dict = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(Order).options(selectinload(Order.items)).order_by(Order.created_at.desc()))
+    # 门店隔离：门店员工只能看到本店订单（总部账号不过滤）
+    query = select(Order).options(selectinload(Order.items)).order_by(Order.created_at.desc())
+    clause = store_scope_clause(Order, staff_info)
+    if clause is not None:
+        query = query.filter(clause)
+    result = await db.execute(query)
     orders = result.scalars().all()
     return [{
         "id": order.id, "public_code": order.public_code, "room_number": order.room_number,
@@ -77,7 +83,7 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
                              staff_info: dict = Depends(get_current_staff), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Order).options(selectinload(Order.items)).filter(Order.id == order_id).with_for_update())
     order = result.scalars().first()
-    if not order:
+    if not order or not can_access_store(staff_info, order.store_id):
         raise HTTPException(status_code=404, detail="Order not found")
     staff_id = staff_info["staff_id"]
     wallet_paid = order.payment_method == "WALLET" and order.payment_status == "PAID_CONFIRMED"
@@ -179,7 +185,7 @@ async def refund_wallet_order(order_id: int, req: RefundRequest,
     result = await db.execute(
         select(Order).options(selectinload(Order.items)).filter(Order.id == order_id).with_for_update())
     order = result.scalars().first()
-    if not order:
+    if not order or not can_access_store(staff_info, order.store_id):
         raise HTTPException(status_code=404, detail="Order not found")
     if order.payment_method != "WALLET" or order.payment_status != "PAID_CONFIRMED":
         raise HTTPException(status_code=409, detail="Order was not paid from the wallet balance")
@@ -231,7 +237,7 @@ async def review_payment(
     # Fetch order
     result = await db.execute(select(Order).options(selectinload(Order.items)).filter(Order.id == order_id).with_for_update())
     order = result.scalars().first()
-    if not order:
+    if not order or not can_access_store(staff_info, order.store_id):
         raise HTTPException(status_code=404, detail="Order not found")
 
     if req.decision not in ["APPROVED", "REJECTED"]:

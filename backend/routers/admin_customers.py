@@ -8,22 +8,28 @@ from sqlalchemy.future import select
 from database import get_db
 from dependencies import get_current_manager
 from models import Customer, Order
+from store_context import store_scope_clause
 
 router = APIRouter(prefix="/api/v1/admin/customers", tags=["Admin Customers"])
 
 
 @router.get("")
 async def list_customers(
-    _manager: dict = Depends(get_current_manager),
+    manager: dict = Depends(get_current_manager),
     db: AsyncSession = Depends(get_db),
 ):
     completed_count = func.count(case((Order.order_status == "COMPLETED", 1)))
-    result = await db.execute(
+    # 门店隔离：门店员工只看本店客户（含迁移前的历史客户），总部账号不过滤
+    query = (
         select(Customer, func.count(Order.id), completed_count)
         .outerjoin(Order, Order.customer_id == Customer.id)
         .group_by(Customer.id)
         .order_by(Customer.created_at.desc(), Customer.id.desc())
     )
+    clause = store_scope_clause(Customer, manager)
+    if clause is not None:
+        query = query.filter(clause)
+    result = await db.execute(query)
     rows = result.all()
     customers = []
     for customer, order_count, completed_order_count in rows:

@@ -55,6 +55,8 @@ async def get_current_staff(request: Request, db: AsyncSession = Depends(get_db)
         "role": staff.role,
         "login_name": staff.login_name,
         "telegram_user_id": staff.telegram_user_id,
+        # 员工归属门店。None = 总部账号（可跨店）；见 store_context.visible_store_id
+        "store_id": staff.store_id,
     }
 
 async def get_current_manager(staff_info: dict = Depends(get_current_staff)) -> Dict[str, Any]:
