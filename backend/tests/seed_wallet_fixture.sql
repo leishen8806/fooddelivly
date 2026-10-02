@@ -69,3 +69,23 @@ UPDATE staff SET store_id = (SELECT id FROM stores WHERE code = 'MAIN')
  WHERE store_id IS NULL AND id < 9000;
 UPDATE customers SET store_id = (SELECT id FROM stores WHERE code = 'MAIN')
  WHERE store_id IS NULL AND id < 9000;
+
+-- 多商家：把 store_settings 的配置同步到主店。
+-- 迁移 g0123456789f 会把「当时已存在」的 store_settings 复制进主店；但本夹具
+-- 是在迁移**之后**才插入 store_settings 的，所以新库上主店是空的——
+-- 群 ID、收款链接都拿不到，群里的审核按钮会因群不匹配被忽略。
+-- 生产库不存在这个问题（迁移时 store_settings 已有数据），夹具要自洽。
+UPDATE stores s SET
+       currency = ss.currency,
+       timezone = ss.timezone,
+       payment_link = ss.payment_link,
+       aba_qr_asset_key = ss.aba_qr_asset_key,
+       telegram_staff_group_id = ss.telegram_staff_group_id,
+       staff_group_language = ss.staff_group_language,
+       is_accepting_orders = ss.is_accepting_orders,
+       business_hours = ss.business_hours,
+       min_order_minor = ss.min_order_minor,
+       delivery_fee_minor = ss.delivery_fee_minor,
+       service_fee_minor = ss.service_fee_minor
+  FROM store_settings ss
+ WHERE s.code = 'MAIN';

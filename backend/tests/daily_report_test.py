@@ -169,6 +169,12 @@ async def main() -> None:
         await db.execute(text("DELETE FROM report_deliveries WHERE report_date = :d"), {"d": yesterday})
         await db.commit()
 
+        # 只让主店配群：否则库里第二家店也会投递，计数就不是 1 了
+        await db.execute(text(
+            "UPDATE stores SET telegram_staff_group_id = NULL WHERE code <> 'MAIN'"))
+        await db.execute(text(
+            "UPDATE stores SET telegram_staff_group_id = :c WHERE code = 'MAIN'"), {"c": CHAT_ID})
+        await db.commit()
         os.environ["DAILY_REPORT_HOUR"] = str(now_local.hour)
         StubBot.sent.clear()
         await daily_report._tick(None)          # None = 用真实的 AsyncSessionLocal
@@ -186,13 +192,20 @@ async def main() -> None:
         os.environ["DAILY_REPORT_HOUR"] = str(now_local.hour)
 
         # 没配员工群时必须安静跳过（否则会往 None 发消息报错刷日志）
+        # 群现在挂在**门店**上（旧表的字段不再被读取）
         await db.execute(text("UPDATE store_settings SET telegram_staff_group_id = NULL"))
+        await db.execute(text(
+            "UPDATE stores SET telegram_staff_group_id = NULL WHERE code <> 'MAIN'"))
+        await db.execute(text(
+            "UPDATE stores SET telegram_staff_group_id = NULL WHERE code = 'MAIN'"))
         await db.execute(text("DELETE FROM report_deliveries WHERE report_date = :d"), {"d": yesterday})
         await db.commit()
         StubBot.sent.clear()
         await daily_report._tick(None)
         check("未配置员工群时不发送", len(StubBot.sent) == 0, str(len(StubBot.sent)))
         await db.execute(text("UPDATE store_settings SET telegram_staff_group_id = :c"), {"c": CHAT_ID})
+        await db.execute(text("UPDATE stores SET telegram_staff_group_id = :c WHERE code = 'MAIN'"),
+                         {"c": CHAT_ID})
         await db.commit()
 
         # 清理测试数据

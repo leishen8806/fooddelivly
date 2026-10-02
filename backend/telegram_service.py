@@ -62,7 +62,9 @@ def order_keyboard(order_id: int, order_status: str, payment_status: str, langua
 def order_text(order, payment_status: str | None = None, language: str = "en", items=None) -> str:
     payment = payment_status or order.payment_status
     status_label = tr(f"order.status.{order.order_status.lower()}", language)
-    payment_key = "order.status.refunded" if payment == "REFUNDED" else "order.status.paid" if payment == "PAID_CONFIRMED" else "order.status.paymentReview" if payment == "PROOF_SUBMITTED" else "payment.rejected" if payment == "REJECTED" else "order.status.unpaid"
+    payment_key = ("order.status.refunded" if payment == "REFUNDED"
+                   else "payment.partiallyRefunded" if payment == "PARTIALLY_REFUNDED"
+                   else "order.status.paid") if payment == "PAID_CONFIRMED" else "order.status.paymentReview" if payment == "PROOF_SUBMITTED" else "payment.rejected" if payment == "REJECTED" else "order.status.unpaid"
     lines = [
         f"TEA CAFE · {tr('payment.order', language)} {order.public_code}",
         f"{tr('bot.room', language)}: {order.room_number}",

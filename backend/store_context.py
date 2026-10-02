@@ -153,3 +153,25 @@ def store_scope_clause(model, staff_info):
         return None
     # 历史数据（store_id IS NULL）保持可见
     return (model.store_id == scope) | (model.store_id.is_(None))
+
+
+async def staff_store(db: AsyncSession, staff_info) -> Store | None:
+    """调用者所属门店。
+
+    总部账号（store_id 为空）返回主店——**不是**「所有店」：总部改设置时
+    应当明确指定目标门店（`?store=CODE`），默认落在主店，避免误改。
+    """
+    store_id = (staff_info or {}).get("store_id")
+    if store_id:
+        return await get_store(db, store_id)
+    return await default_store(db)
+
+
+async def store_for_order(db: AsyncSession, order) -> Store | None:
+    """订单所属门店（通知、收款信息、对账都要用它，而不是全局设置）。"""
+    store_id = getattr(order, "store_id", None)
+    if store_id:
+        store = await get_store(db, store_id)
+        if store is not None:
+            return store
+    return await default_store(db)

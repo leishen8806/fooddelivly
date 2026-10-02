@@ -207,8 +207,8 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
     customer.pending_payment_order_id = None
     db.add(OrderEvent(order_id=order.id, actor_type="CUSTOMER", actor_id=customer.id,
                       event="PAYMENT_PROOF_SUBMITTED", from_state=old_state, to_state=_message_status(order)))
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    settings = settings_result.scalars().first()
+    # 群消息与语言按**订单所属门店**（多门店时不能都发到同一个群）
+    settings = await _store_settings(db, order=order, customer=customer)
     await db.commit()
 
     await send_bot_message(tg_user_id, f"{tr('bot.paymentProofSubmitted', language)}\n{tr('payment.notConfirmed', language)}")
@@ -242,10 +242,10 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
     chat = message.get("chat") or {}
     sender = cb.get("from") or {}
     tg_user_id = sender.get("id")
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    settings = settings_result.scalars().first()
+    # 群里按钮的回复语言按群所属门店；找不到门店时退回主店
+    settings = await _store_settings(db)
     staff_group_id = str(settings.telegram_staff_group_id) if settings and settings.telegram_staff_group_id else None
-    group_language = settings.staff_group_language if settings else "en"
+    group_language = (settings.staff_group_language if settings else "en") or "en"
     if not callback_id:
         return
     if chat.get("type") == "private" and tg_user_id is not None:
@@ -364,6 +364,24 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
 async def _settings(db: AsyncSession):
     result = await db.execute(select(StoreSettings).limit(1))
     return result.scalars().first()
+
+
+async def _store_settings(db: AsyncSession, *, order=None, customer=None):
+    """按门店取配置（员工群 / 语言 / 收款信息）。
+
+    订单通知必须发到**该订单所属门店**的群：以前所有店共用一个群，
+    多门店之后 A 店的单会通知到 B 店的群里。
+    """
+    from store_context import default_store, get_store, resolve_store
+
+    store = None
+    if order is not None and getattr(order, "store_id", None):
+        store = await get_store(db, order.store_id)
+    if store is None:
+        store = await resolve_store(db, customer=customer)
+    if store is None:
+        store = await default_store(db)
+    return store
 
 
 def _currency(settings) -> str:
@@ -530,11 +548,11 @@ async def _handle_recharge_proof(tg_user_id: str, msg: dict, customer: Customer,
     await db.commit()
     await send_bot_message(tg_user_id, tr("wallet.proofReceived", language, order=updated["order_no"]))
 
-    settings = await _settings(db)
-    if settings and settings.telegram_staff_group_id:
+    recharge_store = await _store_settings(db, customer=customer)
+    if recharge_store and recharge_store.telegram_staff_group_id:
         await notify_new_recharge(
-            settings.telegram_staff_group_id, updated, customer,
-            settings.staff_group_language or "en", file_id=photo["file_id"],
+            recharge_store.telegram_staff_group_id, updated, customer,
+            recharge_store.staff_group_language or "en", file_id=photo["file_id"],
         )
     return True
 

@@ -9,7 +9,7 @@ from sqlalchemy.future import select
 from auth_utils import get_password_hash
 from database import get_db
 from dependencies import get_current_manager
-from store_context import store_scope_clause
+from store_context import can_access_store, store_scope_clause
 from models import AuditLog, Staff
 
 router = APIRouter(prefix="/api/v1/admin/staff", tags=["Admin Staff"])
@@ -85,11 +85,18 @@ async def list_staff(manager: dict = Depends(get_current_manager), db: AsyncSess
 
 @router.post("")
 async def create_staff(req: StaffCreate, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
-    # 归属门店默认继承创建者：否则新员工 store_id 为空 = 总部账号，
-    # 能看所有门店的数据，是个静默提权。总部 MANAGER 建人可以显式指定门店。
+    # 归属门店：门店经理只能建**本店**员工，且不能把 store_id 设成空
+    # （空 = 总部账号 = 能看所有门店，是静默提权）。
+    # 总部 MANAGE 才能显式把员工放到任意门店或总部。
+    if manager.get("store_id") is not None:
+        target_store = manager["store_id"]
+        if req.store_id is not None and req.store_id != target_store:
+            raise HTTPException(status_code=403, detail="You can only create staff in your own store")
+    else:
+        target_store = req.store_id      # 总部：None = 总部账号
     staff = Staff(login_name=req.login_name, password_hash=get_password_hash(req.password),
                   role=req.role, telegram_user_id=req.telegram_user_id, active=True,
-                  store_id=req.store_id if req.store_id is not None else manager.get("store_id"))
+                  store_id=target_store)
     db.add(staff)
     try:
         await db.flush()
@@ -109,9 +116,14 @@ async def create_staff(req: StaffCreate, manager: dict = Depends(get_current_man
 async def update_staff(staff_id: int, req: StaffUpdate, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Staff).filter(Staff.id == staff_id).with_for_update())
     staff = result.scalars().first()
-    if not staff:
+    if not staff or not can_access_store(manager, staff.store_id):
         raise HTTPException(status_code=404, detail="Staff account not found")
     changes = req.model_dump(exclude_unset=True)
+    # 门店经理不能把员工调去别店，也不能把自己的账号升成总部（提权）
+    if manager.get("store_id") is not None:
+        if changes.get("store_id") not in (None, manager["store_id"]):
+            raise HTTPException(status_code=403, detail="You can only manage staff in your own store")
+        changes.pop("store_id", None)
     if staff_id == manager["staff_id"] and (changes.get("active") is False or changes.get("role", "MANAGER") != "MANAGER"):
         raise HTTPException(status_code=409, detail="You cannot remove your own manager access")
     safe_changes = {key: value for key, value in changes.items() if key != "password"}

@@ -36,6 +36,11 @@ async def list_orders(
 
 @router.get("/{order_id}/payment-proof")
 async def get_payment_proof(order_id: int, staff_info: dict = Depends(get_current_staff), db: AsyncSession = Depends(get_db)):
+    # 门店隔离：先确认这张订单属于调用者的门店，再取截图。
+    # 只查 PaymentProof 是不够的——转账截图里有金额、账号等敏感信息。
+    order = (await db.execute(select(Order).filter(Order.id == order_id))).scalars().first()
+    if not order or not can_access_store(staff_info, order.store_id):
+        raise HTTPException(status_code=404, detail="Payment proof not found")
     result = await db.execute(select(PaymentProof).filter(PaymentProof.order_id == order_id).order_by(PaymentProof.submitted_at.desc()))
     proof = result.scalars().first()
     if not proof:
@@ -187,27 +192,41 @@ async def refund_wallet_order(order_id: int, req: RefundRequest,
     order = result.scalars().first()
     if not order or not can_access_store(staff_info, order.store_id):
         raise HTTPException(status_code=404, detail="Order not found")
-    if order.payment_method != "WALLET" or order.payment_status != "PAID_CONFIRMED":
+    # 部分退款后状态是 PARTIALLY_REFUNDED，必须允许继续退剩余金额
+    if order.payment_method != "WALLET" or order.payment_status not in {"PAID_CONFIRMED", "PARTIALLY_REFUNDED"}:
         raise HTTPException(status_code=409, detail="Order was not paid from the wallet balance")
 
     staff_id = staff_info["staff_id"]
-    amount = req.amount_minor or order.total_minor
-    if amount <= 0 or amount > order.total_minor:
-        raise HTTPException(status_code=422, detail="Refund amount is invalid")
-
-    from wallet_service import WalletError, refund_payment
+    import wallet_service as wallet_service_module
+    existing = await wallet_service_module.get_payment(db, order.public_code)
+    refunded_before = int(existing["refunded_amount"] or 0) if existing else 0
+    paid_total = int(existing["amount"]) if existing else order.total_minor
+    remaining = paid_total - refunded_before
+    amount = req.amount_minor or remaining
+    # 以**支付金额**为上限（含赠送抵扣），不是订单面额
+    if amount <= 0 or amount > remaining:
+        raise HTTPException(status_code=422,
+                            detail=f"Refund amount is invalid (remaining {remaining} minor units)")
 
     old_state = f"{order.order_status}/{order.payment_status}"
     try:
-        payment = await refund_payment(
+        payment = await wallet_service_module.refund_payment(
             db, biz_id=order.public_code, amount_minor=amount,
-            idem=f"refund:{order.public_code}", operator_staff_id=staff_id, reason=reason,
+            # 幂等键带上「退款前的已退金额」：
+            #  * 同一个请求重试 -> 键相同 -> 仍然是幂等 no-op；
+            #  * 第二次部分退款（已退金额变大）-> 键不同 -> 能继续退。
+            # 固定键会让第二次部分退款永远读回第一笔，退不了剩余金额。
+            idem=f"refund:{order.public_code}:{refunded_before}:{amount}",
+            operator_staff_id=staff_id, reason=reason,
         )
-    except WalletError as exc:
+    except wallet_service_module.WalletError as exc:
         await db.rollback()
         raise HTTPException(status_code=exc.http_status, detail=exc.message)
 
-    order.payment_status = "REFUNDED"
+    refunded_now = int(payment["refunded_amount"] or 0) if payment is not None else refunded_before + amount
+    # 只有**退完**才是 REFUNDED，退一部分是 PARTIALLY_REFUNDED——
+    # 之前无论退多少都标 REFUNDED，会让「还剩多少可退」在界面上彻底看不出来。
+    order.payment_status = "REFUNDED" if refunded_now >= paid_total else "PARTIALLY_REFUNDED"
     db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff_id,
                       event=f"ORDER_REFUNDED: {reason}", from_state=old_state,
                       to_state=f"{order.order_status}/{order.payment_status}"))

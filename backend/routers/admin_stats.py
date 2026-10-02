@@ -8,6 +8,7 @@ from sqlalchemy import func, text
 
 from database import get_db
 from dependencies import get_current_staff
+from store_context import visible_store_id
 from models import Order, PaymentReview, StoreSettings
 
 router = APIRouter(prefix="/api/v1/admin/analytics", tags=["Admin Stats"])
@@ -38,16 +39,25 @@ async def get_analytics(
     start_utc = start_local.astimezone(timezone.utc)
     end_utc = end_local.astimezone(timezone.utc)
 
-    result = await db.execute(select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc))
+    # 门店隔离：门店经理只能看本店财务（总部账号不过滤）。
+    # 历史数据（store_id 为空）保持可见，与其它接口一致。
+    scope = visible_store_id(staff_info)
+    def scoped(query):
+        if scope is None:
+            return query
+        return query.filter((Order.store_id == scope) | (Order.store_id.is_(None)))
+
+    result = await db.execute(scoped(
+        select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc)))
     orders = result.scalars().all()
-    reviews_result = await db.execute(
+    reviews_result = await db.execute(scoped(
         select(Order.currency, func.sum(Order.total_minor))
         .select_from(PaymentReview)
         .join(Order, PaymentReview.order_id == Order.id)
         .filter(PaymentReview.decision == "APPROVED", PaymentReview.created_at >= start_utc,
                 PaymentReview.created_at < end_utc)
         .group_by(Order.currency)
-    )
+    ))
     confirmed_by_currency = {currency: int(amount or 0) for currency, amount in reviews_result.all()}
 
     # 钱包余额支付的订单没有 PaymentReview 记录（下单即扣款），
@@ -62,10 +72,13 @@ async def get_analytics(
               LEFT JOIN wallet.order_payments p ON p.biz_id = o.public_code
              WHERE o.payment_method = 'WALLET'
                AND o.created_at >= :start_utc AND o.created_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR o.store_id = CAST(:store_id AS INTEGER)
+                    OR o.store_id IS NULL)
              GROUP BY o.currency
             """
         ),
-        {"start_utc": start_utc, "end_utc": end_utc},
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": scope},
     )
     for currency, net in wallet_result.all():
         confirmed_by_currency[currency] = confirmed_by_currency.get(currency, 0) + int(net or 0)

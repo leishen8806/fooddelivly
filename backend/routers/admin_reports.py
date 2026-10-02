@@ -20,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 import daily_report
 from database import get_db
+from store_context import staff_store
 from dependencies import get_current_staff
 from models import StoreSettings
 from sqlalchemy.future import select
@@ -56,14 +57,18 @@ async def preview_daily_report(
 ):
     """预览某天的报表（默认今天）。任何在职员工都能看，不会发送。"""
     report_date = _parse_date(date_str)
-    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
-    chat_id = str(settings.telegram_staff_group_id) if settings and settings.telegram_staff_group_id else None
-    report = await daily_report.build_daily_report(db, report_date)
+    # 门店隔离：报表按调用者门店统计（门店经理只应看到本店数据）
+    store = await staff_store(db, staff_info)
+    chat_id = str(store.telegram_staff_group_id) if store and store.telegram_staff_group_id else None
+    report = await daily_report.build_daily_report(
+        db, report_date, store_id=store.id if store else None)
     return {
         "report": report,
+        "store": ({"id": store.id, "code": store.code, "name": store.name} if store else None),
         "text": daily_report.format_daily_report(
-            report, (settings.staff_group_language if settings else "en") or "en"),
-        "delivery": await daily_report.daily_report_status(db, report_date, chat_id),
+            report, (store.staff_group_language if store else "en") or "en"),
+        "delivery": await daily_report.daily_report_status(
+            db, report_date, chat_id, store.code if store else None),
         "target_chat_id": chat_id,
         "scheduled_hour": daily_report.report_hour(),
     }
@@ -87,14 +92,17 @@ async def send_daily_report_now(
         tz = await daily_report.store_timezone(db)
         report_date = datetime.now(tz).date() - timedelta(days=1)
 
-    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
-    chat_id = str(settings.telegram_staff_group_id) if settings and settings.telegram_staff_group_id else None
+    sender_info = sender if isinstance(sender, dict) else {}
+    store = await staff_store(db, sender_info) if sender_info.get("store_id") or sender_info.get("staff_id") else None
+    chat_id = str(store.telegram_staff_group_id) if store and store.telegram_staff_group_id else None
     if not chat_id:
         raise HTTPException(status_code=409, detail="Staff group is not configured")
 
     result = await daily_report.send_daily_report(
         db, report_date, chat_id=chat_id,
-        language=(settings.staff_group_language if settings else "en") or "en",
+        language=(store.staff_group_language if store else "en") or "en",
         force=payload.force,
+        store_id=store.id if store else None,
+        store_code=store.code if store else None,
     )
     return {"date": report_date.isoformat(), **result}

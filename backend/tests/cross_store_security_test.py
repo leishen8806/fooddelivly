@@ -123,6 +123,84 @@ def main() -> None:
     check("二号店员工列表不含主店员工", 1 not in branch_staff_list, str(sorted(branch_staff_list))[:80])
     check("二号店员工列表含本店员工", 9002 in branch_staff_list, str(sorted(branch_staff_list))[:80])
 
+    # ---- review 发现的几处越权，逐条盯着 ----
+    # ① 支付截图：别家店的截图不能读（截图里有金额、账号）。
+    #    先真的给主店订单传一张凭证，否则 404 可能只是「本来就没有凭证」。
+    tg_secret = os.getenv("WEBHOOK_SECRET", "")
+    webhook_headers = {"X-Telegram-Bot-Api-Secret-Token": tg_secret}
+    main_manager.post(f"/api/v1/admin/orders/{main_order_id}/status", json={"status": "ACCEPTED"})
+    httpx.post(f"{BASE}/api/v1/telegram/webhook", timeout=25, headers=webhook_headers,
+               json={"message": {"from": {"id": 555000111, "language_code": "en"},
+                                 "chat": {"id": 555000111, "type": "private"},
+                                 "text": f"/start pay_{main_order['public_code']}"}})
+    httpx.post(f"{BASE}/api/v1/telegram/webhook", timeout=25, headers=webhook_headers,
+               json={"message": {"from": {"id": 555000111},
+                                 "chat": {"id": 555000111, "type": "private"},
+                                 "photo": [{"file_id": f"XS_{RUN}", "file_unique_id": f"XSU_{RUN}",
+                                            "width": 90, "height": 90}]}})
+    proof_scope = branch_manager.get(f"/api/v1/admin/orders/{main_order_id}/payment-proof")
+    check("二号店读主店支付截图 -> 404", proof_scope.status_code == 404,
+          f"{proof_scope.status_code} {proof_scope.text[:60]}")
+    own_proof = main_manager.get(f"/api/v1/admin/orders/{main_order_id}/payment-proof")
+    check("主店读本店支付截图不是 404（确实是门店校验而不是一律拒绝）",
+          own_proof.status_code != 404, f"{own_proof.status_code} {own_proof.text[:60]}")
+
+    # ② 财务统计：本店下单只影响本店数字
+    def volume(client_) -> int:
+        return client_.get("/api/v1/admin/analytics/").json()["order_volume"]
+
+    main_before, branch_before = volume(main_manager), volume(branch_manager)
+    place_order(branch_cust, "branch2")
+    place_order(branch_cust, "branch3")
+    check("二号店新增订单只加二号店的统计", volume(branch_manager) == branch_before + 2,
+          f"{branch_before} -> {volume(branch_manager)}")
+    check("主店统计不受二号店影响", volume(main_manager) == main_before,
+          f"{main_before} -> {volume(main_manager)}")
+
+    # ③ 门店设置：改本店不影响别店
+    main_settings = main_manager.get("/api/v1/admin/settings").json()
+    branch_settings = branch_manager.get("/api/v1/admin/settings").json()   # 自己那份
+    check("主店设置能读到自己的门店码", main_settings.get("store_code") == "MAIN",
+          str(main_settings.get("store_code")))
+    check("二号店读到自己那份设置", branch_settings.get("store_code") == "ST02",
+          str(branch_settings.get("store_code")))
+    # 基于**自己**的原值改，而不是把主店的整份配置合并过来
+    # （合并会顺带把主店的群 ID 抄到二号店，导致日报重复投递）
+    branch_manager.patch("/api/v1/admin/settings",
+                         json={**branch_settings, "payment_link": "https://pay.example.com/st02"})
+    branch_now = branch_manager.get("/api/v1/admin/settings").json()
+    main_now = main_manager.get("/api/v1/admin/settings").json()
+    check("二号店改自己的收款链接生效",
+          branch_now.get("payment_link") == "https://pay.example.com/st02",
+          str(branch_now.get("payment_link")))
+    check("主店收款链接没被覆盖", main_now.get("payment_link") == main_settings.get("payment_link"),
+          f'{main_settings.get("payment_link")} -> {main_now.get("payment_link")}')
+    check("二号店的群 ID 没有被主店配置污染",
+          branch_now.get("telegram_staff_group_id") == branch_settings.get("telegram_staff_group_id"),
+          f'{branch_settings.get("telegram_staff_group_id")} -> {branch_now.get("telegram_staff_group_id")}')
+    check("二号店不能用 ?store=MAIN 改别家店",
+          branch_manager.get("/api/v1/admin/settings?store=MAIN").status_code == 404,
+          str(branch_manager.get("/api/v1/admin/settings?store=MAIN").status_code))
+    # 完整恢复
+    branch_manager.patch("/api/v1/admin/settings", json=branch_settings)
+
+    # ④ 店员管理：不能建别店的员工，也不能改别店员工
+    r = branch_manager.post("/api/v1/admin/staff",
+                            json={"login_name": f"xs_cross_{RUN}", "password": "xs-password-1234",
+                                  "role": "STAFF", "store_id": 1})
+    check("二号店建主店员工 -> 403", r.status_code == 403, f"{r.status_code} {r.text[:60]}")
+    check("二号店改主店员工 -> 404",
+          branch_manager.patch("/api/v1/admin/staff/1", json={"role": "STAFF"}).status_code == 404,
+          str(branch_manager.patch("/api/v1/admin/staff/1", json={"role": "STAFF"}).status_code))
+
+    # ⑤ 审计日志：看不到别店的设置变更
+    main_manager.patch("/api/v1/admin/settings", json=main_settings)
+    branch_audit = branch_manager.get("/api/v1/admin/audit-logs").json()
+    leaked = [i for i in branch_audit["items"]
+              if (i.get("details") or {}).get("store_code") == "MAIN"]
+    check("二号店审计里看不到主店的操作", not leaked,
+          f"{len(leaked)} 条 / 共 {branch_audit['total']}")
+
     # 运维任务：过期清理按店，对账只给总部
     hq_manager = client("staff", 9003)      # store_id 为空 = 总部
     r = main_manager.post("/api/v1/admin/wallet/maintenance", json={})

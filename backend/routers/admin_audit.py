@@ -5,6 +5,7 @@ from sqlalchemy.future import select
 
 from database import get_db
 from dependencies import get_current_manager
+from store_context import store_scope_clause
 from models import AuditLog, Staff
 
 router = APIRouter(prefix="/api/v1/admin/audit-logs", tags=["Admin Audit Logs"])
@@ -17,14 +18,17 @@ async def list_audit_logs(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
 ):
-    total = await db.scalar(select(func.count(AuditLog.id))) or 0
+    # 门店隔离：门店经理只看本店审计（含操作人、Telegram ID）
+    clause = store_scope_clause(AuditLog, _manager)
+    count_query = select(func.count(AuditLog.id))
+    query = (select(AuditLog, Staff.login_name, Staff.telegram_user_id)
+             .outerjoin(Staff, Staff.id == AuditLog.actor_staff_id))
+    if clause is not None:
+        count_query = count_query.filter(clause)
+        query = query.filter(clause)
+    total = await db.scalar(count_query) or 0
     result = await db.execute(
-        select(AuditLog, Staff.login_name, Staff.telegram_user_id)
-        .outerjoin(Staff, Staff.id == AuditLog.actor_staff_id)
-        .order_by(AuditLog.created_at.desc(), AuditLog.id.desc())
-        .limit(limit)
-        .offset(offset)
-    )
+        query.order_by(AuditLog.created_at.desc(), AuditLog.id.desc()).limit(limit).offset(offset))
     items = []
     for entry, login_name, staff_telegram_id in result.all():
         details = entry.details or {}

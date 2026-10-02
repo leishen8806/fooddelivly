@@ -423,7 +423,8 @@
     "admin.minOrder": "最低起送",
     "admin.minOrderHint": "按商品小计判断，不含配送费/服务费",
     "admin.deliveryFee": "配送费",
-    "admin.serviceFee": "服务费"
+    "admin.serviceFee": "服务费",
+    "payment.partiallyRefunded": "部分退款"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -849,7 +850,8 @@
     "admin.minOrder": "Minimum order",
     "admin.minOrderHint": "Checked against item subtotal, excluding fees",
     "admin.deliveryFee": "Delivery fee",
-    "admin.serviceFee": "Service fee"
+    "admin.serviceFee": "Service fee",
+    "payment.partiallyRefunded": "Partially refunded"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1275,6 +1277,7 @@
     "admin.minOrder": "កម្មង់អប្បបរមា",
     "admin.minOrderHint": "គិតលើតម្លៃម្ហូប",
     "admin.deliveryFee": "ថ្លៃដឹកជញ្ជូន",
-    "admin.serviceFee": "ថ្លៃសេវា"
+    "admin.serviceFee": "ថ្លៃសេវា",
+    "payment.partiallyRefunded": "សងប្រាក់មួយផ្នែក"
   }
 }

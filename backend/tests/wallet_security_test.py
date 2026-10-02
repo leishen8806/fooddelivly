@@ -313,6 +313,39 @@ def main() -> None:
           r.status_code == 409 or r.json().get("refunded_amount_minor") == paid["total_minor"],
           f'{r.status_code} {r.text[:70]}')
 
+    print("\n[11b] 部分退款：状态与幂等")
+    # 之前无论退多少都标 REFUNDED，且幂等键固定 -> 第二次部分退款读回旧记录、退不了剩余
+    r = a.post("/api/v1/orders",
+               json={"room_number": "SEC4", "items": [{"product_id": 1, "quantity": 2}],
+                     "pay_with_wallet": True},
+               headers={"Idempotency-Key": f"sec-partial-{RUN}"})
+    if r.status_code == 200:
+        partial = r.json()
+        pid = [o for o in manager.get("/api/v1/admin/orders").json()
+               if o["public_code"] == partial["public_code"]][0]["id"]
+        total = partial["total_minor"]
+        first = manager.post(f"/api/v1/admin/orders/{pid}/refund",
+                             json={"reason": "部分退款", "amount_minor": total // 2})
+        check("部分退款 200", first.status_code == 200, f"{first.status_code} {first.text[:70]}")
+        check("部分退款后状态是 PARTIALLY_REFUNDED",
+              first.json().get("payment_status") == "PARTIALLY_REFUNDED",
+              str(first.json().get("payment_status")))
+        check("部分退款金额正确",
+              first.json().get("refunded_amount_minor") == total // 2,
+              str(first.json().get("refunded_amount_minor")))
+        second = manager.post(f"/api/v1/admin/orders/{pid}/refund",
+                              json={"reason": "退剩余", "amount_minor": total - total // 2})
+        check("还能退剩余金额（固定幂等键会让这里失败）",
+              second.status_code == 200, f"{second.status_code} {second.text[:70]}")
+        check("退完后状态是 REFUNDED",
+              second.json().get("payment_status") == "REFUNDED",
+              str(second.json().get("payment_status")))
+        again = manager.post(f"/api/v1/admin/orders/{pid}/refund", json={"reason": "再退"})
+        check("退完之后不能再退", again.status_code in (409, 422),
+              f"{again.status_code} {again.text[:60]}")
+    else:
+        check("部分退款用例准备订单失败", False, f"{r.status_code} {r.text[:60]}")
+
     print("\n[12] 出餐后不能用「取消」把钱退回去")
     r = a.post("/api/v1/orders",
                json={"room_number": "SEC2", "items": [{"product_id": 1, "quantity": 1}],

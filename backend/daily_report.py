@@ -24,7 +24,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Customer, Order, ReportDelivery, StoreSettings
+from models import Customer, Order, ReportDelivery, Store, StoreSettings
 from telegram_service import send_bot_message, tr
 
 log = logging.getLogger("teacafe.report")
@@ -48,16 +48,21 @@ async def store_timezone(db: AsyncSession) -> ZoneInfo:
         return ZoneInfo(DEFAULT_TZ)
 
 
-async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo | None = None) -> dict:
-    """统计 `report_date` 这一天（店铺时区自然日）的经营数据。"""
+async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo | None = None,
+                             store_id: int | None = None) -> dict:
+    """统计 `report_date` 这一天（店铺时区自然日）的经营数据。
+
+    `store_id` 非空时只统计该门店（门店群只应收到本店数据）；为空 = 总部视角。
+    """
     tz = tz or await store_timezone(db)
     start_local = datetime.combine(report_date, time.min, tz)
     end_local = start_local + timedelta(days=1)          # 左闭右开：00:00:00 ~ 23:59:59.999
     start_utc, end_utc = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
-    orders = (await db.execute(
-        select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc)
-    )).scalars().all()
+    order_query = select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc)
+    if store_id is not None:
+        order_query = order_query.filter(Order.store_id == store_id)
+    orders = (await db.execute(order_query)).scalars().all()
 
     currency = "USD"
     settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
@@ -78,9 +83,11 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
               JOIN public.orders o ON o.id = r.order_id
              WHERE r.decision = 'APPROVED'
                AND r.created_at >= :start_utc AND r.created_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR o.store_id = CAST(:store_id AS INTEGER))
             """
         ),
-        {"start_utc": start_utc, "end_utc": end_utc},
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": store_id},
     )).scalar() or 0
 
     # 钱包余额支付：净额 = 支付金额 - 已退金额
@@ -92,9 +99,11 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
               LEFT JOIN wallet.order_payments p ON p.biz_id = o.public_code
              WHERE o.payment_method = 'WALLET'
                AND o.created_at >= :start_utc AND o.created_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR o.store_id = CAST(:store_id AS INTEGER))
             """
         ),
-        {"start_utc": start_utc, "end_utc": end_utc},
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": store_id},
     )).scalar() or 0
 
     refunded = (await db.execute(
@@ -104,9 +113,11 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
               FROM public.orders o
               JOIN wallet.order_payments p ON p.biz_id = o.public_code
              WHERE o.created_at >= :start_utc AND o.created_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR o.store_id = CAST(:store_id AS INTEGER))
             """
         ),
-        {"start_utc": start_utc, "end_utc": end_utc},
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": store_id},
     )).scalar() or 0
 
     # 钱包充值：以「入账时间」为准
@@ -119,9 +130,11 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
               FROM wallet.recharge_orders
              WHERE status = 'credited'
                AND reviewed_at >= :start_utc AND reviewed_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR store_id = CAST(:store_id AS INTEGER))
             """
         ),
-        {"start_utc": start_utc, "end_utc": end_utc},
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": store_id},
     )).mappings().first()
 
     pending_recharges = (await db.execute(
@@ -130,25 +143,30 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
             SELECT count(*) AS n FROM wallet.recharge_orders
              WHERE status IN ('awaiting_proof', 'under_review')
                AND created_at >= :start_utc AND created_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR store_id = CAST(:store_id AS INTEGER))
             """
         ),
-        {"start_utc": start_utc, "end_utc": end_utc},
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": store_id},
     )).scalar() or 0
 
-    new_customers = (await db.execute(
-        select(func.count()).select_from(Customer).filter(
-            Customer.created_at >= start_utc, Customer.created_at < end_utc)
-    )).scalar() or 0
+    new_customer_query = select(func.count()).select_from(Customer).filter(
+        Customer.created_at >= start_utc, Customer.created_at < end_utc)
+    if store_id is not None:
+        new_customer_query = new_customer_query.filter(Customer.store_id == store_id)
+    new_customers = (await db.execute(new_customer_query)).scalar() or 0
 
     # 遗留待处理：截至当天结束时仍未审核的收款凭证（不是当天新增，而是「还压着」）
-    backlog_review = (await db.execute(
-        select(func.count()).select_from(Order).filter(
-            Order.payment_status == "PROOF_SUBMITTED",
-            Order.created_at >= start_utc, Order.created_at < end_utc)
-    )).scalar() or 0
+    backlog_query = select(func.count()).select_from(Order).filter(
+        Order.payment_status == "PROOF_SUBMITTED",
+        Order.created_at >= start_utc, Order.created_at < end_utc)
+    if store_id is not None:
+        backlog_query = backlog_query.filter(Order.store_id == store_id)
+    backlog_review = (await db.execute(backlog_query)).scalar() or 0
 
     return {
         "date": report_date.isoformat(),
+        "store_id": store_id,
         "timezone": str(tz),
         "currency": currency,
         "orders": len(orders),
@@ -209,13 +227,16 @@ def format_daily_report(report: dict, language: str = "en") -> str:
 # 投递
 # ---------------------------------------------------------------------------
 
-def _report_key(report_date: date) -> str:
-    return f"daily_sales:{report_date.isoformat()}"
+def _report_key(report_date: date, store_code: str | None = None) -> str:
+    """一天一份**每店**。带上门店码，否则第二家店会被当成「已发送」直接跳过。"""
+    suffix = f":{store_code}" if store_code else ""
+    return f"daily_sales:{report_date.isoformat()}{suffix}"
 
 
-async def daily_report_status(db: AsyncSession, report_date: date, chat_id: str | None) -> dict | None:
+async def daily_report_status(db: AsyncSession, report_date: date, chat_id: str | None,
+                              store_code: str | None = None) -> dict | None:
     """返回当天的投递记录（用来在后台显示「已发送」）。"""
-    filters = [ReportDelivery.report_key == _report_key(report_date)]
+    filters = [ReportDelivery.report_key == _report_key(report_date, store_code)]
     if chat_id:
         filters.append(ReportDelivery.chat_id == chat_id)
     row = (await db.execute(select(ReportDelivery).filter(*filters).limit(1))).scalars().first()
@@ -226,25 +247,25 @@ async def daily_report_status(db: AsyncSession, report_date: date, chat_id: str 
 
 async def send_daily_report(
     db: AsyncSession, report_date: date, *, chat_id: str, language: str = "en",
-    force: bool = False,
+    force: bool = False, store_id: int | None = None, store_code: str | None = None,
 ) -> dict:
     """把某天的报表发到指定会话。**幂等**：同一天同一会话只会成功发送一次。
 
     `force=True` 时忽略已发送记录（后台「立即发送」用），但仍然会更新同一条记录。
     """
-    report = await build_daily_report(db, report_date)
-    key = _report_key(report_date)
+    report = await build_daily_report(db, report_date, store_id=store_id)
+    key = _report_key(report_date, store_code)
 
     if not force:
         # 1) 抢占当天的投递记录；抢不到说明已经发过
         claim = ReportDelivery(report_key=key, report_date=report_date, chat_id=chat_id,
-                               payload=report)
+                               payload=report, store_id=store_id)
         db.add(claim)
         try:
             await db.commit()
         except IntegrityError:
             await db.rollback()
-            existing = await daily_report_status(db, report_date, chat_id)
+            existing = await daily_report_status(db, report_date, chat_id, store_code)
             log.info("每日报表 %s 已发送过（%s），跳过", key, existing)
             return {"sent": False, "skipped": "already_sent", "report": report, "delivery": existing}
     else:
@@ -305,23 +326,39 @@ def report_enabled() -> bool:
 
 
 async def _tick(db_factory) -> None:
-    """到点就发昨天的报表。每分钟被调度器调用一次，靠投递记录保证只发一次。"""
+    """到点就发昨天的报表——**每家门店各发各的群**。
+
+    以前只有一家店的群和一个全局报表，多门店之后：
+      * 门店群只能收到本店数据；
+      * 每店的投递记录独立（report_key 带门店码），一家失败不影响其它家。
+    """
     from database import AsyncSessionLocal
 
     async with (db_factory or AsyncSessionLocal)() as db:
-        tz = await store_timezone(db)
-        now = datetime.now(tz)
-        if now.hour != report_hour():
-            return
-        result = await db.execute(select(StoreSettings).limit(1))
-        settings = result.scalars().first()
-        chat_id = settings.telegram_staff_group_id if settings else None
-        if not chat_id:
-            log.debug("未配置员工群，跳过每日报表")
-            return
-        yesterday = (now.date() - timedelta(days=1))
-        await send_daily_report(db, yesterday, chat_id=str(chat_id),
-                                language=(settings.staff_group_language or "en"))
+        now = datetime.now(timezone.utc)
+        rows = (await db.execute(
+            select(Store).filter(Store.status == "ACTIVE").order_by(Store.id))).scalars().all()
+        # 先把要用的值取出来：send_daily_report 里会 commit，
+        # commit 之后 ORM 对象全部过期，再访问属性会触发同步懒加载 ->
+        # MissingGreenlet（异步 session 里拿不到数据）。
+        stores = [(row.id, row.code, row.timezone, row.telegram_staff_group_id,
+                   row.staff_group_language) for row in rows]
+        for store_id, code, tz_name, chat_id, language in stores:
+            try:
+                tz = ZoneInfo(tz_name or DEFAULT_TZ)
+            except ZoneInfoNotFoundError:
+                tz = ZoneInfo(DEFAULT_TZ)
+            local_now = now.astimezone(tz)
+            if local_now.hour != report_hour():
+                continue
+            if not chat_id:
+                continue          # 这家店没配群就跳过（不是错误）
+            yesterday = local_now.date() - timedelta(days=1)
+            await send_daily_report(
+                db, yesterday, chat_id=str(chat_id),
+                language=(language or "en"),
+                store_id=store_id, store_code=code,
+            )
 
 
 async def run_scheduler(db_factory=None) -> None:

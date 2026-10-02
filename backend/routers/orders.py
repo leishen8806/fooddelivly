@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import selectinload
 from database import get_db
 from product_options import OptionError, load_groups, resolve_selections
-from store_context import effective_product, load_overrides, resolve_store
+from store_context import effective_product, load_overrides, resolve_store, store_for_order
 from sale_window import describe, is_on_sale, windows_from_json
 from models import Order, OrderItem, Product
 from models import StoreSettings, Customer, PaymentProof
@@ -80,8 +80,10 @@ def order_handoff(order: Order, settings: StoreSettings | None) -> dict:
 
 
 async def _handoff_for(db, order: Order) -> dict:
-    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
-    return order_handoff(order, settings)
+    # 收款信息按**订单所属门店**取：以前取全局设置，会把 A 店的收款码
+    # 发给 B 店的客人（多门店时这是直接的资金风险）。
+    store = await store_for_order(db, order)
+    return order_handoff(order, store)
 
 @router.post("/orders")
 async def create_order(
@@ -275,11 +277,14 @@ async def create_order(
 
         await db.commit()
         await db.refresh(new_order)
-        settings_result = await db.execute(select(StoreSettings).limit(1))
-        settings = settings_result.scalars().first()
+        # 通知发到**该订单所属门店**的群（不是全局那一个群）
+        notify_store = await store_for_order(db, new_order)
         try:
-            message_id = await notify_new_order(new_order, settings.telegram_staff_group_id if settings else None,
-                                                settings.staff_group_language if settings else "en", order_items)
+            message_id = await notify_new_order(
+                new_order,
+                notify_store.telegram_staff_group_id if notify_store else None,
+                (notify_store.staff_group_language if notify_store else "en") or "en",
+                order_items)
             if message_id:
                 new_order.telegram_group_message_id = message_id
                 await db.commit()

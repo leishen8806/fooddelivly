@@ -258,6 +258,14 @@ async def start_recharge(
     )
 
 
+async def get_payment(db: AsyncSession, biz_id: str):
+    """按业务单号查支付记录（退款判断「已退多少」用）。"""
+    return await _fetchrow(
+        db, "SELECT * FROM wallet.order_payments WHERE biz_id = :biz_id",
+        {"biz_id": biz_id},
+    )
+
+
 async def get_recharge(db: AsyncSession, order_id: int):
     return await _fetchrow(
         db, "SELECT * FROM wallet.recharge_orders WHERE id = :order_id",
