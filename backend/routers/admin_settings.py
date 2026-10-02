@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from database import get_db
 from models import StoreSettings, AuditLog
+from store_context import default_store as load_default_store
 from dependencies import get_current_manager, get_current_staff
 from jose import jwt
 import os
@@ -157,6 +158,35 @@ async def update_settings(req: SettingsUpdate, manager_info: dict = Depends(get_
                                                 "min_order_minor": settings.min_order_minor,
                                                 "delivery_fee_minor": settings.delivery_fee_minor,
                                                 "service_fee_minor": settings.service_fee_minor}))
+    # 多商家过渡期：经营参数以**门店**为准（下单读门店），这里同步一份到主店，
+    # 否则管理端改了设置但下单不生效。P3 会把 store_settings 彻底退休。
+    store = await load_default_store(db)
+    if store is not None:
+        store.currency = settings.currency
+        store.timezone = settings.timezone
+        store.payment_link = settings.payment_link
+        store.aba_qr_asset_key = settings.aba_qr_asset_key
+        store.telegram_staff_group_id = settings.telegram_staff_group_id
+        store.staff_group_language = settings.staff_group_language
+        store.is_accepting_orders = bool(settings.is_accepting_orders)
+        store.business_hours = settings.business_hours or []
+        store.min_order_minor = int(settings.min_order_minor or 0)
+        store.delivery_fee_minor = int(settings.delivery_fee_minor or 0)
+        store.service_fee_minor = int(settings.service_fee_minor or 0)
+
     await db.commit()
     await db.refresh(settings)
-    return settings
+    return {
+        "currency": settings.currency,
+        "timezone": settings.timezone,
+        "aba_qr_asset_key": settings.aba_qr_asset_key,
+        "payment_link": settings.payment_link,
+        "telegram_staff_group_id": settings.telegram_staff_group_id,
+        "staff_group_language": settings.staff_group_language,
+        "open_hours": settings.open_hours,
+        "is_accepting_orders": bool(settings.is_accepting_orders),
+        "business_hours": settings.business_hours or [],
+        "min_order_minor": settings.min_order_minor or 0,
+        "delivery_fee_minor": settings.delivery_fee_minor or 0,
+        "service_fee_minor": settings.service_fee_minor or 0,
+    }

@@ -21,9 +21,13 @@ class Window:
 
 
 def _as_window(raw) -> Window:
-    """支持 ORM 行或 (start, end) 元组。"""
+    """支持 ORM 行、dict（门店覆盖表存的 JSON）、Window 与 (start, end) 元组。"""
     if isinstance(raw, Window):
         return raw
+    if isinstance(raw, dict):
+        start = time.fromisoformat(str(raw.get("start", "")).strip())
+        end = time.fromisoformat(str(raw.get("end", "")).strip())
+        return Window(start.replace(second=0, microsecond=0), end.replace(second=0, microsecond=0))
     if isinstance(raw, tuple):
         return Window(raw[0], raw[1])
     return Window(raw.start_time, raw.end_time)

@@ -11,6 +11,7 @@ from database import get_db
 from models import Category, Product, ProductOption, ProductOptionGroup, ProductSaleWindow, StoreSettings, AuditLog
 from dependencies import get_current_staff, get_current_manager
 from product_options import serialize_groups
+from store_context import effective_product, load_overrides, resolve_store
 from sale_window import describe, is_on_sale, next_open_at
 
 router = APIRouter(prefix="/api/v1", tags=["Products"])
@@ -50,13 +51,18 @@ class CategoryResponse(BaseModel):
         from_attributes = True
 
 def serialize_product(product: Product, *, language: str = "en",
-                      now_local: datetime | None = None) -> dict:
+                      now_local: datetime | None = None,
+                      price_minor: int | None = None,
+                      sale_windows: list | None = None) -> dict:
     """菜品对外结构。
 
     `available` 是后厨/管理端开关（卖完了），`orderable` 是「此刻能不能下单」——
     两者都满足才行。前端用 orderable 决定按钮，服务端下单时**还会再校验一次**。
     """
-    windows = list(product.sale_windows or [])
+    if sale_windows is not None:
+        windows = list(sale_windows)          # 门店覆盖后的售卖时间（JSON 形式）
+    else:
+        windows = list(product.sale_windows or [])
     on_sale = is_on_sale(windows, now_local.time()) if now_local else True
     next_open = next_open_at(windows, now_local) if now_local else None
     return {
@@ -64,7 +70,7 @@ def serialize_product(product: Product, *, language: str = "en",
         "category_id": product.category_id,
         "name": product.name,
         "description": product.description,
-        "price_minor": product.price_minor,
+        "price_minor": int(price_minor) if price_minor is not None else product.price_minor,
         "currency": product.currency,
         "image_key": product.image_key,
         "available": bool(product.available),
@@ -98,7 +104,12 @@ async def store_now(db: AsyncSession) -> tuple[datetime, str]:
 
 # Endpoints
 @router.get("/menu")
-async def get_menu(db: AsyncSession = Depends(get_db)):
+async def get_menu(store: Optional[str] = None, db: AsyncSession = Depends(get_db)):
+    """菜单。`?store=ST01` 指定门店（深链/二维码带过来），不传则用主店。
+
+    价格/上架/排序/售卖时间都按「模板 + 覆盖」解析——与下单计价共用
+    store_context.effective_product()，保证看到的价格就是扣款的价格。
+    """
     result = await db.execute(
         select(Category)
         .filter(Category.active == True)
@@ -110,16 +121,25 @@ async def get_menu(db: AsyncSession = Depends(get_db)):
     categories = result.scalars().all()
     now_local, language = await store_now(db)
 
+    store_row = await resolve_store(db, store_code=store)
+    all_products = [p for cat in categories for p in cat.products]
+    overrides = await load_overrides(db, store_row.id if store_row else None,
+                                     [p.id for p in all_products])
+
     payload = []
     for cat in categories:
-        products = [p for p in cat.products if p.available]
+        effective = [effective_product(p, overrides.get(p.id), store_row) for p in cat.products]
+        # 门店覆盖可以单独下架；总部下架仍然全局生效（effective_product 里取与）
+        effective = [e for e in effective if e.available]
+        effective.sort(key=lambda e: (e.sort_order, e.id))
         payload.append({
             "id": cat.id,
             "name": cat.name,
             "sort_order": cat.sort_order,
             "active": bool(cat.active),
-            "products": [serialize_product(p, language=language, now_local=now_local)
-                         for p in products],
+            "products": [serialize_product(e.product, language=language, now_local=now_local,
+                                           price_minor=e.price_minor, sale_windows=e.sale_windows)
+                         for e in effective],
         })
     return payload
 

@@ -7,6 +7,7 @@ class Customer(Base):
     __tablename__ = "customers"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 客户归属的门店（跨店余额通用，归属只影响默认展示与配送）
     telegram_user_id = Column(String, unique=True, index=True, nullable=False)
     display_name = Column(String, nullable=True)
     username = Column(String, nullable=True)
@@ -23,6 +24,7 @@ class Staff(Base):
     __tablename__ = "staff"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 员工归属；NULL = 总部（可跨店）
     telegram_user_id = Column(String, unique=True, index=True, nullable=True)
     login_name = Column(String, unique=True, index=True, nullable=False)
     password_hash = Column(String, nullable=False)
@@ -34,6 +36,7 @@ class Category(Base):
     __tablename__ = "categories"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # NULL = 总部模板分类，各店可见
     name = Column(JSON, nullable=False) # { "en": "...", "zh-CN": "...", "km": "..." }
     sort_order = Column(Integer, default=0)
     active = Column(Boolean, default=True)
@@ -44,6 +47,7 @@ class Product(Base):
     __tablename__ = "products"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # NULL = 总部模板菜品（各店用 store_product_overrides 覆盖）
     category_id = Column(Integer, ForeignKey("categories.id"))
     name = Column(JSON, nullable=False)
     description = Column(JSON, nullable=True)
@@ -55,6 +59,7 @@ class Product(Base):
     sweetness_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     
     category = relationship("Category", back_populates="products")
+    store_overrides = relationship("StoreProductOverride", cascade="all, delete-orphan")
     # 售卖时间窗：没有记录 = 全天可售
     sale_windows = relationship("ProductSaleWindow", back_populates="product",
                                 cascade="all, delete-orphan",
@@ -115,6 +120,7 @@ class Order(Base):
     __tablename__ = "orders"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 下单门店：结算与配送的归属依据
     public_code = Column(String, unique=True, index=True, nullable=False)
     customer_id = Column(Integer, ForeignKey("customers.id"))
     room_number = Column(String, nullable=False)
@@ -159,6 +165,7 @@ class PaymentProof(Base):
     __tablename__ = "payment_proofs"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 收款凭证所属门店
     order_id = Column(Integer, ForeignKey("orders.id"))
     telegram_file_id = Column(String, nullable=False)
     submitted_by = Column(Integer, ForeignKey("customers.id"))
@@ -169,6 +176,7 @@ class PaymentReview(Base):
     __tablename__ = "payment_reviews"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 审核动作所属门店
     order_id = Column(Integer, ForeignKey("orders.id"))
     staff_id = Column(Integer, ForeignKey("staff.id"))
     decision = Column(String, nullable=False) # 'APPROVED' or 'REJECTED'
@@ -191,12 +199,73 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 审计日志所属门店
     actor_staff_id = Column(Integer, ForeignKey("staff.id"), nullable=False)
     entity_type = Column(String, nullable=False)
     entity_id = Column(String, nullable=False)
     action = Column(String, nullable=False)
     details = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Merchant(Base):
+    """加盟商主体（一个老板可能开多家店）。"""
+    __tablename__ = "merchants"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, nullable=False, unique=True)
+    name = Column(String, nullable=False)
+    contact = Column(String, nullable=True)
+    settlement_note = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class Store(Base):
+    """店铺（加盟商门店）。经营参数与结算配置都在这里。"""
+    __tablename__ = "stores"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String, nullable=False, unique=True)
+    merchant_id = Column(Integer, ForeignKey("merchants.id"), nullable=True)
+    name = Column(JSON, nullable=False)
+    status = Column(String, nullable=False, default="ACTIVE", server_default="ACTIVE")
+
+    currency = Column(String, nullable=False, default="USD", server_default="USD")
+    timezone = Column(String, nullable=False, default="Asia/Phnom_Penh", server_default="Asia/Phnom_Penh")
+    payment_link = Column(String, nullable=True)
+    aba_qr_asset_key = Column(String, nullable=True)
+    telegram_staff_group_id = Column(String, nullable=True)
+    staff_group_language = Column(String, nullable=False, default="en", server_default="en")
+    is_accepting_orders = Column(Boolean, nullable=False, default=True, server_default="true")
+    business_hours = Column(JSON, nullable=False, default=list, server_default="[]")
+    min_order_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    delivery_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    service_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
+
+    # 加盟商结算：抽成 = 基数 × commission_bps/10000 + commission_fixed_minor
+    commission_bps = Column(Integer, nullable=False, default=0, server_default="0")
+    commission_fixed_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    settlement_cycle = Column(String, nullable=False, default="DAILY", server_default="DAILY")
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class StoreProductOverride(Base):
+    """门店对总部模板菜品的覆盖：NULL = 用总部值。
+
+    菜单展示与下单计价**必须**都走 store_context.effective_product()，
+    否则会出现「菜单显示 7 块、下单扣 5 块」。
+    """
+    __tablename__ = "store_product_overrides"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    price_minor = Column(Integer, nullable=True)
+    available = Column(Boolean, nullable=True)
+    sort_order = Column(Integer, nullable=True)
+    sale_windows = Column(JSON, nullable=True)      # 门店自己的售卖时间；NULL = 不限制
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
 
 class ReportDelivery(Base):
     """每日报表的投递记录：保证「一天一份」不重复发。
@@ -207,6 +276,7 @@ class ReportDelivery(Base):
     __tablename__ = "report_deliveries"
 
     id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)   # 报表投递所属门店
     report_key = Column(String, nullable=False)   # 例如 daily_sales:2026-10-01
     report_date = Column(Date, nullable=False)
     chat_id = Column(String, nullable=False)

@@ -9,16 +9,18 @@
 
 ---
 
-## 1. 结论先行：需要拍板的 6 件事
+## 1. 已确认的方案（决策已锁定，按此实现）
 
-| # | 问题 | 影响面 | 我的建议 |
-|---|---|---|---|
-| 1 | **钱包余额能不能跨店用** | 资金、结算、对账 | 余额绑定到店（`(customer_id, store_id)`），跨店要显式转账 |
-| 2 | 一个 bot 还是 7 个 bot | 运营、客户归属 | 1 个 bot + 按二维码/深链带 `store_id` 绑定客户 |
-| 3 | 菜单是共享还是各店独立维护 | 运营工作量 | 总部维护「品牌菜品库」，各店可覆盖价格/上下架/售卖时间 |
-| 4 | 客户能否跨店下单 | 配送、结算 | 默认绑定一个店；换店需重新绑定（或管理员改绑） |
-| 5 | 抽成方式 | 结算 | 按店配置「抽成比例 + 固定费」，写进结算单 |
-| 6 | 结算周期与出账方式 | 财务 | 日结/周结生成结算单，加盟商在后台确认 |
+| # | 问题 | **已定方案** |
+|---|---|---|
+| 1 | 钱包余额跨店 | **全局通用**，跨店消费记「店间内部往来」（见 3.5），结算时轧差 |
+| 2 | bot 数量与客户绑定 | **1 个 bot**；客户由二维码/深链带 `store_id` 绑定（`?start=store_ST01`） |
+| 3 | 菜单归属 | **模板 + 覆盖**：`products` 属总部（`store_id IS NULL` 即模板），各店用 `store_product_overrides` 覆盖价格/上下架/排序，**售卖时间也建在覆盖表上** |
+| 4 | 客户能否跨店下单 | 绑定一个主店；余额可跨店用，下单按当前选择的店算账 |
+| 5 | 抽成 | 按店配置「抽成比例（万分比）+ 固定费」，逐单写入结算单 |
+| 6 | 结算周期 | 按店配置日结 / 周结，生成结算单，**加盟商在后台确认** |
+
+> 下面第 2–8 节是实现规格；第 9 节只剩零散问题。
 
 ---
 
@@ -89,16 +91,36 @@ CREATE TABLE store_delivery_zones (
 | `audit_logs` / `report_deliveries` | 审计与报表 |
 | `staff` / `customers` | 归属 |
 
-### 2.3 共享菜品库（可选但强烈建议）
+### 2.3 菜单：模板 + 覆盖（已定）
 
-7 家店各配一遍菜单不现实。两种做法：
+```sql
+-- 总部模板菜品：products.store_id IS NULL
+CREATE TABLE store_product_overrides (
+  id          SERIAL PRIMARY KEY,
+  store_id    INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+  product_id  INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  price_minor INTEGER,          -- NULL = 用总部价
+  available   BOOLEAN,          -- NULL = 用总部开关
+  sort_order  INTEGER,          -- NULL = 用总部排序
+  sale_windows JSON,            -- 该店的售卖时间；NULL = 不限制（继承总部）
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (store_id, product_id)
+);
+```
 
-- **A. 模板 + 覆盖**：`products` 属于总部（`store_id IS NULL` 表示模板），
-  各店用 `store_product_overrides(store_id, product_id, price_minor, available, sort_order)`
-  覆盖价格与上下架；售卖时间也建在覆盖表上。
-- **B. 复制**：总部改完「下发」到各店（各店数据独立，改一次要下发一次）。
+**取值规则**（一处实现，菜单与下单必须用同一个函数）：
 
-推荐 **A**：改一次全店生效，个别店再单独调价；缺点是查询要 `LEFT JOIN` 覆盖表。
+```
+生效价格   = COALESCE(override.price_minor, product.price_minor)
+生效上架   = COALESCE(override.available,   product.available)
+生效排序   = COALESCE(override.sort_order,  product.sort_order)
+生效售卖时间 = override.sale_windows（NULL = 全天可售）
+```
+
+要点：
+- 菜单展示与**下单计价必须走同一套覆盖逻辑**，否则会出现「菜单显示 7 块、下单扣 5 块」；
+- 覆盖表为空 = 完全等于总部菜单，对现有单店行为零影响；
+- 售罄/下架在覆盖表上按店独立，总部的下架仍然全局生效（两者取与）。
 
 ---
 
@@ -206,6 +228,13 @@ CREATE TABLE store_interstore_entries (
 > 不要先上 B 再补往来账**——中间那段时间的对账是补不回来的。
 
 ---
+
+## 3.6 结算周期与加盟商确认（已定）
+
+- 每店配 `settlement_cycle = DAILY | WEEKLY`，到期自动生成 `settlement_statements`（`DRAFT`）；
+- 加盟商在**后台确认**（`DRAFT -> CONFIRMED`），总部财务打款后标 `PAID` 并记打款凭证；
+- 确认动作要留痕（谁、何时、在哪台设备），并进入审计日志；
+- 加盟商只能看到**自己店**的结算单（跨店越权要挡住，见第 5 节）。
 
 ## 4. 配送：独立配送
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import selectinload
 from database import get_db
 from product_options import OptionError, load_groups, resolve_selections
+from store_context import effective_product, load_overrides, resolve_store
 from sale_window import describe, is_on_sale, windows_from_json
 from models import Order, OrderItem, Product
 from models import StoreSettings, Customer, PaymentProof
@@ -135,23 +136,27 @@ async def create_order(
     product_ids = [item.product_id for item in order_req.items]
     groups_by_product = await load_groups(db, product_ids)
 
-    # 售卖时间按**店铺时区**判断；这里取一次，整单用同一个时刻
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    _settings = settings_result.scalars().first()
+    # 门店上下文：经营参数（营业时间/费用/起送）与菜品覆盖都以**门店**为准。
+    # 主店在迁移时从 store_settings 复制而来，所以对现有单店行为没有变化。
+    store_row = await resolve_store(db, customer=customer)
+    if store_row is None:
+        raise HTTPException(status_code=409, detail="门店未配置，无法下单")
     try:
-        store_tz = ZoneInfo(_settings.timezone if _settings and _settings.timezone else "Asia/Phnom_Penh")
+        store_tz = ZoneInfo(store_row.timezone or "Asia/Phnom_Penh")
     except ZoneInfoNotFoundError:
         store_tz = ZoneInfo("Asia/Phnom_Penh")
     now_local = datetime.now(store_tz)
+    _overrides = await load_overrides(db, store_row.id, product_ids)
 
-    # 店铺级经营校验：暂停接单 / 营业时间。同样必须在服务端做。
-    if _settings is not None:
-        if not _settings.is_accepting_orders:
-            raise HTTPException(status_code=409, detail="店铺已暂停接单，请稍后再试")
-        business_hours = windows_from_json(_settings.business_hours)
-        if business_hours and not is_on_sale(business_hours, now_local.time()):
-            span = " / ".join(f'{w["start"]}-{w["end"]}' for w in describe(business_hours))
-            raise HTTPException(status_code=409, detail=f"当前不在营业时间内（{span}）")
+    # 门店级经营校验：暂停接单 / 营业时间。同样必须在服务端做。
+    if store_row.status != "ACTIVE":
+        raise HTTPException(status_code=409, detail="门店已停业，无法下单")
+    if not store_row.is_accepting_orders:
+        raise HTTPException(status_code=409, detail="店铺已暂停接单，请稍后再试")
+    business_hours = windows_from_json(store_row.business_hours)
+    if business_hours and not is_on_sale(business_hours, now_local.time()):
+        span = " / ".join(f'{w["start"]}-{w["end"]}' for w in describe(business_hours))
+        raise HTTPException(status_code=409, detail=f"当前不在营业时间内（{span}）")
 
     for item in order_req.items:
         result = await db.execute(
@@ -164,7 +169,10 @@ async def create_order(
 
         # 售卖时间：不在时间段内不能下单。**必须在这里拦住**——
         # 前端把按钮藏起来只防误点，不防伪造请求。
-        windows = product.sale_windows
+        effective = effective_product(product, _overrides.get(product.id), store_row)
+        if not effective.available:
+            raise HTTPException(status_code=400, detail=f"Product {item.product_id} not available")
+        windows = windows_from_json(effective.sale_windows)
         if not is_on_sale(windows, now_local.time()):
             hours = " / ".join(f'{w["start"]}-{w["end"]}' for w in describe(windows))
             raise HTTPException(
@@ -188,7 +196,7 @@ async def create_order(
         except OptionError as exc:
             raise HTTPException(status_code=exc.status_code, detail=exc.message)
 
-        unit_price = product.price_minor + option_delta
+        unit_price = effective.price_minor + option_delta
         line_total = unit_price * item.quantity
         total_minor += line_total
 
@@ -211,13 +219,13 @@ async def create_order(
         
     # 最低起送按**商品小计**判断（不含配送费/服务费），再叠加费用得到应付总额
     subtotal_minor = total_minor
-    min_order_minor = int(_settings.min_order_minor or 0) if _settings else 0
+    min_order_minor = int(store_row.min_order_minor or 0)
     if min_order_minor and subtotal_minor < min_order_minor:
         raise HTTPException(
             status_code=409,
             detail=f"最低起送 {min_order_minor / 100:.2f} {currency}，当前商品小计 {subtotal_minor / 100:.2f} {currency}")
-    delivery_fee_minor = int(_settings.delivery_fee_minor or 0) if _settings else 0
-    service_fee_minor = int(_settings.service_fee_minor or 0) if _settings else 0
+    delivery_fee_minor = int(store_row.delivery_fee_minor or 0)
+    service_fee_minor = int(store_row.service_fee_minor or 0)
     total_minor = subtotal_minor + delivery_fee_minor + service_fee_minor
 
     try:
@@ -228,6 +236,7 @@ async def create_order(
             order_status="NEW",
             payment_status="UNPAID",
             payment_method="WALLET" if order_req.pay_with_wallet else "MANUAL",
+            store_id=store_row.id,
             currency=currency,
             customer_language=customer.preferred_language or ("zh-CN" if (customer.language_code or "").lower().startswith("zh") else "km" if (customer.language_code or "").lower().startswith("km") else "en"),
             total_minor=total_minor,
