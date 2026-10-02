@@ -102,8 +102,26 @@ def cleanup(cust: httpx.Client, admin: httpx.Client) -> int:
     return cleaned
 
 
+def reset_operating_settings(manager: httpx.Client) -> None:
+    """把店铺经营参数归零。
+
+    金额类断言对配送费/服务费/起送价很敏感，而且营业时间会让下单直接 409；
+    上一次运行、手工配置或截图用的演示数据都会影响结果——先归零再测，
+    否则会出现「代码没问题但套件红了」的假失败。
+    """
+    try:
+        current = manager.get("/api/v1/admin/settings").json()
+        manager.patch("/api/v1/admin/settings", json={
+            **current, "is_accepting_orders": True, "business_hours": [],
+            "min_order_minor": 0, "delivery_fee_minor": 0, "service_fee_minor": 0,
+        })
+    except Exception as exc:  # noqa: BLE001
+        print("  [warn] 重置经营参数失败:", exc)
+
+
 def main() -> None:
     run = os.getpid()
+    reset_operating_settings(client("staff", MANAGER_ID))
     # 机器人的幂等键 = 「承载按钮的那条消息」的身份（chat:message:a{金额}）。
     # 消息 id 必须每次运行都不同，否则第二次运行会命中幂等、返回上一轮那张单
     # ——那正是设计要的行为，测试不能去撞它。

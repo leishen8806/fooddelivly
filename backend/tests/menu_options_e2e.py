@@ -43,8 +43,21 @@ def client(kind: str, sub: int) -> httpx.Client:
                         cookies={cookie: token})
 
 
+def reset_operating_settings(manager: httpx.Client) -> None:
+    """见 wallet_api_e2e.py 里的同名函数：金额/时段类断言必须先归零。"""
+    try:
+        current = manager.get("/api/v1/admin/settings").json()
+        manager.patch("/api/v1/admin/settings", json={
+            **current, "is_accepting_orders": True, "business_hours": [],
+            "min_order_minor": 0, "delivery_fee_minor": 0, "service_fee_minor": 0,
+        })
+    except Exception as exc:  # noqa: BLE001
+        print("  [warn] 重置经营参数失败:", exc)
+
+
 def main() -> None:
     manager, cust = client("staff", MANAGER_ID), client("customer", CUSTOMER_ID)
+    reset_operating_settings(manager)
     tz = ZoneInfo("Asia/Phnom_Penh")
     now = datetime.now(tz)
 
