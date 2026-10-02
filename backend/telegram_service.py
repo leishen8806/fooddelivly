@@ -73,9 +73,24 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
             if isinstance(name, dict):
                 name = name.get(language) or name.get("en") or next(iter(name.values()), "")
             line = f"• {item.quantity} × {name}"
-            sweetness = (getattr(item, "options_json", None) or {}).get("sweetness")
+            options = getattr(item, "options_json", None) or {}
+            sweetness = options.get("sweetness")
             if sweetness is not None:
                 line += f" · {tr('order.sweetnessValue', language, value=sweetness)}"
+            # 规格 / 附加必须显示出来：这是后厨真正要照着做的东西
+            # （大杯 + 珍珠），漏了就等于把订单做错。
+            picked = []
+            for selection in options.get("selections") or []:
+                option_name = selection.get("option_name")
+                if isinstance(option_name, dict):
+                    option_name = (option_name.get(language) or option_name.get("en")
+                                   or next((v for v in option_name.values() if v), ""))
+                if option_name:
+                    delta = int(selection.get("price_delta_minor") or 0)
+                    picked.append(f"{option_name}" + (f" +{_currency_amount(delta, order.currency)}"
+                                                      if delta else ""))
+            if picked:
+                line += " · " + " + ".join(picked)
             lines.append(line)
     lines.extend([
         f"{tr('common.total', language)}: {_currency_amount(order.total_minor, order.currency)}",

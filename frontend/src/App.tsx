@@ -8,13 +8,23 @@ import { TelegramProvider } from './components/TelegramProvider';
 import CustomerWallet from './components/CustomerWallet';
 import AdminRecharges from './components/AdminRecharges';
 import AdminDailyReport from './components/AdminDailyReport';
+import ProductOptionsPicker, { type OptionGroup } from './components/ProductOptionsPicker';
+import AdminProductRules from './components/AdminProductRules';
 import { useAuthStore } from './store/authStore';
 import './index.css';
 
-type Product = { id: number; category_id: number; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean; sweetness_enabled: boolean };
+type SaleWindow = { start: string; end: string; overnight: boolean };
+type Product = { id: number; category_id: number; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean; sweetness_enabled: boolean;
+  // 售卖时间：has_sale_window 为 true 时只有 sale_windows 内可下单；
+  // orderable = available && 当前在售卖时间内（服务端算好的）
+  sale_windows?: SaleWindow[]; has_sale_window?: boolean; on_sale_now?: boolean; orderable?: boolean; next_sale_start?: string | null;
+  option_groups?: OptionGroup[] };
+type Picked = Record<number, number[]>;
+type OrderItemOptions = { sweetness?: number; price_delta_minor?: number; selections?: Array<{ group_id: number; group_name?: Record<string, string>; option_id: number; option_name?: Record<string, string>; price_delta_minor: number }> };
+type CartSelection = { group_id: number; option_id: number };
+type CartLine = { product: Product; quantity: number; sweetness: number | null; selections: CartSelection[]; unitPrice: number };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
-type CartLine = { product: Product; quantity: number; sweetness: number | null };
-type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: { sweetness?: number } }> };
+type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: OrderItemOptions }> };
 type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; created_at: string };
 type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null };
 type LanguageCode = 'zh-CN' | 'en' | 'km';
@@ -100,6 +110,7 @@ function CustomerPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [cart, setCart] = useState<CartLine[]>([]);
   const [sweetnessByProduct, setSweetnessByProduct] = useState<Record<number, number>>({});
+  const [optionsByProduct, setOptionsByProduct] = useState<Record<number, Picked>>({});
   const [room, setRoom] = useState('');
   const [orderDetails, setOrderDetails] = useState<CustomerOrderDetails | null>(null);
   const [orderLoading, setOrderLoading] = useState(false);
@@ -123,7 +134,7 @@ function CustomerPage() {
   const roomLoadedFor = useRef<number | null>(null);
   const orderCloseRef = useRef<HTMLButtonElement>(null);
   const languageSelectRef = useRef<HTMLSelectElement>(null);
-  const total = useMemo(() => cart.reduce((sum, line) => sum + line.product.price_minor * line.quantity, 0), [cart]);
+  const total = useMemo(() => cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0), [cart]);
   const itemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? categories[0];
   const orderDialogOpen = orderDetails !== null;
@@ -246,7 +257,73 @@ function CustomerPage() {
     }
   };
 
-  const cartLineKey = (line: CartLine) => `${line.product.id}:${line.sweetness ?? 'default'}`;
+  // 没选过就用 is_default 初始化（不写 state，避免每次渲染都 setState）
+  const defaultsFor = (product: Product): Picked => {
+    const out: Picked = {};
+    (product.option_groups ?? []).forEach((group) => {
+      out[group.id] = group.options.filter((option) => option.is_default).map((option) => option.id);
+    });
+    return out;
+  };
+  const selectionsFor = (product: Product): Picked => optionsByProduct[product.id] ?? defaultsFor(product);
+
+  const optionDelta = (product: Product, picked: Picked) =>
+    (product.option_groups ?? []).reduce((sum, group) => sum
+      + group.options.filter((option) => (picked[group.id] ?? []).includes(option.id))
+          .reduce((inner, option) => inner + option.price_delta_minor, 0), 0);
+
+  const toggleOption = (product: Product, group: OptionGroup, optionId: number) => {
+    setOptionsByProduct((current) => {
+      const state = current[product.id] ?? defaultsFor(product);
+      const picked = state[group.id] ?? [];
+      let next: number[];
+      if (group.multi_select) {
+        next = picked.includes(optionId) ? picked.filter((id) => id !== optionId) : [...picked, optionId];
+        if (group.max_select && next.length > group.max_select) {
+          setStatus(t('menu.optionMax', { max: group.max_select }));
+          return current;
+        }
+      } else {
+        // 单选：必选项点已选中的不取消，避免用户把自己卡在「没选」的状态
+        next = group.required && picked.includes(optionId) ? picked : [optionId];
+      }
+      return { ...current, [product.id]: { ...state, [group.id]: next } };
+    });
+  };
+
+  const toSelections = (picked: Picked): CartSelection[] =>
+    Object.entries(picked).flatMap(([groupId, optionIds]) =>
+      (optionIds ?? []).map((optionId) => ({ group_id: Number(groupId), option_id: optionId })));
+
+  // 购物车行按「菜品 + 甜度 + 规格组合」区分：同菜不同规格必须是两行
+  const cartLineKey = (line: CartLine) => `${line.product.id}:${line.sweetness ?? 'd'}:${line.selections.map((x) => x.option_id).sort((a, b) => a - b).join(',')}`;
+
+  // 购物车里把已选规格显示出来（按界面语言取三语名称），否则顾客没法确认自己选了什么
+  const localizeName = (name?: Record<string, string>, fallback?: string) => {
+    const lang = i18n.language || 'en';
+    return name?.[lang] || name?.[lang.split('-')[0]] || name?.['zh-CN'] || name?.en || fallback || '';
+  };
+  const selectedNames = (line: CartLine) => line.selections.map((selection) => {
+    const group = (line.product.option_groups ?? []).find((item) => item.id === selection.group_id);
+    const option = group?.options.find((item) => item.id === selection.option_id);
+    return option ? localizeName(option.name, option.name_text) : '';
+  }).filter(Boolean);
+
+  // 老接口缓存里没有 orderable 字段，缺省按可售处理，避免把菜单全灰掉
+  const orderable = (product: Product) => product.orderable !== false && product.available !== false;
+
+  const saleWindowNote = (product: Product) => {
+    const windows = product.sale_windows ?? [];
+    if (!windows.length) return t('common.soldOut');
+    const hours = windows.map((w) => `${w.start}-${w.end}`).join(' / ');
+    if (product.next_sale_start) {
+      const next = new Date(product.next_sale_start);
+      const hhmm = `${String(next.getHours()).padStart(2, '0')}:${String(next.getMinutes()).padStart(2, '0')}`;
+      return t('menu.saleWindowNext', { hours, time: hhmm });
+    }
+    return t('menu.saleWindow', { hours });
+  };
+
   const add = (product: Product) => {
     if (cart.length && cart[0].product.currency !== product.currency) {
       setStatus(t('cart.mixedCurrency'));
@@ -256,13 +333,26 @@ function CustomerPage() {
       setStatus(t('menu.selectSweetnessFirst'));
       return;
     }
+    // 必选规格没选就不让加：服务端也会拦，但别让用户走到结算才被拒
+    const picked = selectionsFor(product);
+    const missing = (product.option_groups ?? []).find(
+      (group) => group.required && !(picked[group.id] ?? []).length);
+    if (missing) {
+      setStatus(t('menu.optionChooseRequired', { name: localizeName(missing.name, missing.name_text) }));
+      return;
+    }
     setStatus('');
     idempotencyKey.current = null;
+    const selections = toSelections(picked);
+    const unitPrice = product.price_minor + optionDelta(product, picked);
     setCart((current) => {
       const selectedSweetness = product.sweetness_enabled ? sweetnessByProduct[product.id] : null;
-      const key = `${product.id}:${selectedSweetness ?? 'default'}`;
-      const found = current.find((line) => cartLineKey(line) === key);
-      return found ? current.map((line) => cartLineKey(line) === key ? { ...line, quantity: Math.min(99, line.quantity + 1) } : line) : [...current, { product, quantity: 1, sweetness: selectedSweetness }];
+      const line: CartLine = { product, quantity: 1, sweetness: selectedSweetness, selections, unitPrice };
+      const key = cartLineKey(line);
+      const found = current.find((item) => cartLineKey(item) === key);
+      return found
+        ? current.map((item) => cartLineKey(item) === key ? { ...item, quantity: Math.min(99, item.quantity + 1) } : item)
+        : [...current, line];
     });
   };
   const setQuantity = (key: string, quantity: number) => {
@@ -277,7 +367,13 @@ function CustomerPage() {
     try {
       setStatus(t('checkout.submitting'));
       const response = await api.post('/api/v1/orders', {
-        room_number: room.trim(), items: cart.map((line) => ({ product_id: line.product.id, quantity: line.quantity, ...(line.sweetness === null ? {} : { options: { sweetness: line.sweetness } }) })),
+        room_number: room.trim(),
+        items: cart.map((line) => ({
+          product_id: line.product.id,
+          quantity: line.quantity,
+          // 规格只传 id：价格由服务端回库算，前端算的金额仅用于展示
+          options: { ...(line.sweetness === null ? {} : { sweetness: line.sweetness }), selections: line.selections },
+        })),
         // 用钱包余额支付：后端在与建单同一个事务里扣款，余额不足则整单回滚
         ...(payWithWallet ? { pay_with_wallet: true } : {}),
       }, { headers: { 'Idempotency-Key': idempotencyKey.current } });
@@ -343,7 +439,15 @@ function CustomerPage() {
             {product.image_key ? <img className="product-image" src={product.image_key} alt={label(product.name, i18n.language)} /> : <div className="product-art">{label(product.name, i18n.language).slice(0, 1)}</div>}
             <div className="product-copy"><h3>{label(product.name, i18n.language)}</h3><p>{label(product.description, i18n.language)}</p>
               {product.sweetness_enabled && <label className="sweetness-picker">{t('menu.sweetness')}<select value={sweetnessByProduct[product.id] ?? ''} onChange={(event) => setSweetnessByProduct((current) => ({ ...current, [product.id]: Number(event.target.value) }))}><option value="" disabled>{t('menu.chooseSweetness')}</option><option value={0}>{t('sweetness.0')}</option><option value={25}>{t('sweetness.25')}</option><option value={50}>{t('sweetness.50')}</option><option value={75}>{t('sweetness.75')}</option><option value={100}>{t('sweetness.100')}</option></select></label>}
-              <div className="product-foot"><strong>{amount(product.price_minor, product.currency, i18n.language)}</strong><button type="button" aria-label={product.available ? t('menu.addToCart') : t('common.soldOut')} title={product.available ? t('menu.addToCart') : t('common.soldOut')} disabled={!product.available || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{product.available ? '➕' : t('common.soldOut')}</button></div>
+            </div>
+            {(product.option_groups ?? []).length > 0 && <ProductOptionsPicker groups={product.option_groups ?? []} value={selectionsFor(product)} onChange={(groupId, optionId) => {
+                const group = (product.option_groups ?? []).find((item) => item.id === groupId);
+                if (group) toggleOption(product, group, optionId);
+              }} currency={product.currency} />}
+            {orderable(product) === false && <p className="product-window-note">{saleWindowNote(product)}</p>}
+            <div className="product-foot">
+              <strong>{amount(product.price_minor + optionDelta(product, selectionsFor(product)), product.currency, i18n.language)}</strong>
+              <button type="button" aria-label={orderable(product) ? t('menu.addToCart') : t('menu.notOrderable')} title={orderable(product) ? t('menu.addToCart') : t('menu.notOrderable')} disabled={!orderable(product) || (product.sweetness_enabled && sweetnessByProduct[product.id] === undefined)} onClick={() => add(product)}>{orderable(product) ? '➕' : t('menu.notOrderable')}</button>
             </div>
           </article>)}</div>}
         </section>}
@@ -354,7 +458,7 @@ function CustomerPage() {
     {activeTab === 'cart' && <section className="customer-page-section cart-page">
       <div className="customer-page-heading"><span className="eyebrow">{t('cart.title')}</span><h2>{itemCount ? `${itemCount} ${t('common.quantity')}` : t('cart.empty')}</h2></div>
       {!cart.length ? <div className="cart-empty"><p>{t('cart.empty')}</p><button className="primary" type="button" onClick={() => selectTab('menu')}>{t('cart.startShopping')}</button></div> : <form className="checkout-card cart-checkout" onSubmit={submit}>
-        <div className="cart-lines">{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}<small>{amount(line.product.price_minor * line.quantity, line.product.currency, i18n.language)}</small></span><div className="quantity-control"><button type="button" aria-label={t('common.delete')} onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)}>−</button><strong>{line.quantity}</strong><button type="button" aria-label={t('common.add')} onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></div></div>)}</div>
+        <div className="cart-lines">{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}{selectedNames(line).length > 0 && <small>{selectedNames(line).join(' + ')}</small>}{line.quantity > 1 && <small>{amount(line.unitPrice, line.product.currency, i18n.language)} × {line.quantity}</small>}<small>{amount(line.unitPrice * line.quantity, line.product.currency, i18n.language)}</small></span><div className="quantity-control"><button type="button" aria-label={t('common.delete')} onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)}>−</button><strong>{line.quantity}</strong><button type="button" aria-label={t('common.add')} onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></div></div>)}</div>
         <button className="continue-shopping" type="button" onClick={() => selectTab('menu')}>{t('menu.addMore')}</button>
         <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); if (profile) localStorage.setItem(`teacafe.roomNumber.${profile.customer_id}`, event.target.value); }} autoComplete="off" maxLength={32} required />
         {walletTotal > 0 && <label className="wallet-pay-toggle"><input type="checkbox" checked={payWithWallet} onChange={(event) => setPayWithWallet(event.target.checked)} /><span><strong>{t('wallet.payWithWallet')}</strong><small>{t('wallet.available')}: {amount(walletTotal, cart[0].product.currency, i18n.language)}</small></span></label>}
@@ -457,6 +561,30 @@ function AdminPage() {
   const emptyProduct = { nameEn: '', nameZh: '', nameKm: '', descriptionEn: '', descriptionZh: '', descriptionKm: '', price: '', categoryId: '', imageUrl: '', currency: '', sweetnessEnabled: false };
   const [newProduct, setNewProduct] = useState(emptyProduct);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
+  const [rulesProductId, setRulesProductId] = useState<number | null>(null);
+
+  // 管理端编辑器需要「可变的表单结构」，这里把接口返回的规格转成表单行
+  const toRulesWindows = (product: Product) =>
+    (product.sale_windows ?? []).map((window) => ({ start: window.start, end: window.end }));
+  const toRulesGroups = (product: Product) =>
+    (product.option_groups ?? []).map((group) => ({
+      nameEn: group.name?.en ?? group.name_text,
+      nameZh: group.name?.['zh-CN'] ?? '',
+      nameKm: group.name?.km ?? '',
+      kind: (group.kind === 'ADDON' ? 'ADDON' : 'SPEC') as 'SPEC' | 'ADDON',
+      required: group.required,
+      multiSelect: group.multi_select,
+      maxSelect: group.max_select ? String(group.max_select) : '',
+      active: true,
+      options: group.options.map((option) => ({
+        nameEn: option.name?.en ?? option.name_text,
+        nameZh: option.name?.['zh-CN'] ?? '',
+        nameKm: option.name?.km ?? '',
+        price: String(option.price_delta_minor / 100),
+        isDefault: option.is_default,
+        active: true,
+      })),
+    }));
   const [newCategory, setNewCategory] = useState({ en: '', zh: '', km: '' });
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
@@ -673,7 +801,7 @@ function AdminPage() {
       <form className="product-form" onSubmit={createCategory}><label>{t('admin.newCategory')} (EN)<input value={newCategory.en} onChange={(event) => setNewCategory({ ...newCategory, en: event.target.value })} required /></label><label>{t('admin.newCategory')} (中文)<input value={newCategory.zh} onChange={(event) => setNewCategory({ ...newCategory, zh: event.target.value })} required /></label><label>{t('admin.newCategory')} (ខ្មែរ)<input value={newCategory.km} onChange={(event) => setNewCategory({ ...newCategory, km: event.target.value })} required /></label><button type="submit">{editingCategoryId ? t('common.save') : t('common.add')}</button>{editingCategoryId && <button type="button" onClick={() => { setEditingCategoryId(null); setNewCategory({ en: '', zh: '', km: '' }); }}>{t('common.cancel')}</button>}</form>
       <div className="order-list">{categories.map((category) => <article className="order-row" key={category.id}><strong>{label(category.name, i18n.language)}</strong><span>{category.active ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startCategoryEdit(category)}>{t('common.edit')}</button><button onClick={() => void toggleCategory(category)}>{category.active ? t('admin.deactivate') : t('admin.activate')}</button></article>)}</div>
       <form className="product-form" onSubmit={saveProduct}><label>{t('admin.category')}<select value={newProduct.categoryId} onChange={(event) => setNewProduct({ ...newProduct, categoryId: event.target.value })} required><option value="">—</option>{categories.map((category) => <option key={category.id} value={category.id}>{label(category.name, i18n.language)}</option>)}</select></label><label>{t('admin.productName')} (EN)<input value={newProduct.nameEn} onChange={(event) => setNewProduct({ ...newProduct, nameEn: event.target.value })} required /></label><label>{t('admin.productName')} (中文)<input value={newProduct.nameZh} onChange={(event) => setNewProduct({ ...newProduct, nameZh: event.target.value })} required /></label><label>{t('admin.productName')} (ខ្មែរ)<input value={newProduct.nameKm} onChange={(event) => setNewProduct({ ...newProduct, nameKm: event.target.value })} required /></label><label>{t('admin.description')} (EN)<input value={newProduct.descriptionEn} onChange={(event) => setNewProduct({ ...newProduct, descriptionEn: event.target.value })} /></label><label>{t('admin.description')} (中文)<input value={newProduct.descriptionZh} onChange={(event) => setNewProduct({ ...newProduct, descriptionZh: event.target.value })} /></label><label>{t('admin.description')} (ខ្មែរ)<input value={newProduct.descriptionKm} onChange={(event) => setNewProduct({ ...newProduct, descriptionKm: event.target.value })} /></label><ImageUpload label={t('admin.imageUrl')} value={newProduct.imageUrl || null} onChange={(imageUrl) => setNewProduct((current) => ({ ...current, imageUrl: imageUrl || '' }))} /><label>{t('admin.price')}<input type="number" min="0.01" step="0.01" value={newProduct.price} onChange={(event) => setNewProduct({ ...newProduct, price: event.target.value })} required /></label><label>{t('common.currency')}<input value={newProduct.currency || storeSettings.currency} readOnly /></label><label className="product-sweetness-toggle"><input type="checkbox" checked={newProduct.sweetnessEnabled} onChange={(event) => setNewProduct({ ...newProduct, sweetnessEnabled: event.target.checked })} /><span><strong>{t('admin.enableSweetness')}</strong><small>{t('admin.enableSweetnessHint')}</small></span></label><button className="primary" type="submit" disabled={!categories.length}>{editingProductId ? t('common.save') : t('admin.createProduct')}</button>{editingProductId && <button type="button" onClick={() => { setEditingProductId(null); setNewProduct(emptyProduct); }}>{t('common.cancel')}</button>}</form>
-      <div className="order-list">{products.map((product) => <article className="order-row" key={product.id}><strong>{label(product.name, i18n.language)}</strong><span>{amount(product.price_minor, product.currency, i18n.language)}</span><span>{product.sweetness_enabled ? t('admin.sweetnessOn') : t('admin.sweetnessOff')}</span><span>{product.available ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startProductEdit(product)}>{t('common.edit')}</button><button onClick={() => void toggleProduct(product)}>{product.available ? t('common.soldOut') : t('common.available')}</button></article>)}</div>
+      <div className="order-list">{products.map((product) => <article className="order-row" key={product.id}><strong>{label(product.name, i18n.language)}</strong><span>{amount(product.price_minor, product.currency, i18n.language)}</span><span>{product.sweetness_enabled ? t('admin.sweetnessOn') : t('admin.sweetnessOff')}</span><span>{product.available ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startProductEdit(product)}>{t('common.edit')}</button><button onClick={() => void toggleProduct(product)}>{product.available ? t('common.soldOut') : t('common.available')}</button><button onClick={() => setRulesProductId((current) => current === product.id ? null : product.id)}>{t('admin.saleWindowsAndOptions')}</button>{rulesProductId === product.id && <AdminProductRules productId={product.id} productName={label(product.name, i18n.language)} currency={product.currency} initialWindows={toRulesWindows(product)} initialGroups={toRulesGroups(product)} onSaved={async () => { const response = await api.get('/api/v1/admin/products'); setProducts(response.data); }} />}</article>)}</div>
     </section>}
     {section === 'finance' && <section className="panel"><div className="panel-heading"><h2>{t('admin.finance')}</h2><div><label>{t('admin.from')} <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>{t('admin.to')} <input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div></div><p>{t('admin.timezone')}: {stats?.timezone}</p><p>{t('admin.manualReviewBasis')}</p><div className="metric-row"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><div className="metric"><span>{t('admin.cancelledCount')}</span><strong>{stats?.cancelled_count ?? '—'}</strong></div></div>{(stats?.by_currency || []).map((row: any) => <div className="metric-row" key={row.currency}><div className="metric"><span>{t('admin.orderTotal')}</span><strong>{amount(row.order_total_minor, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.confirmedReceipts')}</span><strong>{amount(row.confirmed_receipts_minor, row.currency, i18n.language)}</strong></div><div className="metric warning"><span>{t('admin.inReview')}</span><strong>{amount(row.in_review_minor, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.cancelledAmount')}</span><strong>{amount(row.cancelled_total_minor, row.currency, i18n.language)}</strong></div></div>)}</section>}
     {section === 'settings' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('nav.settings')}</h2></div><form className="product-form" onSubmit={saveSettings}>

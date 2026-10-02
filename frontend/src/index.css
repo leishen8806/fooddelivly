@@ -172,7 +172,9 @@ button.primary:hover:not(:disabled),
   background: #328db4;
 }
 
-input:not([type="checkbox"]),
+/* 注意：radio 必须一起排除。否则会被当成文本框设成 100% 宽 + 控件高度，
+   规格的单选圆点会撑大并压住文字（菜品规格选择器踩过这个坑）。 */
+input:not([type="checkbox"]):not([type="radio"]),
 select,
 textarea {
   width: 100%;
@@ -193,7 +195,8 @@ textarea::placeholder {
   opacity: 1;
 }
 
-input[type="checkbox"] {
+input[type="checkbox"],
+input[type="radio"] {
   width: 1.125rem;
   height: 1.125rem;
   flex: none;
@@ -1749,8 +1752,22 @@ small {
   border-radius: var(--radius-control);
 }
 
+.menu-product-row {
+  /* 卡片在手机上是「图 + 文字」一行，规格/价格行各自独占下一行 */
+  flex-wrap: wrap;
+}
+
 .menu-product-row .product-copy {
   flex: 1;
+  /* 关键：flex 子项默认 min-width:auto，规格/附加的宽度会把整行撑出屏幕 */
+  min-width: 0;
+}
+
+.menu-product-row > .option-groups,
+.menu-product-row > .product-window-note,
+.menu-product-row > .product-foot {
+  flex: 1 0 100%;
+  min-width: 0;
 }
 
 .menu-product-row .product-copy h3 {
@@ -2179,4 +2196,43 @@ small {
   white-space: pre-wrap;
   overflow-x: auto;
 }
+
+/* 菜品规格 / 附加选择 */
+.option-groups { display: grid; gap: var(--space-2); margin-top: var(--space-2); min-width: 0; }
+.option-group { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-2) var(--space-3); margin: 0; min-width: 0; }
+.option-group legend { font-size: var(--type-caption); font-weight: var(--weight-semibold); display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; padding: 0 var(--space-1); }
+.option-group legend small { white-space: nowrap; }
+.option-required { color: var(--color-danger, #b3261e); font-style: normal; font-size: var(--type-caption); }
+.option-group small { color: var(--color-muted); font-weight: normal; }
+.option-list { display: flex; flex-wrap: wrap; gap: var(--space-2); min-width: 0; align-items: center; }
+.option-chip { display: inline-flex; align-items: center; gap: var(--space-1); border: 1px solid var(--color-border); border-radius: 999px; padding: 2px var(--space-3); cursor: pointer; font-size: var(--type-small); min-width: 0; max-width: 100%; }
+.option-chip > span { min-width: 0; }
+.option-chip input {
+  width: 1.125rem;
+  min-width: 1.125rem;
+  height: 1.125rem;
+  min-height: 0;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  pointer-events: none;
+}
+.option-chip-on { border-color: var(--color-primary, #8a5a12); background: color-mix(in srgb, var(--color-primary, #8a5a12) 10%, transparent); }
+.option-chip b { font-weight: var(--weight-semibold); }
+.product-window-note { margin: var(--space-1) 0 0; font-size: var(--type-caption); color: var(--color-muted); }
+
+/* 管理端：售卖时间 / 规格编辑器 */
+.rules-editor { grid-column: 1 / -1; display: grid; gap: var(--space-3); margin-top: var(--space-3); padding: var(--space-3); border: 1px dashed var(--color-border); border-radius: var(--radius-card); }
+.rules-editor h4 { margin: 0; }
+.rules-editor .actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.rules-editor .actions button { flex: 0 0 auto; width: auto; }
+.rules-hint { margin: 0; font-size: var(--type-caption); color: var(--color-muted); }
+.rules-rows { display: grid; gap: var(--space-2); }
+.rules-row { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.rules-row input[type="text"], .rules-row input:not([type]) { min-width: 7rem; }
+.rules-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: var(--space-2); }
+.rules-group { border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-3); display: grid; gap: var(--space-2); }
+.rules-group legend { font-weight: var(--weight-semibold); padding: 0 var(--space-2); }
+.rules-check { display: inline-flex; align-items: center; gap: var(--space-1); }
+.rules-option { padding: var(--space-2); border-radius: var(--radius-card); background: var(--color-canvas); }
 

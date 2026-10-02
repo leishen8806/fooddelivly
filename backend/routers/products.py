@@ -1,3 +1,6 @@
+from datetime import datetime, time
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -5,8 +8,10 @@ from sqlalchemy.orm import selectinload
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from database import get_db
-from models import Category, Product, AuditLog
+from models import Category, Product, ProductOption, ProductOptionGroup, ProductSaleWindow, StoreSettings, AuditLog
 from dependencies import get_current_staff, get_current_manager
+from product_options import serialize_groups
+from sale_window import describe, is_on_sale, next_open_at
 
 router = APIRouter(prefix="/api/v1", tags=["Products"])
 
@@ -44,31 +49,91 @@ class CategoryResponse(BaseModel):
     class Config:
         from_attributes = True
 
+def serialize_product(product: Product, *, language: str = "en",
+                      now_local: datetime | None = None) -> dict:
+    """菜品对外结构。
+
+    `available` 是后厨/管理端开关（卖完了），`orderable` 是「此刻能不能下单」——
+    两者都满足才行。前端用 orderable 决定按钮，服务端下单时**还会再校验一次**。
+    """
+    windows = list(product.sale_windows or [])
+    on_sale = is_on_sale(windows, now_local.time()) if now_local else True
+    next_open = next_open_at(windows, now_local) if now_local else None
+    return {
+        "id": product.id,
+        "category_id": product.category_id,
+        "name": product.name,
+        "description": product.description,
+        "price_minor": product.price_minor,
+        "currency": product.currency,
+        "image_key": product.image_key,
+        "available": bool(product.available),
+        "sort_order": product.sort_order,
+        "sweetness_enabled": bool(product.sweetness_enabled),
+        "sale_windows": describe(windows),
+        "has_sale_window": bool(windows),
+        "on_sale_now": on_sale,
+        "orderable": bool(product.available) and on_sale,
+        "next_sale_start": next_open.isoformat() if (next_open and not on_sale) else None,
+        "option_groups": serialize_groups(product.option_groups or [], language),
+    }
+
+
+_CHILD_LOADERS = (
+    selectinload(Product.sale_windows),
+    selectinload(Product.option_groups).selectinload(ProductOptionGroup.options),
+)
+
+
+async def store_now(db: AsyncSession) -> tuple[datetime, str]:
+    """店铺当前时间 + 语言。售卖时间必须按店铺时区判断，不能用服务器时区。"""
+    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
+    tz_name = (settings.timezone if settings and settings.timezone else "Asia/Phnom_Penh")
+    try:
+        tz = ZoneInfo(tz_name)
+    except ZoneInfoNotFoundError:
+        tz = ZoneInfo("Asia/Phnom_Penh")
+    return datetime.now(tz), (settings.staff_group_language if settings else "en") or "en"
+
+
 # Endpoints
-@router.get("/menu", response_model=List[CategoryResponse])
+@router.get("/menu")
 async def get_menu(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
         select(Category)
         .filter(Category.active == True)
-        .options(selectinload(Category.products))
+        .options(selectinload(Category.products).selectinload(Product.sale_windows),
+                 selectinload(Category.products).selectinload(Product.option_groups)
+                 .selectinload(ProductOptionGroup.options))
         .order_by(Category.sort_order)
     )
     categories = result.scalars().all()
-    
-    # Filter only available products for the menu display
-    for cat in categories:
-        cat.products = [p for p in cat.products if p.available]
-        
-    return categories
+    now_local, language = await store_now(db)
 
-@router.get("/admin/products", response_model=List[ProductResponse])
+    payload = []
+    for cat in categories:
+        products = [p for p in cat.products if p.available]
+        payload.append({
+            "id": cat.id,
+            "name": cat.name,
+            "sort_order": cat.sort_order,
+            "active": bool(cat.active),
+            "products": [serialize_product(p, language=language, now_local=now_local)
+                         for p in products],
+        })
+    return payload
+
+@router.get("/admin/products")
 async def admin_get_products(
-    staff_info: dict = Depends(get_current_staff), 
+    staff_info: dict = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db)
 ):
-    result = await db.execute(select(Product).order_by(Product.category_id, Product.sort_order, Product.id))
+    result = await db.execute(
+        select(Product).options(*_CHILD_LOADERS)
+        .order_by(Product.category_id, Product.sort_order, Product.id))
     products = result.scalars().all()
-    return products
+    now_local, language = await store_now(db)
+    return [serialize_product(p, language=language, now_local=now_local) for p in products]
 
 # We'll need schemas for creating products, updating them, etc.
 class ProductCreate(BaseModel):
@@ -200,3 +265,150 @@ async def admin_archive_product(product_id: int, manager_info: dict = Depends(ge
                     action="archived", details={"available": False}))
     await db.commit()
     return {"message": "Product set unavailable"}
+
+
+# ---------------------------------------------------------------------------
+# 售卖时间 & 规格 / 附加选择（管理端）
+# ---------------------------------------------------------------------------
+
+class SaleWindowIn(BaseModel):
+    start: str = Field(description="HH:MM（店铺时区）")
+    end: str = Field(description="HH:MM；小于 start 表示跨午夜")
+
+
+class SaleWindowsIn(BaseModel):
+    windows: List[SaleWindowIn] = Field(default_factory=list, max_length=12)
+
+
+class OptionIn(BaseModel):
+    name: LocalizedText
+    price_delta_minor: int = Field(0, ge=-1_000_000, le=1_000_000)
+    is_default: bool = False
+    active: bool = True
+
+
+class OptionGroupIn(BaseModel):
+    name: LocalizedText
+    kind: str = Field(pattern="^(SPEC|ADDON)$")
+    required: bool = False
+    multi_select: bool = False
+    max_select: Optional[int] = Field(None, ge=1, le=50)
+    active: bool = True
+    options: List[OptionIn] = Field(min_length=1, max_length=50)
+
+
+class OptionGroupsIn(BaseModel):
+    groups: List[OptionGroupIn] = Field(default_factory=list, max_length=20)
+
+
+def _parse_hhmm(value: str, field: str) -> time:
+    try:
+        parsed = time.fromisoformat(value.strip())
+    except ValueError:
+        raise HTTPException(status_code=422, detail=f"{field} must be HH:MM")
+    return parsed.replace(second=0, microsecond=0)
+
+
+async def _locked_product(db: AsyncSession, product_id: int) -> Product:
+    result = await db.execute(select(Product).filter(Product.id == product_id).with_for_update())
+    product = result.scalars().first()
+    if not product:
+        raise HTTPException(status_code=404, detail="Product not found")
+    return product
+
+
+@router.put("/admin/products/{product_id}/sale-windows")
+async def admin_set_sale_windows(product_id: int, payload: SaleWindowsIn,
+                                 manager_info: dict = Depends(get_current_manager),
+                                 db: AsyncSession = Depends(get_db)):
+    """整体替换售卖时间段。传空数组 = 恢复全天可售。"""
+    product = await _locked_product(db, product_id)
+
+    parsed = []
+    for raw in payload.windows:
+        start = _parse_hhmm(raw.start, "start")
+        end = _parse_hhmm(raw.end, "end")
+        if start == end:
+            # 起止相同会有歧义（0 长度还是 24 小时？），直接拒绝
+            raise HTTPException(status_code=422, detail="开始与结束时间不能相同（全天可售请留空）")
+        parsed.append((start, end))
+
+    await db.execute(
+        ProductSaleWindow.__table__.delete().where(ProductSaleWindow.product_id == product_id))
+    for index, (start, end) in enumerate(sorted(parsed)):
+        db.add(ProductSaleWindow(product_id=product_id, start_time=start, end_time=end,
+                                 sort_order=index))
+    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="product",
+                    entity_id=str(product_id), action="sale_windows_updated",
+                    details={"windows": [{"start": s.strftime("%H:%M"), "end": e.strftime("%H:%M")}
+                                         for s, e in parsed]}))
+    await db.commit()
+    return {"product_id": product_id,
+            "windows": [{"start": s.strftime("%H:%M"), "end": e.strftime("%H:%M")}
+                        for s, e in sorted(parsed)]}
+
+
+@router.put("/admin/products/{product_id}/option-groups")
+async def admin_set_option_groups(product_id: int, payload: OptionGroupsIn,
+                                  manager_info: dict = Depends(get_current_manager),
+                                  db: AsyncSession = Depends(get_db)):
+    """整体替换规格 / 附加分组。
+
+    整体替换而不是增删改单条：管理端是「编辑完整表单再保存」的交互，
+    一次 PUT 语义最清楚，也不会出现「组删了选项还留着」的中间态。
+    历史订单里存的是**下单时的名称与加价快照**，所以这里重建不影响旧订单。
+    """
+    product = await _locked_product(db, product_id)
+
+    # 主语言名不能为空（LocalizedText 已保证 en 有值）
+    for group in payload.groups:
+        if group.kind == "SPEC" and group.multi_select:
+            raise HTTPException(status_code=422, detail="规格组是单选，不能开启多选")
+        if group.kind == "SPEC" and group.max_select is not None:
+            raise HTTPException(status_code=422, detail="规格组是单选，不需要设置最多可选数量")
+        if group.multi_select and group.kind == "SPEC":
+            raise HTTPException(status_code=422, detail="规格组是单选，不能开启多选")
+        defaults = [o for o in group.options if o.is_default]
+        if group.kind == "SPEC" and len(defaults) > 1:
+            raise HTTPException(status_code=422, detail="单选组最多只能有一个默认选项")
+        if not any(o.active for o in group.options):
+            raise HTTPException(status_code=422, detail="每个分组至少要有一个启用中的选项")
+
+    existing = (await db.execute(
+        select(ProductOptionGroup).filter(ProductOptionGroup.product_id == product_id)
+    )).scalars().all()
+    for group in existing:
+        await db.delete(group)          # 级联删掉选项
+    await db.flush()
+
+    summary = []
+    for index, group in enumerate(payload.groups):
+        row = ProductOptionGroup(
+            product_id=product_id,
+            name=group.name.model_dump(by_alias=True, exclude_none=True),
+            kind=group.kind,
+            required=group.required,
+            multi_select=(group.kind == "ADDON") and group.multi_select,
+            max_select=group.max_select if group.kind == "ADDON" else None,
+            sort_order=index,
+            active=group.active,
+        )
+        db.add(row)
+        await db.flush()
+        for opt_index, option in enumerate(group.options):
+            db.add(ProductOption(
+                group_id=row.id,
+                name=option.name.model_dump(by_alias=True, exclude_none=True),
+                price_delta_minor=option.price_delta_minor,
+                is_default=option.is_default,
+                sort_order=opt_index,
+                active=option.active,
+            ))
+        summary.append({"index": index, "name": row.name, "kind": row.kind,
+                        "options": len(group.options)})
+
+    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="product",
+                    entity_id=str(product_id), action="option_groups_updated",
+                    details={"groups": summary}))
+    await db.commit()
+    return {"product_id": product_id, "groups": summary}

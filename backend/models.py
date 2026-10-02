@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
@@ -55,6 +55,61 @@ class Product(Base):
     sweetness_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     
     category = relationship("Category", back_populates="products")
+    # 售卖时间窗：没有记录 = 全天可售
+    sale_windows = relationship("ProductSaleWindow", back_populates="product",
+                                cascade="all, delete-orphan",
+                                order_by="(ProductSaleWindow.sort_order, ProductSaleWindow.id)")
+    option_groups = relationship("ProductOptionGroup", back_populates="product",
+                                 cascade="all, delete-orphan",
+                                 order_by="(ProductOptionGroup.sort_order, ProductOptionGroup.id)")
+
+class ProductSaleWindow(Base):
+    """菜品售卖时间段（店铺时区，每天生效）。start > end 表示跨午夜。"""
+    __tablename__ = "product_sale_windows"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    start_time = Column(Time, nullable=False)
+    end_time = Column(Time, nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+
+    product = relationship("Product", back_populates="sale_windows")
+
+
+class ProductOptionGroup(Base):
+    """规格组（SPEC，单选）或附加组（ADDON，多选）。"""
+    __tablename__ = "product_option_groups"
+
+    id = Column(Integer, primary_key=True, index=True)
+    product_id = Column(Integer, ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
+    name = Column(JSON, nullable=False)                       # {"en": "...", "zh-CN": "...", "km": "..."}
+    kind = Column(String, nullable=False)                     # SPEC | ADDON
+    required = Column(Boolean, nullable=False, default=False, server_default="false")
+    multi_select = Column(Boolean, nullable=False, default=False, server_default="false")
+    max_select = Column(Integer, nullable=True)
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+    active = Column(Boolean, nullable=False, default=True, server_default="true")
+
+    product = relationship("Product", back_populates="option_groups")
+    options = relationship("ProductOption", back_populates="group",
+                           cascade="all, delete-orphan",
+                           order_by="(ProductOption.sort_order, ProductOption.id)")
+
+
+class ProductOption(Base):
+    """具体选项：中杯 / 大杯 / 加珍珠 …… 带价格增减（最小货币单位）。"""
+    __tablename__ = "product_options"
+
+    id = Column(Integer, primary_key=True, index=True)
+    group_id = Column(Integer, ForeignKey("product_option_groups.id", ondelete="CASCADE"), nullable=False)
+    name = Column(JSON, nullable=False)
+    price_delta_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    is_default = Column(Boolean, nullable=False, default=False, server_default="false")
+    sort_order = Column(Integer, nullable=False, default=0, server_default="0")
+    active = Column(Boolean, nullable=False, default=True, server_default="true")
+
+    group = relationship("ProductOptionGroup", back_populates="options")
+
 
 class Order(Base):
     __tablename__ = "orders"

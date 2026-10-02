@@ -48,30 +48,37 @@ rm -f "$LOG"
 echo "OK: alembic upgrade head"
 
 echo
-echo "== 2/6 功能用例（97 项）=="
+echo "== 2/7 钱包功能用例（97 项）=="
 psql -d "$DB" -v ON_ERROR_STOP=1 -f "$HERE/wallet_tests.sql" 2>&1 \
   | grep -E "用例总数|ALL TESTS PASSED|TEST FAILED|ERROR"
 
 echo
-echo "== 3/6 并发用例（19 项）=="
+echo "== 3/7 钱包并发用例（19 项）=="
 "$PYTHON" "$HERE/wallet_concurrency_test.py" "${PGHOST:-}" "${PGUSER:-postgres}" "$DB" \
   | grep -E "并发用例|ALL CONCURRENCY TESTS PASSED|FAIL"
 
 echo
-echo "== 4/6 每日报表用例（18 项：统计口径 + 投递幂等 + 调度到点判断）=="
+echo "== 4/7 每日报表用例（18 项：统计口径 + 投递幂等 + 调度到点判断）=="
 DATABASE_URL="postgresql+asyncpg://${PGUSER:-postgres}@/${DB}${PGHOST:+?host=${PGHOST}}" \
   "$PYTHON" "$HERE/daily_report_test.py" | tail -3
 
+echo
+echo "== 5/7 菜品售卖时间/规格 纯逻辑用例（39 项，不需要服务）=="
+"$PYTHON" "$HERE/product_options_test.py" | tail -3
+
 if [ -n "${E2E_URL:-}" ]; then
   echo
-  echo "== 5/6 端到端用例（70 项，${E2E_URL}）=="
+  echo "== 6/7 订单/钱包端到端用例（70 项，${E2E_URL}）=="
   "$PYTHON" "$HERE/wallet_api_e2e.py" "$E2E_URL" | tail -5
   echo
-  echo "== 6/6 安全用例（67 项，${E2E_URL}）=="
+  echo "== 7/7 安全用例（68 项，${E2E_URL}）=="
   "$PYTHON" "$HERE/wallet_security_test.py" "$E2E_URL" | tail -5
+  echo
+  echo "== 7/7 菜品端到端用例（27 项，${E2E_URL}）=="
+  "$PYTHON" "$HERE/menu_options_e2e.py" "$E2E_URL" | tail -5
 else
   echo
-  echo "== 5/6 端到端 / 6/6 安全用例 =="
+  echo "== 6/7 端到端 / 7/7 安全用例 =="
   echo "跳过（未设置 E2E_URL）。要跑：先 alembic upgrade head + 灌种子 + 起服务，然后"
   echo "  E2E_URL=http://127.0.0.1:8000 ./run_wallet_tests.sh"
 fi

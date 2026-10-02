@@ -4,8 +4,13 @@ from sqlalchemy.future import select
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Literal
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, Field, field_validator
+from sqlalchemy.orm import selectinload
 from database import get_db
+from product_options import OptionError, load_groups, resolve_selections
+from sale_window import describe, is_on_sale
 from models import Order, OrderItem, Product
 from models import StoreSettings, Customer, PaymentProof
 from dependencies import get_current_customer
@@ -17,8 +22,14 @@ import string
 router = APIRouter(prefix="/api/v1", tags=["Orders"])
 
 # Schemas
+class OptionSelection(BaseModel):
+    """规格/附加选择。**只传 id**：价格由服务端回库计算，客户端传什么都不看。"""
+    group_id: int
+    option_id: int
+
 class OrderItemOptions(BaseModel):
-    sweetness: Literal[0, 25, 50, 75, 100]
+    sweetness: Optional[Literal[0, 25, 50, 75, 100]] = None
+    selections: List[OptionSelection] = Field(default_factory=list, max_length=40)
 
 class OrderItemCreate(BaseModel):
     product_id: int
@@ -39,6 +50,13 @@ class OrderCreate(BaseModel):
         if not value:
             raise ValueError("Room number is required")
         return value
+
+def product_localized_name(product: Product, language: str = "en") -> str:
+    name = product.name if isinstance(product.name, dict) else {}
+    for key in (language, "en", "zh-CN", "zh_CN", "km"):
+        if name.get(key):
+            return str(name[key])
+    return next((str(v) for v in name.values() if v), f"#{product.id}")
 
 def generate_public_code():
     alphabet = string.ascii_uppercase + string.digits
@@ -109,14 +127,39 @@ async def create_order(
     total_minor = 0
     currency = None
     order_items = []
-    
+
+    # 一次把这一单涉及菜品的规格分组读出来（避免每个条目查一次库）
+    product_ids = [item.product_id for item in order_req.items]
+    groups_by_product = await load_groups(db, product_ids)
+
+    # 售卖时间按**店铺时区**判断；这里取一次，整单用同一个时刻
+    settings_result = await db.execute(select(StoreSettings).limit(1))
+    _settings = settings_result.scalars().first()
+    try:
+        store_tz = ZoneInfo(_settings.timezone if _settings and _settings.timezone else "Asia/Phnom_Penh")
+    except ZoneInfoNotFoundError:
+        store_tz = ZoneInfo("Asia/Phnom_Penh")
+    now_local = datetime.now(store_tz)
+
     for item in order_req.items:
-        result = await db.execute(select(Product).filter(Product.id == item.product_id))
+        result = await db.execute(
+            select(Product)
+            .filter(Product.id == item.product_id)
+            .options(selectinload(Product.sale_windows)))
         product = result.scalars().first()
         if not product or not product.available:
             raise HTTPException(status_code=400, detail=f"Product {item.product_id} not available")
 
-        if product.sweetness_enabled and item.options is None:
+        # 售卖时间：不在时间段内不能下单。**必须在这里拦住**——
+        # 前端把按钮藏起来只防误点，不防伪造请求。
+        windows = product.sale_windows
+        if not is_on_sale(windows, now_local.time()):
+            hours = " / ".join(f'{w["start"]}-{w["end"]}' for w in describe(windows))
+            raise HTTPException(
+                status_code=409,
+                detail=f"{product_localized_name(product)} 当前不在售卖时间内（{hours}）")
+
+        if product.sweetness_enabled and (item.options is None or item.options.sweetness is None):
             raise HTTPException(status_code=422, detail=f"Sweetness selection is required for product {item.product_id}")
             
         # Ensure consistent currency
@@ -125,16 +168,32 @@ async def create_order(
         elif currency != product.currency:
             raise HTTPException(status_code=400, detail="Mixed currencies in order are not allowed")
         
-        unit_price = product.price_minor
+        # 规格 / 附加：只认 id，价格回库算，客户端传来的价格一律不看
+        selections = (item.options.selections if item.options is not None else None) or []
+        try:
+            option_delta, option_snapshot = resolve_selections(
+                groups_by_product.get(product.id, []), selections)
+        except OptionError as exc:
+            raise HTTPException(status_code=exc.status_code, detail=exc.message)
+
+        unit_price = product.price_minor + option_delta
         line_total = unit_price * item.quantity
         total_minor += line_total
-        
+
+        options_json: dict = {}
+        if product.sweetness_enabled and item.options is not None and item.options.sweetness is not None:
+            options_json["sweetness"] = item.options.sweetness
+        if option_snapshot:
+            options_json["selections"] = option_snapshot
+        if option_delta:
+            options_json["price_delta_minor"] = option_delta
+
         order_items.append(OrderItem(
             product_id=product.id,
             product_name_snapshot=product.name,
             unit_price_minor=unit_price,
             quantity=item.quantity,
-            options_json=item.options.model_dump() if product.sweetness_enabled and item.options else {},
+            options_json=options_json,
             line_total_minor=line_total
         ))
         
