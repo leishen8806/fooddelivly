@@ -48,12 +48,12 @@ rm -f "$LOG"
 echo "OK: alembic upgrade head"
 
 echo
-echo "== 2/4 功能用例（77 项）=="
+echo "== 2/5 功能用例（97 项）=="
 psql -d "$DB" -v ON_ERROR_STOP=1 -f "$HERE/wallet_tests.sql" 2>&1 \
   | grep -E "用例总数|ALL TESTS PASSED|TEST FAILED|ERROR"
 
 echo
-echo "== 3/4 并发用例（19 项）=="
+echo "== 3/5 并发用例（19 项）=="
 "$PYTHON" "$HERE/wallet_concurrency_test.py" "${PGHOST:-}" "${PGUSER:-postgres}" "$DB" \
   | grep -E "并发用例|ALL CONCURRENCY TESTS PASSED|FAIL"
 
@@ -62,7 +62,7 @@ if [ -n "${E2E_URL:-}" ]; then
   echo "== 4/5 端到端用例（63 项，${E2E_URL}）=="
   "$PYTHON" "$HERE/wallet_api_e2e.py" "$E2E_URL" | tail -5
   echo
-  echo "== 5/5 安全用例（49 项，${E2E_URL}）=="
+  echo "== 5/5 安全用例（61 项，${E2E_URL}）=="
   "$PYTHON" "$HERE/wallet_security_test.py" "$E2E_URL" | tail -5
 else
   echo

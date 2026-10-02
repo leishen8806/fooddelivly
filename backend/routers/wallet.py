@@ -149,6 +149,8 @@ async def list_my_recharges(
     result = []
     for row in rows:
         item = _order_json(row)
+        item["approval_count"] = row.get("approval_count", 0)
+        item["required_approvals"] = row.get("required_approvals", 1)
         # 未完成的单要能在列表里直接拿到「去机器人发截图」的深链，
         # 否则用户建完单离开页面后就找不回来了。
         if row["status"] in PENDING_STATUSES:
@@ -271,6 +273,8 @@ async def admin_list_recharges(
             "balance_minor": r["balance_minor"],
             "available_minor": r["available_minor"],
             "frozen_minor": r["frozen_minor"],
+            "approval_count": r["approval_count"],
+            "required_approvals": r["required_approvals"],
             "principal_minor": r["principal_minor"],
             "bonus_minor": r["bonus_minor"],
         }
@@ -355,17 +359,19 @@ async def admin_approve_recharge(
         )
     except wallet.WalletError as exc:
         raise _http(exc)
+    done, required = await wallet.approval_progress(db, order_id)
     db.add(AuditLog(
         actor_staff_id=staff_id, entity_type="wallet_recharge", entity_id=str(order_id),
-        action="recharge_approved",
+        action="recharge_approved" if done >= required else "recharge_approval_recorded",
         details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
                  "order_no": row["order_no"], "amount_minor": row["amount"],
                  "received_minor": row["received_amount"],
                  "bonus_minor": row["bonus_amount"], "customer_id": row["customer_id"]},
     ))
     await db.commit()
-    await _notify_customer_recharge(db, row, approved=True)
-    return _order_json(row)
+    if done >= required:
+        await _notify_customer_recharge(db, row, approved=True)
+    return {**_order_json(row), "approval_count": done, "required_approvals": required}
 
 
 @admin_router.post("/recharges/{order_id}/reject")

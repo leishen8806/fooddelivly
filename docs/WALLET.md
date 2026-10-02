@@ -255,13 +255,55 @@ wallet.is_order_owner_staff(p_staff_id, p_customer_id)
 + `wallet.audit_log`；员工侧动作同时写应用自己的 `audit_logs`（带操作人、Telegram id、来源）。
 `wallet.reconcile()` 随时能重算「账本累加 vs 钱包余额」，必须恒为空。
 
-### 还没做的（需要你们定）
+### 限流（已实现）
 
-1. **限流**：单用户每秒几次这类限流应在网关/中间件做；数据库侧只有单笔上下限、
-   未完成单数、单日累计、凭证唯一性。
-2. **大额双人复核**：目前一笔大额充值仍可由单个在职员工确认入账。要更严可以加
-   「超过 N 元需要第二个员工确认」的流程。
-3. **前端本地化的 `{{x}}` / Python 的 `{x}`** 两套插值语法不能共用同一个带占位符的键，
+`backend/rate_limit.py` 是一个**按身份 + 规则分桶**的滑动窗口中间件，
+在中间件层生效——读请求体、访问数据库之前就会被拦掉。
+
+| 身份 | 取法 |
+|---|---|
+| 已登录 | 会话 Cookie 里 JWT 的 `sub`（客户与员工各自独立计） |
+| 未登录 | 客户端 IP（用 `request.client.host`；Docker 里 uvicorn 带 `--proxy-headers` 已按 nginx 传来的 XFF 还原。**不自己解析 XFF**，避免伪造头绕过） |
+
+| 规则 | 限额 |
+|---|---|
+| `POST /api/v1/wallet/recharges`（建充值单） | 30 / 分钟 / 身份 |
+| `POST /api/v1/orders`（下单） | 20 / 分钟 |
+| `POST /api/v1/auth/admin/login`（防撞库） | 10 / 5 分钟 / IP |
+| `POST /api/v1/auth/telegram` | 30 / 分钟 |
+| 员工审核动作（approve / reject / received） | 60 / 分钟 |
+| 调账 | 20 / 分钟 |
+| 订单状态 / 退款 | 60 / 分钟 |
+| 其它写操作 | 300 / 分钟 |
+
+分桶键用的是**规则**而不是具体路径：`/admin/recharges/1/approve` 与
+`/admin/recharges/2/approve` 共享同一个桶，换个 order_id 绕不过去。
+超限返回 **429 + Retry-After**。Telegram webhook 与健康检查**不限流**
+（webhook 失败时 Telegram 会重试，限流只会放大故障）。
+
+**注意**：计数器在进程内存里，多副本部署时每个副本各算一份。要全局限流请上
+Redis 或直接在网关（nginx `limit_req` / Cloudflare）做。开关：`RATE_LIMIT_ENABLED`。
+
+### 大额双人复核（已实现）
+
+`wallet.config.dual_approval_threshold_minor`（**默认 20000 = $200**，0 = 关闭）。
+达到阈值的充值单必须**两位不同的员工**各确认一次才会入账：
+
+- 同一个人重复点不会凑数：`wallet.recharge_approvals` 上有 `(order_id, staff_id)` 唯一约束；
+- 两人确认的**实收金额必须一致**，不一致直接 `APPROVAL_MISMATCH`（说明有人改过实收金额）；
+- 未凑满时订单状态仍是 `under_review`，**不入账**，前端/机器人都会提示「还差一位确认」；
+- 一旦有人确认过，即使之后把阈值调大，也必须继续凑满两人（不能靠改配置放行）；
+- 阈值随时可改：
+
+```sql
+UPDATE wallet.config SET value = '50000' WHERE key = 'dual_approval_threshold_minor';
+UPDATE wallet.config SET value = '0'     WHERE key = 'dual_approval_threshold_minor';  -- 关闭
+```
+
+### 还没做的
+
+1. **多副本下的精确限流**：见上，需要 Redis 或网关层。
+2. **前端本地化的 `{{x}}` / Python 的 `{x}`** 两套插值语法不能共用同一个带占位符的键，
    新增文案时注意（`tr()` 现在两种都支持，i18next 只认 `{{x}}`）。
 
 ---
@@ -303,10 +345,10 @@ wallet.is_order_owner_staff(p_staff_id, p_customer_id)
 | `frontend/src/format.ts` | 金额 / 时间格式化（金额一律最小单位整数） |
 | `frontend/src/App.tsx` | 底部导航第 4 个 tab、结算页「用余额支付」、管理端侧栏入口 |
 | `frontend/src/index.css` | 钱包样式 + 底部导航改 5 列 |
-| `backend/tests/wallet_tests.sql` | 77 项 SQL 功能用例 |
+| `backend/tests/wallet_tests.sql` | 97 项 SQL 功能用例 |
 | `backend/tests/wallet_concurrency_test.py` | 19 项 8 线程并发用例 |
 | `backend/tests/wallet_api_e2e.py` | 63 项 API + Telegram webhook 端到端用例 |
-| `backend/tests/wallet_security_test.py` | 49 项安全用例（越权/IDOR/金额篡改/回调伪造/反作弊/自我交易） |
+| `backend/tests/wallet_security_test.py` | 61 项安全用例（越权/IDOR/金额篡改/回调伪造/反作弊/自我交易） |
 | `backend/tests/run_wallet_tests.sh` | 一键回归 |
 | `backend/tests/seed_wallet_fixture.sql` | 端到端验证用的种子数据 |
 

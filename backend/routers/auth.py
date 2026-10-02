@@ -112,8 +112,21 @@ async def telegram_login(req: TelegramLoginRequest, response: Response, request:
 async def admin_login(req: AdminLoginRequest, response: Response, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Staff).filter(Staff.login_name == req.login_name))
     staff = result.scalars().first()
-    
-    if not staff or not verify_password(req.password, staff.password_hash) or not staff.active:
+
+    # verify_password 在哈希格式不可用（历史数据/导入错误/字段被写坏）时会抛异常。
+    # 不能让它冒成 500：
+    #   1) 「账号存在 -> 500、账号不存在 -> 401」本身就是个账号探测 oracle；
+    #   2) 500 会引导攻击者去猜哪些登录名是真的。
+    # 一律按鉴权失败处理，只记日志。
+    password_ok = False
+    if staff is not None:
+        try:
+            password_ok = verify_password(req.password, staff.password_hash)
+        except Exception:  # noqa: BLE001
+            logger.warning("staff password hash unusable staff_id=%s", staff.id)
+            password_ok = False
+
+    if not staff or not password_ok or not staff.active:
         raise HTTPException(status_code=401, detail="Invalid credentials or account disabled")
     
     token = create_access_token({"sub": str(staff.id), "type": "staff", "role": staff.role})

@@ -4,6 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from sqlalchemy import text
 from pathlib import Path
+from rate_limit import RateLimitMiddleware
 from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet
 from dotenv import load_dotenv
 import os
@@ -31,6 +32,10 @@ class CookieOriginMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 app.add_middleware(CookieOriginMiddleware)
+
+# 限流放在 CORS 之内、CSRF 之外：先按身份限流，再校验来源。
+# 读取请求体和访问数据库都发生在更内层，所以被限的请求不会打到数据库。
+app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

@@ -77,8 +77,18 @@ export default function AdminRecharges({ role }: { role: string | null }) {
     setBusyId(order.id);
     setNotice('');
     try {
-      await api.post(`/api/v1/admin/recharges/${order.id}/${path}`, body);
-      setNotice(message);
+      const response = await api.post(`/api/v1/admin/recharges/${order.id}/${path}`, body);
+      if (path === 'approve') {
+        // 大额双人复核：只凑到一位时订单不会入账，必须说清楚还差一人，
+        // 否则员工以为没生效又点一次（重复点也不会凑数，因为同一个人只记一票）
+        const done = response.data?.approval_count ?? 1;
+        const required = response.data?.required_approvals ?? 1;
+        setNotice(done < required
+          ? `${t('admin.awaitingSecond')}（${t('admin.approvalProgress', { done, required })}）`
+          : message);
+      } else {
+        setNotice(message);
+      }
       setReceivedDraft((current) => ({ ...current, [order.id]: '' }));
       setRejectDraft((current) => ({ ...current, [order.id]: '' }));
       if (closeDetail) setExpandedId(null);
@@ -154,7 +164,13 @@ export default function AdminRecharges({ role }: { role: string | null }) {
               <td>{order.username ? <a href={`https://t.me/${order.username}`} target="_blank" rel="noreferrer">@{order.username}</a> : '—'}<small>{order.telegram_user_id}</small></td>
               <td><strong>{formatAmount(order.balance_minor ?? 0, order.currency, i18n.language)}</strong><small>{t('wallet.bucket.principal')} {formatAmount(order.principal_minor ?? 0, order.currency, i18n.language)} · {t('wallet.bucket.bonus')} {formatAmount(order.bonus_minor ?? 0, order.currency, i18n.language)}</small></td>
               <td><strong>{formatAmount(order.amount_minor, order.currency, i18n.language)}</strong>{order.bonus_amount_minor > 0 && <small>+{formatAmount(order.bonus_amount_minor, order.currency, i18n.language)} {t('wallet.bucket.bonus')}</small>}<small>{order.order_no}</small></td>
-              <td><span className={`wallet-status wallet-status-${order.status}`}>{statusLabel(order.status)}</span>{order.proof_count > 0 && <small>{t('admin.rechargeProof')} × {order.proof_count}</small>}</td>
+              <td>
+                <span className={`wallet-status wallet-status-${order.status}`}>{statusLabel(order.status)}</span>
+                {order.proof_count > 0 && <small>{t('admin.rechargeProof')} × {order.proof_count}</small>}
+                {(order.required_approvals ?? 1) > 1 && order.status === 'under_review' && <small className="wallet-status-awaiting">
+                  {t('admin.awaitingSecond')} · {t('admin.approvalProgress', { done: order.approval_count ?? 0, required: order.required_approvals })}
+                </small>}
+              </td>
               <td>{formatDateTime(order.created_at, i18n.language)}{order.submitted_at && <small>{formatDateTime(order.submitted_at, i18n.language)}</small>}</td>
               <td className="recharge-actions">
                 {isOpen(order) && <>

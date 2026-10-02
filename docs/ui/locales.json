@@ -359,7 +359,12 @@
     "wallet.frozen": "冻结",
     "wallet.myWallet": "我的钱包",
     "admin.refundOrder": "退款回钱包",
-    "admin.refundReasonPrompt": "把这张订单的钱退回客户钱包，请填写原因："
+    "admin.refundReasonPrompt": "把这张订单的钱退回客户钱包，请填写原因：",
+    "wallet.needSecondApprover": "已记录你的确认（{done}/{required}），还需要另一位同事确认后才会入账。",
+    "wallet.groupAwaitingSecond": "充值单 {order}：已确认 {done}/{required}，还需一位同事确认",
+    "admin.approvalProgress": "已确认 {{done}}/{{required}}",
+    "admin.awaitingSecond": "待第二位审核员",
+    "admin.rateLimited": "请求过于频繁，请稍后再试。"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -721,7 +726,12 @@
     "wallet.frozen": "Frozen",
     "wallet.myWallet": "My wallet",
     "admin.refundOrder": "Refund to wallet",
-    "admin.refundReasonPrompt": "Reason for refunding this order to the customer's wallet:"
+    "admin.refundReasonPrompt": "Reason for refunding this order to the customer's wallet:",
+    "wallet.needSecondApprover": "Recorded ({done}/{required}). Another colleague must confirm before it is credited.",
+    "wallet.groupAwaitingSecond": "Top-up {order}: {done}/{required} confirmed - one more colleague needed",
+    "admin.approvalProgress": "{{done}}/{{required}} confirmed",
+    "admin.awaitingSecond": "Awaiting 2nd approver",
+    "admin.rateLimited": "Too many requests, please wait a moment."
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1083,6 +1093,11 @@
     "wallet.frozen": "កក់ទុក",
     "wallet.myWallet": "កាបូបរបស់ខ្ញុំ",
     "admin.refundOrder": "សងប្រាក់ចូលកាបូប",
-    "admin.refundReasonPrompt": "ហេតុផលសងប្រាក់ចូលកាបូបអតិថិជន៖"
+    "admin.refundReasonPrompt": "ហេតុផលសងប្រាក់ចូលកាបូបអតិថិជន៖",
+    "wallet.needSecondApprover": "បានកត់ត្រា ({done}/{required})។ ត្រូវការបុគ្គលិកម្នាក់ទៀតបញ្ជាក់មុននឹងចូលគណនី។",
+    "wallet.groupAwaitingSecond": "ការដាក់ប្រាក់ {order}៖ បានបញ្ជាក់ {done}/{required} - ត្រូវការម្នាក់ទៀត",
+    "admin.approvalProgress": "បានបញ្ជាក់ {{done}}/{{required}}",
+    "admin.awaitingSecond": "រង់ចាំអ្នកពិនិត្យទីពីរ",
+    "admin.rateLimited": "សំណើច្រើនពេក សូមរង់ចាំបន្តិច។"
   }
 }

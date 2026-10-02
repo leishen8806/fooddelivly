@@ -2138,3 +2138,8 @@ small {
   }
 }
 
+.recharge-table td small.wallet-status-awaiting {
+  color: #8a5a12;
+  font-weight: var(--weight-semibold);
+}
+

@@ -20,7 +20,7 @@ TRUNCATE wallet.ledger_entries, wallet.order_payments, wallet.recharge_proofs,
 
 -- 测试夹具 1：客户（wallet.* 对 public.customers 有外键，id 必须真实存在）
 INSERT INTO public.customers (id, telegram_user_id, display_name, preferred_language)
-VALUES (1001, 'tg-test-1001', 'test 1001', 'en'), (1099, 'tg-test-1099', 'test 1099', 'en'), (2001, 'tg-test-2001', 'test 2001', 'en'), (2002, 'tg-test-2002', 'test 2002', 'en'), (3001, 'tg-test-3001', 'test 3001', 'en'), (4001, 'tg-test-4001', 'test 4001', 'en'), (5001, 'tg-test-5001', 'test 5001', 'en'), (6001, 'tg-test-6001', 'test 6001', 'en'), (7001, 'tg-test-7001', 'test 7001', 'en'), (7777, 'tg-test-7777', 'test 7777', 'en'), (8001, 'tg-test-8001', 'test 8001', 'en'), (8002, 'tg-test-8002', 'test 8002', 'en'), (9101, 'tg-test-9101', 'test 9101', 'en'), (9501, 'tg-test-9501', 'test 9501', 'en')
+VALUES (1001, 'tg-test-1001', 'test 1001', 'en'), (1099, 'tg-test-1099', 'test 1099', 'en'), (2001, 'tg-test-2001', 'test 2001', 'en'), (2002, 'tg-test-2002', 'test 2002', 'en'), (3001, 'tg-test-3001', 'test 3001', 'en'), (4001, 'tg-test-4001', 'test 4001', 'en'), (5001, 'tg-test-5001', 'test 5001', 'en'), (6001, 'tg-test-6001', 'test 6001', 'en'), (7001, 'tg-test-7001', 'test 7001', 'en'), (7777, 'tg-test-7777', 'test 7777', 'en'), (8001, 'tg-test-8001', 'test 8001', 'en'), (8002, 'tg-test-8002', 'test 8002', 'en'), (9101, 'tg-test-9101', 'test 9101', 'en'), (9501, 'tg-test-9501', 'test 9501', 'en'), (1088, 'tg-test-1088', 'test 1088', 'en')
 ON CONFLICT (id) DO NOTHING;
 SELECT setval(pg_get_serial_sequence('public.customers', 'id'),
               GREATEST((SELECT COALESCE(max(id), 1) FROM public.customers), 100000));
@@ -631,6 +631,79 @@ BEGIN
   UPDATE wallet.wallets SET frozen = 0 WHERE customer_id = 7001 AND currency = 'USD';
   SELECT * INTO r FROM wallet.get_summary(7001, 'USD');
   PERFORM public.t_ok('T16.5 无冻结时余额 = 可用', r.balance = r.total, format('%s/%s', r.balance, r.total));
+END $$;
+
+-- ===========================================================================
+-- T17  大额双人复核
+-- ===========================================================================
+DO $$
+DECLARE o wallet.recharge_orders; r RECORD;
+BEGIN
+  PERFORM public.t_ok('T17.0 阈值默认开启且为 20000',
+                      wallet.cfg_int('dual_approval_threshold_minor', 0) = 20000);
+
+  -- 1) 低于阈值：一个人确认即入账（1000 + 赠送 200 = 1200）
+  o := wallet.start_recharge(1088, 'USD', 1000, 'idem-t17-small');
+  PERFORM wallet.submit_proof(o.id, 1088, 'F17A', 'U17A');
+  o := wallet.approve_recharge(o.id, 9001, NULL, 'small');
+  PERFORM public.t_ok('T17.1 小额单一人确认即入账', o.status = 'credited', o.status::text);
+
+  -- 2) 达到阈值：第一位确认后仍未入账
+  o := wallet.start_recharge(1088, 'USD', 20000, 'idem-t17-big');
+  PERFORM wallet.submit_proof(o.id, 1088, 'F17B', 'U17B');
+  o := wallet.approve_recharge(o.id, 9001, NULL, 'first');
+  PERFORM public.t_ok('T17.2 大额单第一位确认后仍为 under_review', o.status = 'under_review', o.status::text);
+  PERFORM public.t_ok('T17.3 已记录 1 人确认', wallet.recharge_approval_count(o.id) = 1);
+  PERFORM public.t_ok('T17.4 该单需要 2 人确认', wallet.required_approvals(o.id) = 2);
+  SELECT * INTO r FROM wallet.get_summary(1088, 'USD');
+  PERFORM public.t_ok('T17.5 未凑满两人前余额不变', r.total = 1200, r.total::text);
+
+  -- 3) 同一个人重复点不能凑数
+  o := wallet.approve_recharge(o.id, 9001, NULL, 'same person again');
+  PERFORM public.t_ok('T17.6 同一人重复确认仍是 1 人，未入账',
+                      wallet.recharge_approval_count(o.id) = 1 AND o.status = 'under_review',
+                      o.status::text);
+
+  -- 4) 第二位员工确认后入账：20000 + 赠送 2000 = 22000，合计 23200
+  o := wallet.approve_recharge(o.id, 9002, NULL, 'second');
+  PERFORM public.t_ok('T17.7 第二位确认后入账', o.status = 'credited', o.status::text);
+  SELECT * INTO r FROM wallet.get_summary(1088, 'USD');
+  PERFORM public.t_ok('T17.8 金额 = 1200 + 20000 + 赠送 2000', r.total = 23200, r.total::text);
+
+  -- 5) 两人确认的实收金额不一致必须拒绝
+  o := wallet.start_recharge(1088, 'USD', 20000, 'idem-t17-mismatch');
+  PERFORM wallet.submit_proof(o.id, 1088, 'F17C', 'U17C');
+  PERFORM wallet.approve_recharge(o.id, 9001, 20000, 'first');
+  BEGIN
+    PERFORM wallet.approve_recharge(o.id, 9002, 21000, 'second with different amount');
+    PERFORM public.t_ok('T17.9 两人确认金额不一致被拒', false, '未报错');
+  EXCEPTION WHEN others THEN
+    PERFORM public.t_ok('T17.9 两人确认金额不一致被拒',
+                        SQLERRM LIKE '%APPROVAL_MISMATCH%', SQLERRM);
+  END;
+  SELECT * INTO r FROM wallet.get_summary(1088, 'USD');
+  PERFORM public.t_ok('T17.10 不一致时没有入账', r.total = 23200, r.total::text);
+
+  -- 6) 关掉阈值后，大额单一个人确认即可
+  UPDATE wallet.config SET value = '0' WHERE key = 'dual_approval_threshold_minor';
+  o := wallet.start_recharge(1088, 'USD', 20000, 'idem-t17-off');
+  PERFORM wallet.submit_proof(o.id, 1088, 'F17D', 'U17D');
+  PERFORM public.t_ok('T17.11 关闭阈值后该单只需 1 人', wallet.required_approvals(o.id) = 1);
+  o := wallet.approve_recharge(o.id, 9001, NULL, 'single when disabled');
+  PERFORM public.t_ok('T17.12 关闭阈值后一人确认即入账', o.status = 'credited', o.status::text);
+  UPDATE wallet.config SET value = '20000' WHERE key = 'dual_approval_threshold_minor';
+
+  -- 7) 已开始的复核：即使阈值被调大，也必须继续凑满两人（不能因为改配置就放行）
+  o := wallet.start_recharge(1088, 'USD', 20000, 'idem-t17-once-started');
+  PERFORM wallet.submit_proof(o.id, 1088, 'F17E', 'U17E');
+  o := wallet.approve_recharge(o.id, 9001, NULL, 'first');
+  UPDATE wallet.config SET value = '99999999' WHERE key = 'dual_approval_threshold_minor';
+  PERFORM public.t_ok('T17.13 已开始的复核不受阈值调大影响',
+                      wallet.required_approvals(o.id) = 2 AND o.status = 'under_review',
+                      o.status::text);
+  o := wallet.approve_recharge(o.id, 9002, NULL, 'second');
+  PERFORM public.t_ok('T17.14 仍需第二人确认后才入账', o.status = 'credited', o.status::text);
+  UPDATE wallet.config SET value = '20000' WHERE key = 'dual_approval_threshold_minor';
 END $$;
 
 -- ===========================================================================

@@ -375,6 +375,8 @@ async def list_recharges_admin(db: AsyncSession, status: str | None, limit: int 
                COALESCE(w.principal, 0) + COALESCE(w.bonus, 0)
                  + COALESCE(w.frozen, 0)                          AS balance_minor,
                COALESCE(w.frozen, 0)     AS frozen_minor,
+               wallet.recharge_approval_count(o.id) AS approval_count,
+               wallet.required_approvals(o.id)      AS required_approvals,
                COALESCE(w.principal, 0)  AS principal_minor,
                COALESCE(w.bonus, 0)      AS bonus_minor
           FROM wallet.recharge_orders o
@@ -399,6 +401,19 @@ async def list_pending_recharges(db: AsyncSession, limit: int = 50):
         "SELECT * FROM wallet.v_pending_recharges LIMIT :limit",
         {"limit": limit},
     )
+
+
+async def approval_progress(db: AsyncSession, order_id: int) -> tuple[int, int]:
+    """返回 (已确认人数, 需要人数)。需要人数 > 1 表示这笔单要走大额双人复核。"""
+    row = await _fetchrow(
+        db,
+        """SELECT wallet.recharge_approval_count(:order_id) AS done,
+                  wallet.required_approvals(:order_id)      AS required""",
+        {"order_id": order_id},
+    )
+    if row is None:
+        return (0, 1)
+    return (int(row["done"] or 0), int(row["required"] or 1))
 
 
 async def approve_recharge(

@@ -136,16 +136,17 @@ def main() -> None:
 
     print("\n[5] 金额篡改")
     # 注意：HTTP 头的值只能是 ASCII，幂等键里不能塞中文
-    for amount, label, key in [(0, "0", "zero"), (-1000, "负数", "negative"),
-                               (10 ** 15, "天文数字", "huge"),
-                               (10_000_001, "超过 API 上限", "over-cap")]:
-        r = a.post("/api/v1/wallet/recharges", json={"amount_minor": amount},
-                   headers={"Idempotency-Key": f"sec-amt-{key}"})
+    # A/B 交替发起，避免单个身份把自己的限流额度吃满（限流是 30 次/分钟/身份）
+    for amount, label, key, who in [(0, "0", "zero", a), (-1000, "负数", "negative", b),
+                                    (10 ** 15, "天文数字", "huge", a),
+                                    (10_000_001, "超过 API 上限", "over-cap", b)]:
+        r = who.post("/api/v1/wallet/recharges", json={"amount_minor": amount},
+                     headers={"Idempotency-Key": f"sec-amt-{key}"})
         check(f"充值金额 {label} -> 422", r.status_code == 422, f"{r.status_code} {r.text[:50]}")
-    for payload, label, key in [({"amount_minor": "1000"}, "字符串", "str"),
-                                ({"amount_minor": True}, "布尔", "bool")]:
-        r = a.post("/api/v1/wallet/recharges", json=payload,
-                   headers={"Idempotency-Key": f"sec-amt-{key}"})
+    for payload, label, key, who in [({"amount_minor": "1000"}, "字符串", "str", a),
+                                     ({"amount_minor": True}, "布尔", "bool", b)]:
+        r = who.post("/api/v1/wallet/recharges", json=payload,
+                     headers={"Idempotency-Key": f"sec-amt-{key}"})
         check(f"充值金额传{label} -> 422（严格整数）", r.status_code == 422,
               f"{r.status_code} {r.text[:60]}")
     r = a.post("/api/v1/wallet/recharges", json={"amount_minor": 50},
@@ -327,6 +328,78 @@ def main() -> None:
                      json={"status": "CANCELLED", "reason": "出餐后偷偷退款"})
     check("DELIVERED 的钱包单不能取消退款 -> 409", r.status_code == 409,
           f"{r.status_code} {r.text[:70]}")
+
+    print("\n[13] 大额双人复核（HTTP 全链路）")
+    staff2 = client("staff", 3)
+    # max_open_orders 默认 3：前面的用例已经把 A 的额度占满了，先清一清
+    cleanup(a, manager)
+    before_total = a.get("/api/v1/wallet").json()["available_minor"]
+    big = a.post("/api/v1/wallet/recharges", json={"amount_minor": 20000},
+                 headers={"Idempotency-Key": f"sec-dual-{RUN}"}).json()
+    webhook({"message": {"from": {"id": int(A_TG), "language_code": "en"},
+                         "chat": {"id": int(A_TG), "type": "private"},
+                         "text": f"/start rc_{big['order_no']}"}})
+    webhook({"message": {"from": {"id": int(A_TG)},
+                         "chat": {"id": int(A_TG), "type": "private"},
+                         "photo": [{"file_id": f"SEC_DUAL_{RUN}",
+                                    "file_unique_id": f"SEC_DUAL_U{RUN}",
+                                    "width": 90, "height": 90}]}})
+    r = staff.post(f"/api/v1/admin/recharges/{big['id']}/approve", json={})
+    body = r.json()
+    check("第 1 位员工确认 -> 200 但仍未入账",
+          r.status_code == 200 and body.get("status") == "under_review"
+          and body.get("approval_count") == 1 and body.get("required_approvals") == 2,
+          f"{r.status_code} {r.text[:80]}")
+    check("第 1 位确认后余额没变",
+          a.get("/api/v1/wallet").json()["available_minor"] == before_total,
+          str(a.get("/api/v1/wallet").json()["available_minor"]))
+    r = staff.post(f"/api/v1/admin/recharges/{big['id']}/approve", json={})
+    check("同一个人重复确认凑不出第二票",
+          r.json().get("approval_count") == 1 and r.json().get("status") == "under_review",
+          f'{r.json().get("approval_count")} {r.json().get("status")}')
+    r = staff2.post(f"/api/v1/admin/recharges/{big['id']}/approve", json={})
+    check("第 2 位员工确认后入账",
+          r.status_code == 200 and r.json().get("status") == "credited",
+          f"{r.status_code} {r.text[:80]}")
+    after_total = a.get("/api/v1/wallet").json()["available_minor"]
+    check("入账金额 = 20000 + 10% 赠送 2000", after_total == before_total + 22000,
+          f"{before_total} -> {after_total}")
+
+    print("\n[14] 限流（探针打管理员登录接口，同时验证防撞库）")
+    # 用登录接口做探针：这条规则只有本用例会碰，不会污染其它用例的身份桶。
+    # 限流是 10 次/5 分钟/IP，所以最多打 15 次一定能看到 429。
+    codes = []
+    limited = None
+    for i in range(15):
+        r = anon().post("/api/v1/auth/admin/login",
+                        json={"login_name": "manager1", "password": f"wrong-{i}"})
+        codes.append(r.status_code)
+        if r.status_code == 429:
+            limited = r
+            break
+    check("暴力破解最终被限流 429", 429 in codes,
+          f"状态码序列 {codes[:6]}... 共 {len(codes)} 次")
+    if limited is not None:
+        check("429 带 Retry-After", "retry-after" in {k.lower() for k in limited.headers},
+              str(dict(limited.headers))[:80])
+    # 关键：鉴权失败必须是 401，绝不能 500。
+    # 500 会变成「账号存在与否」的探测信号（不存在的账号 401、存在的账号 500）。
+    check("登录失败不会是 500（账号探测 oracle）", 500 not in codes, str(codes[:5]))
+    if codes[0] == 401:
+        check("错误密码 -> 401（不泄露账号是否存在）", True)
+    else:
+        check("上一轮已把该 IP 限流，跳过 401 断言", codes[0] == 429, str(codes[0]))
+    check("不存在的账号也是 401/429（不泄露账号是否存在）",
+          anon().post("/api/v1/auth/admin/login",
+                      json={"login_name": "no-such-account-xyz", "password": "x"}).status_code
+          in (401, 429))
+    check("限流不波及其它身份（已登录客户仍可正常请求）",
+          a.get("/api/v1/wallet").status_code == 200)
+    web_ok = all(webhook({"message": {"from": {"id": int(A_TG), "language_code": "en"},
+                                      "chat": {"id": int(A_TG), "type": "private"},
+                                      "text": "/help"}}).status_code == 200
+                 for _ in range(5))
+    check("Telegram webhook 不被限流（Telegram 会重试，限流会放大故障）", web_ok)
 
     fails = [x for x in RESULTS if not x[1]]
     print("\n" + "=" * 66)

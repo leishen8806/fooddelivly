@@ -572,6 +572,22 @@ async def _handle_wallet_review(db: AsyncSession, action: str, order_id: int, st
     customer = customer_result.scalars().first()
     await db.commit()
 
+    # 大额双人复核：只凑到一位时订单仍是 under_review，必须说清楚「还差一位」，
+    # 否则员工会以为没生效而反复点。
+    done, required = await wallet_service.approval_progress(db, order_id)
+    if action == "walletok" and done < required:
+        await answer_callback(callback_id, tr("wallet.needSecondApprover", group_language,
+                                              done=done, required=required), alert=True)
+        try:
+            await send_bot_message(
+                str(chat.get("id")),
+                tr("wallet.groupAwaitingSecond", group_language, order=updated["order_no"],
+                   done=done, required=required),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+        return
+
     if customer:
         try:
             await notify_recharge_review(customer, updated,

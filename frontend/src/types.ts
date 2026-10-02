@@ -82,6 +82,9 @@ export interface RechargeOrder {
   telegram_user_id?: string;
   display_name?: string | null;
   username?: string | null;
+  /** 大额双人复核：已确认人数 / 需要人数（>1 表示要走双人复核） */
+  approval_count?: number;
+  required_approvals?: number;
   /** 客户**当前**钱包余额（管理端列表用，LEFT JOIN wallets 得到，没有钱包为 0） */
   balance_minor?: number;
   principal_minor?: number;
