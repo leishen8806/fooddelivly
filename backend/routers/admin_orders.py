@@ -157,7 +157,7 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
         from telegram_service import update_order_message
         try:
             await update_order_message(settings.telegram_staff_group_id, order.telegram_group_message_id,
-                                       order, settings.staff_group_language, order.items)
+                                       order, settings.staff_group_language, order.items, customer)
         except Exception:
             pass
     return {"order_status": order.order_status, "payment_status": order.payment_status}
@@ -332,7 +332,7 @@ async def review_payment(
         from telegram_service import update_order_message
         try:
             await update_order_message(settings.telegram_staff_group_id, order.telegram_group_message_id,
-                                       order, settings.staff_group_language, order.items)
+                                       order, settings.staff_group_language, order.items, customer)
         except Exception:
             pass
 

@@ -216,7 +216,7 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
         proof_state = _message_status(order)
         try:
             await update_order_message(settings.telegram_staff_group_id, order.telegram_group_message_id,
-                                       order, settings.staff_group_language, order.items)
+                                       order, settings.staff_group_language, order.items, customer)
         except Exception:
             pass
         try:
@@ -351,7 +351,7 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
         except Exception:
             pass
     try:
-        await update_order_message(str(chat["id"]), str(message["message_id"]), order, group_language, order.items)
+        await update_order_message(str(chat["id"]), str(message["message_id"]), order, group_language, order.items, customer)
     except Exception:
         pass
     await answer_callback(callback_id, tr("common.save", group_language))

@@ -417,6 +417,7 @@ function CustomerPage() {
   };
 
   const paymentLabel = (paymentStatus: string) => paymentStatus === 'PAID_CONFIRMED' ? t('payment.confirmed') : paymentStatus === 'REFUNDED' ? t('order.status.refunded') : paymentStatus === 'PARTIALLY_REFUNDED' ? t('payment.partiallyRefunded') : paymentStatus === 'PROOF_SUBMITTED' ? t('payment.pending') : paymentStatus === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid');
+  const orderStatusClass = (orderStatus: string) => `customer-order-status status-${orderStatus.toLowerCase()}`;
 
   return <main className="customer-shell">
     <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
@@ -475,7 +476,7 @@ function CustomerPage() {
       {ordersError && <p className="error" role="alert">{ordersError} <button type="button" onClick={() => void loadCustomerOrders()}>{t('common.retry')}</button></p>}
       {!ordersLoading && !ordersError && customerOrders.length === 0 && <p className="state empty-menu">{t('order.empty')}</p>}
       <div className="customer-orders">{customerOrders.map((customerOrder) => <button type="button" className="customer-order-card" key={customerOrder.public_code} onClick={() => void openCustomerOrder(customerOrder.public_code)}>
-        <div className="customer-order-heading"><strong>{t('payment.order')} {customerOrder.public_code}</strong><span>{t(`order.status.${customerOrder.order_status.toLowerCase()}`)}</span></div>
+        <div className="customer-order-heading"><strong>{t('payment.order')} {customerOrder.public_code}</strong><span className={orderStatusClass(customerOrder.order_status)}>{t(`order.status.${customerOrder.order_status.toLowerCase()}`)}</span></div>
         <div className="customer-order-meta"><span>{t('order.room')}: {customerOrder.room_number}</span><time dateTime={customerOrder.created_at}>{new Date(customerOrder.created_at).toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'short' })}</time></div>
         <div className="customer-order-total"><span>{paymentLabel(customerOrder.payment_status)}</span><strong>{amount(customerOrder.total_minor, customerOrder.currency, i18n.language)}</strong></div>
       </button>)}</div>
@@ -516,7 +517,7 @@ function CustomerPage() {
     {orderLoading && <div className="order-modal-backdrop" role="presentation"><section className="order-modal" role="status">{t('common.loading')}</section></div>}
     {orderDetails && <div className="order-modal-backdrop" role="presentation" onClick={() => setOrderDetails(null)}><section className="order-modal" role="dialog" aria-modal="true" aria-labelledby="order-modal-title" onClick={(event) => event.stopPropagation()}>
       <div className="order-modal-header"><div><span className="eyebrow">{t('payment.title')}</span><h2 id="order-modal-title">{t('payment.order')} {orderDetails.public_code}</h2></div><button ref={orderCloseRef} type="button" aria-label={t('common.close')} onClick={() => setOrderDetails(null)}>×</button></div>
-      <div className="customer-order-heading"><strong>{t(`order.status.${orderDetails.order_status.toLowerCase()}`)}</strong><span>{paymentLabel(orderDetails.payment_status)}</span></div>
+      <div className="customer-order-heading"><strong className={orderStatusClass(orderDetails.order_status)}>{t(`order.status.${orderDetails.order_status.toLowerCase()}`)}</strong><span className={`customer-payment-status payment-status-${orderDetails.payment_status.toLowerCase()}`}>{paymentLabel(orderDetails.payment_status)}</span></div>
       <p>{t('order.room')}: <strong>{orderDetails.room_number}</strong></p>
       <div className="customer-order-items">{orderDetails.items.map((item, index) => <div key={`${orderDetails.public_code}:${index}`}><span>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined && <small>{t('menu.sweetness')}: {item.options.sweetness}%</small>}</span><strong>{amount(item.line_total_minor, orderDetails.currency, i18n.language)}</strong></div>)}</div>
       <p className="order-modal-total">{t('payment.amountDue')}: <strong>{amount(orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>

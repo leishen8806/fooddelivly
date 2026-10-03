@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import os
+from types import SimpleNamespace
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
@@ -198,12 +199,14 @@ async def create_recharge(
     if store_id is None:
         default = await default_store(db)
         store_id = default.id if default else None
+    idem = f"recharge:{customer_id}:{idempotency_key}"
+    existing = await wallet.get_recharge_by_idempotency(db, idem)
     try:
         row = await wallet.start_recharge(
             db,
             customer_id=customer_id,
             amount_minor=payload.amount_minor,
-            idem=f"recharge:{customer_id}:{idempotency_key}",
+            idem=idem,
             currency=currency,
             store_id=store_id,
         )
@@ -214,6 +217,23 @@ async def create_recharge(
     from routers.orders import payment_handoff  # 复用同一套收款信息渲染
 
     store = await get_store(db, row.get("store_id")) if row.get("store_id") else await default_store(db)
+    if existing is None and store and store.telegram_staff_group_id:
+        from telegram_service import notify_new_recharge
+        customer_for_notify = SimpleNamespace(
+            display_name=customer_row.display_name if customer_row else None,
+            username=customer_row.username if customer_row else None,
+            telegram_user_id=customer_row.telegram_user_id if customer_row else str(customer_id),
+            preferred_language=customer_row.preferred_language if customer_row else None,
+        )
+        try:
+            await notify_new_recharge(
+                store.telegram_staff_group_id,
+                row,
+                customer_for_notify,
+                store.staff_group_language or "en",
+            )
+        except Exception:
+            pass
     handoff = payment_handoff(row["order_no"], store)
     return {
         **_order_json(row),

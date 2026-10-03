@@ -549,6 +549,65 @@ small {
   font-weight: var(--weight-semibold);
 }
 
+.customer-order-status,
+.customer-payment-status {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
+  font-size: var(--type-caption);
+  font-weight: var(--weight-semibold);
+  white-space: nowrap;
+}
+
+.customer-order-status.status-new {
+  color: #8a5a12;
+  background: #fdf1dc;
+}
+
+.customer-order-status.status-accepted,
+.customer-order-status.status-preparing {
+  color: #235d91;
+  background: #e4f0fb;
+}
+
+.customer-order-status.status-ready {
+  color: #6a3c91;
+  background: #f0e8fa;
+}
+
+.customer-order-status.status-delivered {
+  color: #176b69;
+  background: #e1f4f0;
+}
+
+.customer-order-status.status-completed {
+  color: #2c6b3f;
+  background: #e3f4e8;
+}
+
+.customer-order-status.status-cancelled {
+  color: var(--color-danger);
+  background: var(--color-danger-surface);
+}
+
+.customer-payment-status.payment-status-paid_confirmed {
+  color: #2c6b3f;
+  background: #e3f4e8;
+}
+
+.customer-payment-status.payment-status-proof_submitted {
+  color: #8a5a12;
+  background: #fdf1dc;
+}
+
+.customer-payment-status.payment-status-rejected,
+.customer-payment-status.payment-status-refunded,
+.customer-payment-status.payment-status-partially_refunded {
+  color: var(--color-danger);
+  background: var(--color-danger-surface);
+}
+
 .customer-order-meta {
   flex-wrap: wrap;
   color: var(--color-muted);
@@ -1985,6 +2044,71 @@ small {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-card);
   background: var(--color-surface-raised);
+}
+
+.wallet-back {
+  justify-self: start;
+  width: auto;
+  min-height: 2.25rem;
+  padding: 0 var(--space-3);
+  color: var(--color-brand);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+}
+
+.wallet-entry-list {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.wallet-entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  text-align: left;
+}
+
+.wallet-entry:hover,
+.wallet-entry:focus-visible {
+  border-color: var(--color-accent);
+  box-shadow: var(--focus-ring);
+  outline: none;
+}
+
+.wallet-entry > span:first-child {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.wallet-entry small {
+  color: var(--color-muted);
+  font-size: var(--type-caption);
+}
+
+.wallet-entry > b {
+  min-width: 1.5rem;
+  color: var(--color-brand);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.wallet-entry > span:last-child {
+  color: var(--color-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.wallet-detail-panel {
+  min-height: 10rem;
 }
 
 .wallet-panel h3 {

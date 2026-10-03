@@ -4,6 +4,8 @@ import api from '../api';
 import { formatAmount, formatDateTime, toMinorUnits } from '../format';
 import type { LedgerEntry, RechargeOrder, WalletSummary } from '../types';
 
+type WalletView = 'home' | 'recharges' | 'ledger';
+
 /**
  * 钱包区块 —— 挂在「我的」页面里（不再单独占一个底部导航 tab）。
  *
@@ -27,6 +29,7 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
   const [notice, setNotice] = useState('');
   const [custom, setCustom] = useState('');
   const [created, setCreated] = useState<RechargeOrder | null>(null);
+  const [view, setView] = useState<WalletView>('home');
   const idempotencyKey = useRef<string | null>(null);
 
   const currency = summary?.currency || 'USD';
@@ -102,14 +105,51 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
   const statusLabel = (status: string) => t(`wallet.status.${status}`, { defaultValue: status });
   const entryLabel = (entry: LedgerEntry) => t(`wallet.entry.${entry.entry_type}`, { defaultValue: entry.entry_type });
 
+  const rechargeList = <>
+    {recharges.length === 0 ? <p className="state">{t('wallet.none')}</p> : <div className="wallet-list">
+      {recharges.map((order) => <div className="wallet-row" key={order.id}>
+        <div className="wallet-row-main">
+          <strong>{order.order_no}</strong>
+          <span>{formatAmount(order.amount_minor, order.currency, i18n.language)}
+            {order.bonus_amount_minor > 0 && <small> +{formatAmount(order.bonus_amount_minor, order.currency, i18n.language)} {t('wallet.bucket.bonus')}</small>}
+          </span>
+          <span className={`wallet-status wallet-status-${order.status}`}>{statusLabel(order.status)}</span>
+          <time dateTime={order.created_at}>{formatDateTime(order.created_at, i18n.language)}</time>
+        </div>
+        {order.reject_reason && <p className="error">{order.reject_reason}</p>}
+        {(order.status === 'awaiting_proof' || order.status === 'under_review') && <div className="actions">
+          {order.bot_deeplink && <a className="payment-link" href={order.bot_deeplink}>{t('wallet.uploadProof')}</a>}
+          {order.status === 'awaiting_proof' && <button type="button" disabled={busy} onClick={() => void cancelRecharge(order)}>{t('wallet.cancelOrder')}</button>}
+        </div>}
+      </div>)}
+    </div>}
+  </>;
+
+  const ledgerList = <>
+    {ledger.length === 0 ? <p className="state">{t('wallet.noLedger')}</p> : <div className="wallet-list">
+      {ledger.map((entry) => <div className="wallet-row wallet-row-ledger" key={entry.id}>
+        <div className="wallet-row-main">
+          <strong>{entryLabel(entry)}</strong>
+          <span>{t(`wallet.bucket.${entry.bucket}`)}{entry.remark ? ` · ${entry.remark}` : ''}</span>
+          <time dateTime={entry.created_at}>{formatDateTime(entry.created_at, i18n.language)}</time>
+        </div>
+        <b className={entry.direction > 0 ? 'wallet-amount-in' : 'wallet-amount-out'}>
+          {entry.direction > 0 ? '+' : '−'}{formatAmount(entry.amount_minor, currency, i18n.language)}
+          <small>{formatAmount(entry.balance_after_minor, currency, i18n.language)}</small>
+        </b>
+      </div>)}
+    </div>}
+  </>;
+
   return <section className="wallet-section">
+    {view !== 'home' && <button type="button" className="wallet-back" onClick={() => setView('home')}>← {t('common.back')}</button>}
     {/* 「我的」页里已经有页面标题了，这里只放一个区块标题，避免重复 */}
-    <div className="customer-page-heading"><h2>{t('wallet.myWallet')}</h2></div>
+    <div className="customer-page-heading"><h2>{view === 'recharges' ? t('wallet.myOrders') : view === 'ledger' ? t('wallet.ledger') : t('wallet.myWallet')}</h2></div>
 
     {loading && <p className="state" role="status">{t('common.loading')}</p>}
     {error && <p className="error" role="alert">{error} <button type="button" onClick={() => void load()}>{t('common.retry')}</button></p>}
 
-    {summary && <>
+    {summary && view === 'home' && <>
       <article className="wallet-card">
         <div className="wallet-card-line">
           <span>{t('wallet.balance')}</span>
@@ -165,43 +205,17 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
         </div>
       </article>}
 
-      <article className="wallet-panel">
-        <h3>{t('wallet.myOrders')}</h3>
-        {recharges.length === 0 ? <p className="state">{t('wallet.none')}</p> : <div className="wallet-list">
-          {recharges.map((order) => <div className="wallet-row" key={order.id}>
-            <div className="wallet-row-main">
-              <strong>{order.order_no}</strong>
-              <span>{formatAmount(order.amount_minor, order.currency, i18n.language)}
-                {order.bonus_amount_minor > 0 && <small> +{formatAmount(order.bonus_amount_minor, order.currency, i18n.language)} {t('wallet.bucket.bonus')}</small>}
-              </span>
-              <span className={`wallet-status wallet-status-${order.status}`}>{statusLabel(order.status)}</span>
-              <time dateTime={order.created_at}>{formatDateTime(order.created_at, i18n.language)}</time>
-            </div>
-            {order.reject_reason && <p className="error">{order.reject_reason}</p>}
-            {(order.status === 'awaiting_proof' || order.status === 'under_review') && <div className="actions">
-              {order.bot_deeplink && <a className="payment-link" href={order.bot_deeplink}>{t('wallet.uploadProof')}</a>}
-              {order.status === 'awaiting_proof' && <button type="button" disabled={busy} onClick={() => void cancelRecharge(order)}>{t('wallet.cancelOrder')}</button>}
-            </div>}
-          </div>)}
-        </div>}
-      </article>
-
-      <article className="wallet-panel">
-        <h3>{t('wallet.ledger')}</h3>
-        {ledger.length === 0 ? <p className="state">{t('wallet.noLedger')}</p> : <div className="wallet-list">
-          {ledger.map((entry) => <div className="wallet-row wallet-row-ledger" key={entry.id}>
-            <div className="wallet-row-main">
-              <strong>{entryLabel(entry)}</strong>
-              <span>{t(`wallet.bucket.${entry.bucket}`)}{entry.remark ? ` · ${entry.remark}` : ''}</span>
-              <time dateTime={entry.created_at}>{formatDateTime(entry.created_at, i18n.language)}</time>
-            </div>
-            <b className={entry.direction > 0 ? 'wallet-amount-in' : 'wallet-amount-out'}>
-              {entry.direction > 0 ? '+' : '−'}{formatAmount(entry.amount_minor, currency, i18n.language)}
-              <small>{formatAmount(entry.balance_after_minor, currency, i18n.language)}</small>
-            </b>
-          </div>)}
-        </div>}
-      </article>
+      <div className="wallet-entry-list" aria-label={t('wallet.title')}>
+        <button type="button" className="wallet-entry" onClick={() => setView('recharges')}>
+          <span><strong>{t('wallet.myOrders')}</strong><small>{t('wallet.myOrdersHint')}</small></span><b>{recharges.length}</b><span aria-hidden="true">›</span>
+        </button>
+        <button type="button" className="wallet-entry" onClick={() => setView('ledger')}>
+          <span><strong>{t('wallet.ledger')}</strong><small>{t('wallet.ledgerHint')}</small></span><b>{ledger.length}</b><span aria-hidden="true">›</span>
+        </button>
+      </div>
     </>}
+
+    {summary && view === 'recharges' && <article className="wallet-panel wallet-detail-panel">{rechargeList}</article>}
+    {summary && view === 'ledger' && <article className="wallet-panel wallet-detail-panel">{ledgerList}</article>}
   </section>;
 }

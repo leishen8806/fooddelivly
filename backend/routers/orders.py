@@ -284,7 +284,7 @@ async def create_order(
                 new_order,
                 notify_store.telegram_staff_group_id if notify_store else None,
                 (notify_store.staff_group_language if notify_store else "en") or "en",
-                order_items)
+                order_items, customer)
             if message_id:
                 new_order.telegram_group_message_id = message_id
                 await db.commit()

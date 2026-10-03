@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from html import escape
 from functools import lru_cache
 from pathlib import Path
 
@@ -44,6 +45,18 @@ def _currency_amount(minor: int, currency: str) -> str:
     return f"{amount:,.{digits}f} {currency}"
 
 
+def _telegram_contact(customer) -> str:
+    """Return a clickable Telegram contact reference for staff messages."""
+    if customer is None:
+        return ""
+    telegram_id = str(getattr(customer, "telegram_user_id", "") or "")
+    username = str(getattr(customer, "username", "") or "").lstrip("@")
+    if username:
+        suffix = f" · ID {telegram_id}" if telegram_id else ""
+        return f"@{username} (https://t.me/{username}){suffix}"
+    return f"ID {telegram_id} (tg://user?id={telegram_id})" if telegram_id else ""
+
+
 def order_keyboard(order_id: int, order_status: str, payment_status: str, language: str = "en") -> InlineKeyboardMarkup:
     buttons = []
     if order_status == "NEW":
@@ -59,22 +72,25 @@ def order_keyboard(order_id: int, order_status: str, payment_status: str, langua
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def order_text(order, payment_status: str | None = None, language: str = "en", items=None) -> str:
+def order_text(order, payment_status: str | None = None, language: str = "en", items=None, customer=None) -> str:
     payment = payment_status or order.payment_status
     status_label = tr(f"order.status.{order.order_status.lower()}", language)
     payment_key = ("order.status.refunded" if payment == "REFUNDED"
                    else "payment.partiallyRefunded" if payment == "PARTIALLY_REFUNDED"
                    else "order.status.paid") if payment == "PAID_CONFIRMED" else "order.status.paymentReview" if payment == "PROOF_SUBMITTED" else "payment.rejected" if payment == "REJECTED" else "order.status.unpaid"
     lines = [
-        f"TEA CAFE · {tr('payment.order', language)} {order.public_code}",
-        f"{tr('bot.room', language)}: {order.room_number}",
+        f"TEA CAFE · {tr('payment.order', language)} {escape(str(order.public_code))}",
+        f"{tr('bot.room', language)}: {escape(str(order.room_number))}",
     ]
+    contact = _telegram_contact(customer)
+    if contact:
+        lines.append(f"{tr('bot.telegramContact', language)}: {contact}")
     if items:
         for item in items:
             name = item.product_name_snapshot
             if isinstance(name, dict):
                 name = name.get(language) or name.get("en") or next(iter(name.values()), "")
-            line = f"• {item.quantity} × {name}"
+            line = f"<b>• {item.quantity} × {escape(str(name))}</b>"
             options = getattr(item, "options_json", None) or {}
             sweetness = options.get("sweetness")
             if sweetness is not None:
@@ -89,7 +105,7 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
                                    or next((v for v in option_name.values() if v), ""))
                 if option_name:
                     delta = int(selection.get("price_delta_minor") or 0)
-                    picked.append(f"{option_name}" + (f" +{_currency_amount(delta, order.currency)}"
+                    picked.append(f"{escape(str(option_name))}" + (f" +{_currency_amount(delta, order.currency)}"
                                                       if delta else ""))
             if picked:
                 line += " · " + " + ".join(picked)
@@ -104,7 +120,7 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
     return "\n".join(lines)
 
 
-async def notify_new_order(order, group_id: str | None, language: str = "en", items=None) -> str | None:
+async def notify_new_order(order, group_id: str | None, language: str = "en", items=None, customer=None) -> str | None:
     if not group_id:
         return None
     bot = _bot()
@@ -113,15 +129,16 @@ async def notify_new_order(order, group_id: str | None, language: str = "en", it
     try:
         message = await bot.send_message(
             chat_id=group_id,
-            text=order_text(order, language=language, items=items),
+            text=order_text(order, language=language, items=items, customer=customer),
             reply_markup=order_keyboard(order.id, order.order_status, order.payment_status, language),
+            parse_mode="HTML",
         )
         return str(message.message_id)
     finally:
         await bot.session.close()
 
 
-async def update_order_message(group_id: str, message_id: str, order, language: str = "en", items=None) -> None:
+async def update_order_message(group_id: str, message_id: str, order, language: str = "en", items=None, customer=None) -> None:
     bot = _bot()
     if not bot:
         return
@@ -129,8 +146,9 @@ async def update_order_message(group_id: str, message_id: str, order, language: 
         await bot.edit_message_text(
             chat_id=group_id,
             message_id=int(message_id),
-            text=order_text(order, language=language, items=items),
+            text=order_text(order, language=language, items=items, customer=customer),
             reply_markup=order_keyboard(order.id, order.order_status, order.payment_status, language),
+            parse_mode="HTML",
         )
     finally:
         await bot.session.close()
@@ -249,6 +267,9 @@ def recharge_review_text(recharge, customer, language: str = "en") -> str:
         f"{tr('wallet.groupCustomer', language)}: {getattr(customer, 'display_name', None) or customer.telegram_user_id}",
         f"{tr('wallet.groupAmount', language)}: {_currency_amount(recharge['amount'], recharge['currency'])}",
     ]
+    contact = _telegram_contact(customer)
+    if contact:
+        lines.append(f"{tr('bot.telegramContact', language)}: {contact}")
     if recharge["bonus_amount"]:
         lines.append(f"{tr('wallet.groupBonus', language)}: "
                      f"{_currency_amount(recharge['bonus_amount'], recharge['currency'])}")

@@ -258,6 +258,15 @@ async def start_recharge(
     )
 
 
+async def get_recharge_by_idempotency(db: AsyncSession, idempotency_key: str):
+    """Read the idempotent recharge row before notifying staff, avoiding duplicate group posts."""
+    return await _fetchrow(
+        db,
+        "SELECT * FROM wallet.recharge_orders WHERE idempotency_key = :idempotency_key",
+        {"idempotency_key": idempotency_key},
+    )
+
+
 async def get_payment(db: AsyncSession, biz_id: str):
     """按业务单号查支付记录（退款判断「已退多少」用）。"""
     return await _fetchrow(
