@@ -175,3 +175,13 @@ async def store_for_order(db: AsyncSession, order) -> Store | None:
         if store is not None:
             return store
     return await default_store(db)
+
+
+async def store_for_group(db: AsyncSession, chat_id: str | int | None) -> Store | None:
+    """Resolve the active store that owns a Telegram staff group."""
+    if chat_id is None:
+        return None
+    return (await db.execute(
+        select(Store).filter(Store.status == "ACTIVE",
+                             Store.telegram_staff_group_id == str(chat_id))
+    )).scalars().first()

@@ -9,8 +9,8 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from database import get_db
-from models import AuditLog, Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff, StoreSettings
-from store_context import can_access_store
+from models import AuditLog, Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff
+from store_context import can_access_store, store_for_group
 from telegram_service import (
     answer_callback, notify_new_order, notify_new_recharge, notify_recharge_review,
     order_keyboard, recharge_instruction_text, recharge_proof_keyboard, send_bot_message,
@@ -243,8 +243,8 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
     sender = cb.get("from") or {}
     tg_user_id = sender.get("id")
     # 群里按钮的回复语言按群所属门店；找不到门店时退回主店
-    settings = await _store_settings(db)
-    staff_group_id = str(settings.telegram_staff_group_id) if settings and settings.telegram_staff_group_id else None
+    settings = await store_for_group(db, chat.get("id"))
+    staff_group_id = str(settings.telegram_staff_group_id) if settings else None
     group_language = (settings.staff_group_language if settings else "en") or "en"
     if not callback_id:
         return
@@ -361,9 +361,8 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
 # 钱包 / 充值
 # ===========================================================================
 
-async def _settings(db: AsyncSession):
-    result = await db.execute(select(StoreSettings).limit(1))
-    return result.scalars().first()
+async def _settings(db: AsyncSession, customer=None):
+    return await _store_settings(db, customer=customer)
 
 
 async def _store_settings(db: AsyncSession, *, order=None, customer=None):
@@ -389,7 +388,7 @@ def _currency(settings) -> str:
 
 
 async def _send_wallet_card(db: AsyncSession, customer: Customer, language: str) -> None:
-    settings = await _settings(db)
+    settings = await _settings(db, customer=customer)
     summary = await wallet_service.get_summary(db, customer.id, _currency(settings))
     await send_bot_message(
         customer.telegram_user_id,
@@ -405,7 +404,7 @@ async def _create_recharge(db: AsyncSession, customer: Customer, amount_minor: i
     `token` 由调用方给：按钮点击用「承载按钮的那条消息」的身份，
     所以同一条消息上连点两次只会建出一张单（幂等键在数据库上有唯一约束）。
     """
-    settings = await _settings(db)
+    settings = await _settings(db, customer=customer)
     try:
         order = await wallet_service.start_recharge(
             db, customer_id=customer.id, amount_minor=amount_minor,

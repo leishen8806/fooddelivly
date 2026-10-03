@@ -11,7 +11,7 @@ from database import get_db
 from models import Category, Product, ProductOption, ProductOptionGroup, ProductSaleWindow, StoreSettings, AuditLog
 from dependencies import get_current_staff, get_current_manager
 from product_options import serialize_groups
-from store_context import effective_product, load_overrides, resolve_store
+from store_context import effective_product, load_overrides, resolve_store, staff_store
 from sale_window import describe, is_on_sale, next_open_at
 
 router = APIRouter(prefix="/api/v1", tags=["Products"])
@@ -91,15 +91,20 @@ _CHILD_LOADERS = (
 )
 
 
-async def store_now(db: AsyncSession) -> tuple[datetime, str]:
+async def store_now(db: AsyncSession, store=None) -> tuple[datetime, str]:
     """店铺当前时间 + 语言。售卖时间必须按店铺时区判断，不能用服务器时区。"""
-    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
-    tz_name = (settings.timezone if settings and settings.timezone else "Asia/Phnom_Penh")
+    settings = None
+    if store is None:
+        settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
+    tz_name = ((store.timezone if store is not None else settings.timezone)
+               if (store is not None or settings is not None) else "Asia/Phnom_Penh")
     try:
         tz = ZoneInfo(tz_name)
     except ZoneInfoNotFoundError:
         tz = ZoneInfo("Asia/Phnom_Penh")
-    return datetime.now(tz), (settings.staff_group_language if settings else "en") or "en"
+    language = (store.staff_group_language if store is not None
+                else settings.staff_group_language if settings else "en") or "en"
+    return datetime.now(tz), language
 
 
 # Endpoints
@@ -119,9 +124,8 @@ async def get_menu(store: Optional[str] = None, db: AsyncSession = Depends(get_d
         .order_by(Category.sort_order)
     )
     categories = result.scalars().all()
-    now_local, language = await store_now(db)
-
     store_row = await resolve_store(db, store_code=store)
+    now_local, language = await store_now(db, store_row)
     all_products = [p for cat in categories for p in cat.products]
     overrides = await load_overrides(db, store_row.id if store_row else None,
                                      [p.id for p in all_products])
@@ -152,7 +156,8 @@ async def admin_get_products(
         select(Product).options(*_CHILD_LOADERS)
         .order_by(Product.category_id, Product.sort_order, Product.id))
     products = result.scalars().all()
-    now_local, language = await store_now(db)
+    store_row = await staff_store(db, staff_info)
+    now_local, language = await store_now(db, store_row)
     return [serialize_product(p, language=language, now_local=now_local) for p in products]
 
 # We'll need schemas for creating products, updating them, etc.

@@ -37,10 +37,14 @@ DEFAULT_HOUR = 8
 # 统计
 # ---------------------------------------------------------------------------
 
-async def store_timezone(db: AsyncSession) -> ZoneInfo:
-    result = await db.execute(select(StoreSettings).limit(1))
-    settings = result.scalars().first()
-    name = (settings.timezone if settings else None) or DEFAULT_TZ
+async def store_timezone(db: AsyncSession, store_id: int | None = None) -> ZoneInfo:
+    if store_id is not None:
+        store = (await db.execute(select(Store).filter(Store.id == store_id))).scalars().first()
+        name = store.timezone if store else DEFAULT_TZ
+    else:
+        result = await db.execute(select(StoreSettings).limit(1))
+        settings = result.scalars().first()
+        name = (settings.timezone if settings else None) or DEFAULT_TZ
     try:
         return ZoneInfo(name)
     except ZoneInfoNotFoundError:
@@ -54,7 +58,12 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
 
     `store_id` 非空时只统计该门店（门店群只应收到本店数据）；为空 = 总部视角。
     """
-    tz = tz or await store_timezone(db)
+    store = None
+    if store_id is not None:
+        store = (await db.execute(select(Store).filter(Store.id == store_id))).scalars().first()
+    # Use the same guarded resolver for store-specific timezones so an invalid
+    # branch setting falls back cleanly instead of aborting the report job.
+    tz = tz or await store_timezone(db, store_id)
     start_local = datetime.combine(report_date, time.min, tz)
     end_local = start_local + timedelta(days=1)          # 左闭右开：00:00:00 ~ 23:59:59.999
     start_utc, end_utc = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
@@ -64,10 +73,13 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         order_query = order_query.filter(Order.store_id == store_id)
     orders = (await db.execute(order_query)).scalars().all()
 
-    currency = "USD"
-    settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
-    if settings and settings.currency:
-        currency = settings.currency
+    if store is not None:
+        currency = store.currency or "USD"
+    else:
+        currency = "USD"
+        settings = (await db.execute(select(StoreSettings).limit(1))).scalars().first()
+        if settings and settings.currency:
+            currency = settings.currency
 
     order_total = sum(o.total_minor for o in orders)
     by_state: dict[str, int] = {}

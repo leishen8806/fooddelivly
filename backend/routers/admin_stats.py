@@ -8,7 +8,7 @@ from sqlalchemy import func, text
 
 from database import get_db
 from dependencies import get_current_staff
-from store_context import visible_store_id
+from store_context import default_store, get_store, visible_store_id
 from models import Order, PaymentReview, StoreSettings
 
 router = APIRouter(prefix="/api/v1/admin/analytics", tags=["Admin Stats"])
@@ -21,9 +21,14 @@ async def get_analytics(
     staff_info: dict = Depends(get_current_staff),
     db: AsyncSession = Depends(get_db),
 ):
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    settings = settings_result.scalars().first()
-    timezone_name = settings.timezone if settings else "Asia/Phnom_Penh"
+    scope = visible_store_id(staff_info)
+    scoped_store = await get_store(db, scope) if scope is not None else await default_store(db)
+    if scoped_store is not None:
+        timezone_name = scoped_store.timezone or "Asia/Phnom_Penh"
+    else:
+        settings_result = await db.execute(select(StoreSettings).limit(1))
+        settings = settings_result.scalars().first()
+        timezone_name = settings.timezone if settings else "Asia/Phnom_Penh"
     try:
         store_tz = ZoneInfo(timezone_name)
     except ZoneInfoNotFoundError:
@@ -41,7 +46,6 @@ async def get_analytics(
 
     # 门店隔离：门店经理只能看本店财务（总部账号不过滤）。
     # 历史数据（store_id 为空）保持可见，与其它接口一致。
-    scope = visible_store_id(staff_info)
     def scoped(query):
         if scope is None:
             return query

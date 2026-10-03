@@ -29,7 +29,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import wallet_service as wallet
-from store_context import can_access_store, default_store, visible_store_id
+from store_context import can_access_store, default_store, get_store, visible_store_id
 from database import get_db
 from dependencies import get_current_customer, get_current_staff
 from models import AuditLog, Customer, StoreSettings, Staff
@@ -53,10 +53,20 @@ def _http(exc: wallet.WalletError) -> HTTPException:
     return HTTPException(status_code=exc.http_status, detail=exc.message)
 
 
-async def _currency(db: AsyncSession) -> str:
+async def _currency(db: AsyncSession, store_id: int | None = None) -> str:
+    store = await get_store(db, store_id) if store_id is not None else await default_store(db)
+    if store is not None and store.currency:
+        return store.currency
     result = await db.execute(select(StoreSettings).limit(1))
     settings = result.scalars().first()
     return (settings.currency if settings and settings.currency else wallet.DEFAULT_CURRENCY)
+
+
+async def _customer_store(db: AsyncSession, customer_id: int):
+    customer = (await db.execute(select(Customer).filter(Customer.id == customer_id))).scalars().first()
+    if customer is None:
+        return await default_store(db)
+    return await get_store(db, customer.store_id) if customer.store_id else await default_store(db)
 
 
 def _order_json(row) -> dict:
@@ -88,7 +98,8 @@ async def get_wallet(
     customer_id: int = Depends(get_current_customer),
     db: AsyncSession = Depends(get_db),
 ):
-    currency = await _currency(db)
+    store = await _customer_store(db, customer_id)
+    currency = await _currency(db, store.id if store else None)
     summary = await wallet.get_summary(db, customer_id, currency)
     limits = {
         "min_recharge_minor": await wallet.cfg_int(db, "min_recharge_amount", 100),
@@ -178,7 +189,9 @@ async def create_recharge(
     「同一条消息」的身份），同名重复请求返回同一张单，不会重复建单。
     金额上下限、未完成单数量、单日累计都在数据库里校验。
     """
-    currency = await _currency(db)
+    customer_row = (await db.execute(select(Customer).filter(Customer.id == customer_id))).scalars().first()
+    store = await get_store(db, customer_row.store_id) if customer_row and customer_row.store_id else await default_store(db)
+    currency = await _currency(db, store.id if store else None)
     # 收款门店：客户绑定的门店（未绑定则落主店）。结算与门店隔离都要用。
     customer_row = (await db.execute(select(Customer).filter(Customer.id == customer_id))).scalars().first()
     store_id = customer_row.store_id if customer_row else None
@@ -200,9 +213,8 @@ async def create_recharge(
 
     from routers.orders import payment_handoff  # 复用同一套收款信息渲染
 
-    result = await db.execute(select(StoreSettings).limit(1))
-    settings = result.scalars().first()
-    handoff = payment_handoff(row["order_no"], settings)
+    store = await get_store(db, row.get("store_id")) if row.get("store_id") else await default_store(db)
+    handoff = payment_handoff(row["order_no"], store)
     return {
         **_order_json(row),
         "payment_link": handoff.get("payment_link"),
@@ -453,7 +465,7 @@ async def admin_get_wallet(
     customer = result.scalars().first()
     if customer is None or not can_access_store(staff_info, customer.store_id):
         raise HTTPException(status_code=404, detail="Customer not found")
-    currency = await _currency(db)
+    currency = await _currency(db, customer.store_id)
     summary = await wallet.get_summary(db, customer_id, currency)
     entries = await wallet.list_ledger(db, customer_id, limit=50)
     return {
@@ -501,7 +513,7 @@ async def admin_adjust_wallet(
     if customer is None or not can_access_store(staff_info, customer.store_id):
         raise HTTPException(status_code=404, detail="Customer not found")
     staff_id = staff_info["staff_id"]
-    currency = await _currency(db)
+    currency = await _currency(db, customer.store_id)
     import uuid as _uuid
 
     try:

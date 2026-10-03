@@ -4,9 +4,9 @@ from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from database import get_db
-from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer, StoreSettings
+from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer
 from dependencies import get_current_staff
-from store_context import can_access_store, store_scope_clause
+from store_context import can_access_store, store_for_order, store_scope_clause
 import os
 import httpx
 
@@ -143,8 +143,7 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
                              "to_state": f"{order.order_status}/{order.payment_status}", "reason": reason}))
     customer_result = await db.execute(select(Customer).filter(Customer.id == order.customer_id))
     customer = customer_result.scalars().first()
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    settings = settings_result.scalars().first()
+    settings = await store_for_order(db, order)
     await db.commit()
     if customer:
         from telegram_service import send_bot_message, tr
@@ -321,8 +320,7 @@ async def review_payment(
                              "reason": req.reason.strip() if req.reason else None}))
     customer_result = await db.execute(select(Customer).filter(Customer.id == order.customer_id))
     customer = customer_result.scalars().first()
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    settings = settings_result.scalars().first()
+    settings = await store_for_order(db, order)
     await db.commit()
     if customer:
         from telegram_service import notify_payment_review

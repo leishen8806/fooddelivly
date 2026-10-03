@@ -317,8 +317,6 @@ async def create_order(
                 }
         raise
     
-    settings_result = await db.execute(select(StoreSettings).limit(1))
-    settings = settings_result.scalars().first()
     return {
         "public_code": new_order.public_code,
         "total_minor": new_order.total_minor,
@@ -329,7 +327,7 @@ async def create_order(
         "status": new_order.order_status,
         "payment_status": new_order.payment_status,
         "payment_method": new_order.payment_method,
-        **order_handoff(new_order, settings),
+        **await _handoff_for(db, new_order),
     }
 
 @router.get("/orders")
