@@ -1511,6 +1511,13 @@ small {
 }
 
 @media (max-width: 700px) {
+  /* iOS Safari/Telegram WebView zooms focused form controls below 16px. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
   .customer-shell {
     padding: var(--space-4) var(--space-4) calc(var(--space-4) + 5.5rem + env(safe-area-inset-bottom));
   }
