@@ -121,6 +121,8 @@ async def create_order(
                 "status": existing_order.order_status,
                 "payment_status": existing_order.payment_status,
                 "payment_method": existing_order.payment_method,
+                "wallet_paid_minor": existing_order.wallet_paid_minor or 0,
+                "external_due_minor": existing_order.external_due_minor if existing_order.external_due_minor is not None else existing_order.total_minor,
                 **await _handoff_for(db, existing_order),
                 "message": "Order already exists"
             }
@@ -230,6 +232,7 @@ async def create_order(
     service_fee_minor = int(store_row.service_fee_minor or 0)
     total_minor = subtotal_minor + delivery_fee_minor + service_fee_minor
 
+    wallet_paid_minor = 0
     try:
         new_order = Order(
             public_code=generate_public_code(),
@@ -237,7 +240,7 @@ async def create_order(
             room_number=order_req.room_number,
             order_status="NEW",
             payment_status="UNPAID",
-            payment_method="WALLET" if order_req.pay_with_wallet else "MANUAL",
+            payment_method="MANUAL",
             store_id=store_row.id,
             currency=currency,
             customer_language=customer.preferred_language or ("zh-CN" if (customer.language_code or "").lower().startswith("zh") else "km" if (customer.language_code or "").lower().startswith("km") else "en"),
@@ -245,6 +248,8 @@ async def create_order(
             subtotal_minor=subtotal_minor,
             delivery_fee_minor=delivery_fee_minor,
             service_fee_minor=service_fee_minor,
+            wallet_paid_minor=0,
+            external_due_minor=total_minor,
             idempotency_key=idempotency_key,
             request_digest=request_digest
         )
@@ -256,15 +261,15 @@ async def create_order(
             db.add(oi)
 
         if order_req.pay_with_wallet:
-            # 余额抵扣：与建单在**同一个事务**里，钱和订单要么都成功、要么都回滚。
-            # 扣款幂等锚点是订单号，所以即使调用被重试也不会重复扣。
-            from wallet_service import WalletError, spend_balance
+            # 钱包优先：在同一事务内最多扣掉当前可用余额，剩余金额走 ABA。
+            # 数据库函数会锁钱包行并记录实际扣款，避免先读余额再扣款的竞态。
+            from wallet_service import WalletError, spend_up_to
 
             try:
-                await spend_balance(
+                wallet_paid_minor = await spend_up_to(
                     db,
                     customer_id=customer_id,
-                    amount_minor=total_minor,
+                    max_amount_minor=total_minor,
                     biz_id=new_order.public_code,
                     idem=f"pay:{new_order.public_code}",
                     currency=currency,
@@ -273,7 +278,13 @@ async def create_order(
             except WalletError as exc:
                 await db.rollback()
                 raise HTTPException(status_code=exc.http_status, detail=exc.message)
-            new_order.payment_status = "PAID_CONFIRMED"
+            new_order.wallet_paid_minor = wallet_paid_minor
+            new_order.external_due_minor = max(total_minor - wallet_paid_minor, 0)
+            if wallet_paid_minor >= total_minor:
+                new_order.payment_method = "WALLET"
+                new_order.payment_status = "PAID_CONFIRMED"
+            elif wallet_paid_minor > 0:
+                new_order.payment_method = "MIXED"
 
         await db.commit()
         await db.refresh(new_order)
@@ -312,6 +323,8 @@ async def create_order(
                     "status": existing_order.order_status,
                     "payment_status": existing_order.payment_status,
                     "payment_method": existing_order.payment_method,
+                    "wallet_paid_minor": existing_order.wallet_paid_minor or 0,
+                    "external_due_minor": existing_order.external_due_minor if existing_order.external_due_minor is not None else existing_order.total_minor,
                     **await _handoff_for(db, existing_order),
                     "message": "Order already exists"
                 }
@@ -327,6 +340,8 @@ async def create_order(
         "status": new_order.order_status,
         "payment_status": new_order.payment_status,
         "payment_method": new_order.payment_method,
+        "wallet_paid_minor": new_order.wallet_paid_minor or 0,
+        "external_due_minor": new_order.external_due_minor if new_order.external_due_minor is not None else new_order.total_minor,
         **await _handoff_for(db, new_order),
     }
 
@@ -344,6 +359,8 @@ async def get_orders(
     return [{"public_code": o.public_code, "room_number": o.room_number, "order_status": o.order_status,
              "payment_status": o.payment_status, "payment_method": o.payment_method,
              "currency": o.currency, "total_minor": o.total_minor,
+             "wallet_paid_minor": o.wallet_paid_minor or 0,
+             "external_due_minor": o.external_due_minor if o.external_due_minor is not None else o.total_minor,
              "created_at": o.created_at} for o in orders]
 
 @router.get("/orders/{public_code}")
@@ -360,6 +377,8 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
         "order_status": order.order_status, "payment_status": order.payment_status,
         "payment_method": order.payment_method,
         "currency": order.currency, "total_minor": order.total_minor,
+        "wallet_paid_minor": order.wallet_paid_minor or 0,
+        "external_due_minor": order.external_due_minor if order.external_due_minor is not None else order.total_minor,
         "subtotal_minor": order.subtotal_minor if order.subtotal_minor is not None else order.total_minor,
         "delivery_fee_minor": order.delivery_fee_minor or 0,
         "service_fee_minor": order.service_fee_minor or 0,

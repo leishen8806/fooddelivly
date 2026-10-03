@@ -90,7 +90,7 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
     manual_received = (await db.execute(
         text(
             """
-            SELECT COALESCE(sum(o.total_minor), 0)
+            SELECT COALESCE(sum(COALESCE(o.external_due_minor, o.total_minor)), 0)
               FROM public.payment_reviews r
               JOIN public.orders o ON o.id = r.order_id
              WHERE r.decision = 'APPROVED'
@@ -102,14 +102,14 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         {"start_utc": start_utc, "end_utc": end_utc, "store_id": store_id},
     )).scalar() or 0
 
-    # 钱包余额支付：净额 = 支付金额 - 已退金额
+    # 钱包抵扣：净额 = 实际钱包支付金额 - 已退金额；混合支付只统计钱包部分
     wallet_received = (await db.execute(
         text(
             """
-            SELECT COALESCE(sum(o.total_minor - COALESCE(p.refunded_amount, 0)), 0)
+            SELECT COALESCE(sum(COALESCE(p.amount, 0) - COALESCE(p.refunded_amount, 0)), 0)
               FROM public.orders o
               LEFT JOIN wallet.order_payments p ON p.biz_id = o.public_code
-             WHERE o.payment_method = 'WALLET'
+             WHERE o.payment_method IN ('WALLET', 'MIXED')
                AND o.created_at >= :start_utc AND o.created_at < :end_utc
                AND (CAST(:store_id AS INTEGER) IS NULL
                     OR o.store_id = CAST(:store_id AS INTEGER))

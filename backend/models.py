@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
@@ -126,7 +126,7 @@ class Order(Base):
     room_number = Column(String, nullable=False)
     order_status = Column(String, default="NEW")
     payment_status = Column(String, default="UNPAID")
-    # 'MANUAL'（人工转账 + 截图审核）或 'WALLET'（下单时用钱包余额抵扣）
+    # 'MANUAL'（全额 ABA）、'MIXED'（钱包优先 + ABA 补差额）或 'WALLET'（钱包付清）
     payment_method = Column(String, nullable=False, default="MANUAL", server_default="MANUAL")
     currency = Column(String, default="USD")
     customer_language = Column(String, nullable=False, default="en")
@@ -135,6 +135,8 @@ class Order(Base):
     subtotal_minor = Column(Integer, nullable=True)
     delivery_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
     service_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    wallet_paid_minor = Column(BigInteger, nullable=False, default=0, server_default="0")
+    external_due_minor = Column(BigInteger, nullable=False, default=0, server_default="0")
     telegram_group_message_id = Column(String, nullable=True)
     idempotency_key = Column(String, index=True, nullable=True)
     request_digest = Column(String, nullable=True)

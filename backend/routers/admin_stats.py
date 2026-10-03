@@ -55,7 +55,7 @@ async def get_analytics(
         select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc)))
     orders = result.scalars().all()
     reviews_result = await db.execute(scoped(
-        select(Order.currency, func.sum(Order.total_minor))
+        select(Order.currency, func.sum(func.coalesce(Order.external_due_minor, Order.total_minor)))
         .select_from(PaymentReview)
         .join(Order, PaymentReview.order_id == Order.id)
         .filter(PaymentReview.decision == "APPROVED", PaymentReview.created_at >= start_utc,
@@ -64,17 +64,18 @@ async def get_analytics(
     ))
     confirmed_by_currency = {currency: int(amount or 0) for currency, amount in reviews_result.all()}
 
-    # 钱包余额支付的订单没有 PaymentReview 记录（下单即扣款），
+    # 钱包抵扣的订单没有 PaymentReview 记录（钱包部分下单即扣款），
     # 只按 PaymentReview 汇总会让财务日报**漏掉这部分收入**。
-    # 这里按订单号关联钱包支付记录，并扣掉已退金额，得到净收款。
+    # 混合支付只统计钱包实际抵扣的部分；ABA 差额在人工确认后由上面的
+    # PaymentReview 汇总。
     wallet_result = await db.execute(
         text(
             """
             SELECT o.currency,
-                   sum(o.total_minor - COALESCE(p.refunded_amount, 0)) AS net_minor
+                   sum(COALESCE(p.amount, 0) - COALESCE(p.refunded_amount, 0)) AS net_minor
               FROM public.orders o
               LEFT JOIN wallet.order_payments p ON p.biz_id = o.public_code
-             WHERE o.payment_method = 'WALLET'
+             WHERE o.payment_method IN ('WALLET', 'MIXED')
                AND o.created_at >= :start_utc AND o.created_at < :end_utc
                AND (CAST(:store_id AS INTEGER) IS NULL
                     OR o.store_id = CAST(:store_id AS INTEGER)
@@ -92,7 +93,7 @@ async def get_analytics(
         bucket = totals.setdefault(order.currency, {"order_total_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0})
         bucket["order_total_minor"] += order.total_minor
         if order.payment_status == "PROOF_SUBMITTED":
-            bucket["in_review_minor"] += order.total_minor
+            bucket["in_review_minor"] += order.external_due_minor if order.external_due_minor is not None else order.total_minor
         if order.order_status == "CANCELLED":
             bucket["cancelled_total_minor"] += order.total_minor
     for currency, bucket in totals.items():

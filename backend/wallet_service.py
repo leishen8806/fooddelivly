@@ -520,8 +520,40 @@ async def adjust_balance(
 
 
 # ---------------------------------------------------------------------------
-# 余额支付（订单侧；本次只提供接口，是否接入结算由业务决定）
+# 余额支付（订单侧）
 # ---------------------------------------------------------------------------
+
+async def spend_up_to(
+    db: AsyncSession,
+    *,
+    customer_id: int,
+    max_amount_minor: int,
+    biz_id: str,
+    idem: str,
+    currency: str = DEFAULT_CURRENCY,
+    remark: str | None = None,
+) -> int:
+    """最多扣除可用钱包余额，返回实际扣除金额。
+
+    余额不足时不会报错，而是只扣现有可用余额，让订单把剩余金额交给
+    ABA 人工转账。锁和拆分扣款都在数据库函数内完成，避免先读余额再扣款
+    的并发竞态。
+    """
+    row = await _fetchrow(
+        db,
+        """SELECT wallet.spend_up_to(
+               :customer_id, :currency, :max_amount_minor, :biz_id, :idem, :remark
+           ) AS amount_minor""",
+        {
+            "customer_id": customer_id,
+            "currency": currency,
+            "max_amount_minor": max_amount_minor,
+            "biz_id": biz_id,
+            "idem": idem,
+            "remark": remark,
+        },
+    )
+    return int(row["amount_minor"] or 0) if row else 0
 
 async def spend_balance(
     db: AsyncSession,

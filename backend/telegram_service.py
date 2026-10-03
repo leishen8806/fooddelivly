@@ -115,8 +115,12 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
         f"{tr('nav.orders', language)}: {status_label}",
         f"{tr('payment.title', language)}: {tr(payment_key, language)}",
     ])
-    if getattr(order, "payment_method", "MANUAL") == "WALLET":
-        lines.append(f"{tr('payment.method', language)}: {tr('payment.method.wallet', language)}")
+    wallet_paid = int(getattr(order, "wallet_paid_minor", 0) or 0)
+    external_due = int(getattr(order, "external_due_minor", 0) or 0)
+    if wallet_paid > 0:
+        lines.append(f"{tr('payment.method.wallet', language)}: {_currency_amount(wallet_paid, order.currency)}")
+    if external_due > 0 and wallet_paid > 0:
+        lines.append(f"{tr('payment.method.aba', language)}: {_currency_amount(external_due, order.currency)}")
     return "\n".join(lines)
 
 

@@ -28,7 +28,10 @@ async def list_orders(
         "id": order.id, "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
         "payment_method": order.payment_method,
-        "currency": order.currency, "total_minor": order.total_minor, "created_at": order.created_at,
+        "currency": order.currency, "total_minor": order.total_minor,
+        "wallet_paid_minor": order.wallet_paid_minor or 0,
+        "external_due_minor": order.external_due_minor if order.external_due_minor is not None else order.total_minor,
+        "created_at": order.created_at,
         "items": [{"name": item.product_name_snapshot, "quantity": item.quantity,
                    "options": item.options_json or {},
                    "line_total_minor": item.line_total_minor} for item in order.items],
@@ -91,19 +94,20 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
     if not order or not can_access_store(staff_info, order.store_id):
         raise HTTPException(status_code=404, detail="Order not found")
     staff_id = staff_info["staff_id"]
-    wallet_paid = order.payment_method == "WALLET" and order.payment_status == "PAID_CONFIRMED"
+    wallet_paid = order.payment_method in {"WALLET", "MIXED"} and (order.wallet_paid_minor or 0) > 0
+    wallet_only = order.payment_method == "WALLET"
     transitions = {
         "ACCEPTED": order.order_status == "NEW",
         "READY": order.order_status == "PREPARING" and order.payment_status == "PAID_CONFIRMED",
         "DELIVERED": order.order_status == "READY",
         "COMPLETED": order.order_status == "DELIVERED",
-        # 钱包支付的订单：只在「餐还没做出去」的阶段允许取消并退款
+        # 含钱包抵扣的订单：只在「餐还没做出去」的阶段允许取消并退款
         # （NEW/ACCEPTED/PREPARING）。到了 READY/DELIVERED 说明已经出餐/送出，
         # 这时候把钱退回去应该走单独的、仅 MANAGER 的退款接口，而不是点一下「取消」。
         # 人工转账的已确认付款订单仍然禁止取消（退款走线下）。
         "CANCELLED": order.order_status not in {"CANCELLED", "COMPLETED"} and (
             order.payment_status != "PAID_CONFIRMED"
-            or (wallet_paid and order.order_status in {"NEW", "ACCEPTED", "PREPARING"})),
+            or (wallet_only and order.order_status in {"NEW", "ACCEPTED", "PREPARING"})),
     }
     if not transitions.get(req.status, False):
         raise HTTPException(status_code=409, detail="Order status transition is not allowed")
@@ -124,7 +128,7 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
 
         try:
             await refund_payment(
-                db, biz_id=order.public_code, amount_minor=order.total_minor,
+                db, biz_id=order.public_code, amount_minor=order.wallet_paid_minor,
                 idem=f"refund:{order.public_code}", operator_staff_id=staff_id,
                 reason=reason or "Order cancelled",
             )
@@ -192,14 +196,14 @@ async def refund_wallet_order(order_id: int, req: RefundRequest,
     if not order or not can_access_store(staff_info, order.store_id):
         raise HTTPException(status_code=404, detail="Order not found")
     # 部分退款后状态是 PARTIALLY_REFUNDED，必须允许继续退剩余金额
-    if order.payment_method != "WALLET" or order.payment_status not in {"PAID_CONFIRMED", "PARTIALLY_REFUNDED"}:
-        raise HTTPException(status_code=409, detail="Order was not paid from the wallet balance")
+    if order.payment_method not in {"WALLET", "MIXED"} or order.payment_status not in {"PAID_CONFIRMED", "PARTIALLY_REFUNDED"}:
+        raise HTTPException(status_code=409, detail="Order has no confirmed wallet payment")
 
     staff_id = staff_info["staff_id"]
     import wallet_service as wallet_service_module
     existing = await wallet_service_module.get_payment(db, order.public_code)
     refunded_before = int(existing["refunded_amount"] or 0) if existing else 0
-    paid_total = int(existing["amount"]) if existing else order.total_minor
+    paid_total = int(existing["amount"]) if existing else int(order.wallet_paid_minor or 0)
     remaining = paid_total - refunded_before
     amount = req.amount_minor or remaining
     # 以**支付金额**为上限（含赠送抵扣），不是订单面额

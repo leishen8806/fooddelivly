@@ -14,16 +14,16 @@
 | 指标 | 口径 |
 |---|---|
 | 订单数 / 订单合计 | 当天创建的订单，按状态拆分 |
-| 确认收款 | **银行转账**（`payment_reviews` 中 APPROVED）+ **钱包余额支付**（`wallet.order_payments` 净额 = 支付 − 已退） |
+| 确认收款 | **银行转账**（`payment_reviews` 中 APPROVED 的 ABA 差额）+ **钱包余额支付**（`wallet.order_payments` 净额 = 支付 − 已退） |
 | 已退款 | 当天订单里已经退掉的金额 |
 | 充值到账 | 当天 `reviewed_at` 落在区间内的已入账充值单：笔数 / 本金 / 赠送金 |
 | 待审核充值单 | 当天创建、仍未完成的充值单 |
 | 待审核凭证 | 当天创建、`PROOF_SUBMITTED` 还压着的订单 |
 | 新增客户 | 当天新建的客户 |
 
-> 钱包余额支付的订单**没有** `PaymentReview` 记录（下单即扣款），所以
+> 钱包抵扣部分的订单**没有** `PaymentReview` 记录（下单即扣款），所以
 > 只按 `PaymentReview` 汇总会漏掉这部分收入——报表与财务接口都已把
-> `payment_method = 'WALLET'` 的订单按订单号关联 `wallet.order_payments` 计入，并扣掉退款。
+> `payment_method IN ('WALLET', 'MIXED')` 的订单按订单号关联 `wallet.order_payments` 计入，并扣掉退款；混合支付的 ABA 部分按 `external_due_minor` 计入。
 
 ## 2. 怎么发
 

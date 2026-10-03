@@ -117,16 +117,16 @@ wallet.is_order_owner_staff(p_staff_id, p_customer_id)
 
 ## 3.1 下单用余额抵扣
 
-结算页勾选「用钱包余额支付」→ `POST /api/v1/orders` 带 `pay_with_wallet: true`。
+结算页自动启用「钱包优先」→ `POST /api/v1/orders` 带 `pay_with_wallet: true`。
 
 服务端的处理顺序（`routers/orders.py`）：
 
 1. 先按原有逻辑建单、算总价（**金额永远由服务端算，不信前端**）；
-2. `wallet.spend_balance(customer_id, total_minor, biz_id=public_code)` —— 与建单
-   **在同一个事务里**，所以「扣了钱没建单」或「建了单没扣钱」都不可能发生；
-3. 余额不足 → 整个事务回滚、返回 **409 余额不足**，订单不会留下；
-4. 扣款成功后订单直接是 `payment_status = PAID_CONFIRMED`、`payment_method = WALLET`，
-   `payment_handoff` 不再返回任何转账信息（避免用户重复付款）。
+2. `wallet.spend_up_to(customer_id, total_minor, biz_id=public_code)` —— 与建单
+   **在同一个事务里**，最多扣除可用余额并记录实际钱包支付金额；
+3. 钱包余额不足时，订单保留 `external_due_minor` 差额，客户只需通过 ABA 支付差额；
+4. 钱包付清时订单为 `payment_status = PAID_CONFIRMED`、`payment_method = WALLET`；
+   发生差额时为 `payment_method = MIXED`，仍走 ABA 截图确认流程。
 
 状态机上的三处配套改动（`routers/admin_orders.py`）：
 
@@ -332,7 +332,7 @@ UPDATE wallet.config SET value = '0'     WHERE key = 'dual_approval_threshold_mi
 |---|---|
 | `backend/alembic/versions/7e8f90123456_wallet_recharge.py` | wallet schema 全部 DDL + 资金函数（自包含） |
 | `backend/alembic/versions/8f9012345678_pending_recharge_order.py` | `customers.pending_recharge_order_id` |
-| `backend/alembic/versions/9f9012345678_orders_payment_method.py` | `orders.payment_method`（MANUAL / WALLET） |
+| `backend/alembic/versions/9f9012345678_orders_payment_method.py` | `orders.payment_method`（MANUAL / MIXED / WALLET） |
 | `backend/wallet_service.py` | 唯一数据访问层：只调数据库函数 + 错误码翻译 |
 | `backend/routers/wallet.py` | 客户侧 / 员工侧 REST API |
 | `backend/routers/orders.py` | 下单支持 `pay_with_wallet`（扣款与建单同事务） |

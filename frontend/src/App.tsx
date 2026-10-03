@@ -25,8 +25,8 @@ type OrderItemOptions = { sweetness?: number; price_delta_minor?: number; select
 type CartSelection = { group_id: number; option_id: number };
 type CartLine = { product: Product; quantity: number; sweetness: number | null; selections: CartSelection[]; unitPrice: number };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
-type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: OrderItemOptions }> };
-type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; created_at: string };
+type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; wallet_paid_minor?: number; external_due_minor?: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: OrderItemOptions }> };
+type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; wallet_paid_minor?: number; external_due_minor?: number; created_at: string };
 type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null };
 type LanguageCode = 'zh-CN' | 'en' | 'km';
 type CustomerProfile = { customer_id: number; display_name: string | null; username: string | null; language: LanguageCode; preferred_language: LanguageCode | null };
@@ -132,9 +132,8 @@ function CustomerPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
-  // 钱包余额（最小单位）。结算页始终显示 ABA / 钱包两种支付方式。
+  // 钱包余额（最小单位）。结算时自动优先抵扣，剩余金额走 ABA。
   const [walletTotal, setWalletTotal] = useState(0);
-  const [paymentMethod, setPaymentMethod] = useState<'ABA' | 'WALLET'>('ABA');
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileError, setProfileError] = useState('');
@@ -143,6 +142,8 @@ function CustomerPage() {
   const orderCloseRef = useRef<HTMLButtonElement>(null);
   const languageSelectRef = useRef<HTMLSelectElement>(null);
   const total = useMemo(() => cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0), [cart]);
+  const walletApplied = Math.min(walletTotal, total);
+  const abaDue = Math.max(total - walletApplied, 0);
   const itemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? categories[0];
   const orderDialogOpen = orderDetails !== null;
@@ -153,11 +154,9 @@ function CustomerPage() {
     try {
       const response = await api.get('/api/v1/wallet');
       setWalletTotal(response.data.total_minor);
-      if (response.data.total_minor <= 0) setPaymentMethod('ABA');
     } catch {
-      // 钱包接口失败不影响点单主流程，降级为「不用余额」
+      // 钱包接口失败不影响点单主流程，降级为全额 ABA。
       setWalletTotal(0);
-      setPaymentMethod('ABA');
     }
   }, []);
 
@@ -372,8 +371,8 @@ function CustomerPage() {
           // 规格只传 id：价格由服务端回库算，前端算的金额仅用于展示
           options: { ...(line.sweetness === null ? {} : { sweetness: line.sweetness }), selections: line.selections },
         })),
-        // 用钱包余额支付：后端在与建单同一个事务里扣款，余额不足则整单回滚
-        ...(paymentMethod === 'WALLET' ? { pay_with_wallet: true } : {}),
+        // 钱包优先：后端在同一事务内扣除可用余额，余额不足时只把差额交给 ABA。
+        pay_with_wallet: true,
       }, { headers: { 'Idempotency-Key': idempotencyKey.current } });
       setCart([]);
       idempotencyKey.current = null;
@@ -466,16 +465,11 @@ function CustomerPage() {
         <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); if (profile) localStorage.setItem(`teacafe.roomNumber.${profile.customer_id}`, event.target.value); }} autoComplete="off" maxLength={32} required />
         <fieldset className="payment-method-picker">
           <legend>{t('payment.chooseMethod')}</legend>
-          <div className="payment-method-options">
-            <label className={`payment-method-option${paymentMethod === 'ABA' ? ' selected' : ''}`}>
-              <input type="radio" name="payment-method" value="ABA" checked={paymentMethod === 'ABA'} onChange={() => setPaymentMethod('ABA')} />
-              <span><strong>{t('payment.method.aba')}</strong><small>{t('payment.method.abaHint')}</small></span>
-            </label>
-            <label className={`payment-method-option${paymentMethod === 'WALLET' ? ' selected' : ''}${walletTotal <= 0 ? ' disabled' : ''}`}>
-              <input type="radio" name="payment-method" value="WALLET" checked={paymentMethod === 'WALLET'} disabled={walletTotal <= 0} onChange={() => setPaymentMethod('WALLET')} />
-              <span><strong>{t('payment.method.wallet')}</strong><small>{t('wallet.available')}: {amount(walletTotal, cart[0].product.currency, i18n.language)} · {t('payment.method.walletHint')}</small></span>
-            </label>
+          <div className="payment-method-breakdown">
+            <div><span>{t('payment.method.wallet')}</span><strong>{amount(walletApplied, cart[0].product.currency, i18n.language)}</strong></div>
+            <div><span>{t('payment.method.aba')}</span><strong>{amount(abaDue, cart[0].product.currency, i18n.language)}</strong></div>
           </div>
+          <small className="payment-method-hint">{t('payment.walletFirstHint')}</small>
         </fieldset>
         <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button>
         {status && <p className="status" role="status">{status}</p>}
@@ -531,7 +525,9 @@ function CustomerPage() {
       <div className="customer-order-heading"><strong className={orderStatusClass(orderDetails.order_status)}>{t(`order.status.${orderDetails.order_status.toLowerCase()}`)}</strong><span className={`customer-payment-status payment-status-${orderDetails.payment_status.toLowerCase()}`}>{paymentLabel(orderDetails.payment_status)}</span></div>
       <p>{t('order.room')}: <strong>{orderDetails.room_number}</strong></p>
       <div className="customer-order-items">{orderDetails.items.map((item, index) => <div key={`${orderDetails.public_code}:${index}`}><span>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined && <small>{t('menu.sweetness')}: {item.options.sweetness}%</small>}</span><strong>{amount(item.line_total_minor, orderDetails.currency, i18n.language)}</strong></div>)}</div>
-      <p className="order-modal-total">{t('payment.amountDue')}: <strong>{amount(orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>
+      <p className="order-modal-total">{t('payment.orderTotal')}: <strong>{amount(orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>
+      {(orderDetails.wallet_paid_minor ?? 0) > 0 && <p className="payment-breakdown-line">{t('payment.walletApplied')}: <strong>{amount(orderDetails.wallet_paid_minor ?? 0, orderDetails.currency, i18n.language)}</strong></p>}
+      {(orderDetails.external_due_minor ?? orderDetails.total_minor) > 0 && <p className="payment-breakdown-line">{t('payment.abaDue')}: <strong>{amount(orderDetails.external_due_minor ?? orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>}
       {!['PAID_CONFIRMED', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(orderDetails.payment_status) && <>
         {orderDetails.payment_qr_url && <img className="payment-qr" src={orderDetails.payment_qr_url} alt={t('payment.aba')} />}
         {orderDetails.payment_link && <a className="primary payment-link" href={orderDetails.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
@@ -817,9 +813,10 @@ function AdminPage() {
       <section className="panel"><div className="panel-heading"><div><span className="eyebrow">{t('admin.orders')}</span><h2>{t('nav.orders')}</h2></div><label>{t('admin.allStatuses')}<select value={orderFilter} onChange={(event) => setOrderFilter(event.target.value)}><option value="ALL">{t('admin.allStatuses')}</option>{['NEW', 'ACCEPTED', 'PREPARING', 'READY', 'DELIVERED', 'COMPLETED', 'CANCELLED'].map((value) => <option key={value} value={value}>{t(`order.status.${value.toLowerCase()}`)}</option>)}</select></label><button onClick={() => void fetchData()}>{t('common.retry')}</button></div>
         {orders.length === 0 ? <p className="state">{t('admin.noOrders')}</p> : <div className="order-list">{orders.filter((order) => orderFilter === 'ALL' || order.order_status === orderFilter).map((order) => <article className="order-row" key={order.id}>
           <strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span>{t(`order.status.${order.order_status.toLowerCase()}`)}</span><span>{order.payment_status === 'PAID_CONFIRMED' ? t('payment.confirmed') : order.payment_status === 'REFUNDED' ? t('order.status.refunded') : order.payment_status === 'PARTIALLY_REFUNDED' ? t('payment.partiallyRefunded') : order.payment_status === 'PROOF_SUBMITTED' ? t('payment.pending') : order.payment_status === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid')}</span><b>{amount(order.total_minor, order.currency, i18n.language)}</b>
+          {(order.wallet_paid_minor ?? 0) > 0 && <small className="order-payment-breakdown">{t('payment.walletApplied')}: {amount(order.wallet_paid_minor ?? 0, order.currency, i18n.language)} · {t('payment.abaDue')}: {amount(order.external_due_minor ?? 0, order.currency, i18n.language)}</small>}
           {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined ? ` · ${t('order.sweetnessValue', { value: item.options.sweetness })}` : ''} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>)}</div> : null}
           {order.payment_status === 'PROOF_SUBMITTED' && <details><summary>{t('admin.openPaymentProof')}</summary>{imageErrors.has(order.id) ? <p className="error">{t('admin.paymentImageUnavailable')} <button type="button" onClick={() => setImageErrors((current) => { const next = new Set(current); next.delete(order.id); return next; })}>{t('common.retry')}</button></p> : <img className="payment-proof" src={`/api/v1/admin/orders/${order.id}/payment-proof`} alt={t('admin.paymentImage')} onError={() => setImageErrors((current) => new Set(current).add(order.id))} />}<p>{t('admin.checkActualPayment')}</p>{order.order_status === 'ACCEPTED' && <div className="actions"><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'APPROVED')}>{t('order.confirmPayment')}</button><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'REJECTED')}>{t('order.reject')}</button></div>}</details>}
-          <div className="actions">{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{order.payment_method === 'WALLET' && ['PAID_CONFIRMED', 'PARTIALLY_REFUNDED'].includes(order.payment_status) && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
+          <div className="actions">{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{['WALLET', 'MIXED'].includes(order.payment_method || '') && ['PAID_CONFIRMED', 'PARTIALLY_REFUNDED'].includes(order.payment_status) && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
         </article>)}</div>}
       </section>
     </>}
