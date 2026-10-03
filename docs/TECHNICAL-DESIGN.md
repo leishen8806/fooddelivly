@@ -69,7 +69,7 @@ Telegram 客户端
 
 ### 3.3 Telegram 群组权限
 
-- 配置一个订单操作群组 `telegram_staff_group_id`；订单 Bot 消息包含订单号、房间号、商品摘要、金额和当前状态。顾客付款图片由 Bot 在私聊接收后，使用 Telegram `file_id` 作为回复发送到该订单群组消息下，并启用 `protect_content`；群组必须仅允许获授权的 Tea Cafe 员工加入。图片展示本身不改变付款状态。
+- 配置一个订单操作群组 `telegram_staff_group_id`；订单 Bot 消息包含订单号、房间号、商品摘要、金额和当前状态，并以顾客昵称作为 Telegram 联系人展示。顾客有公开 username 时，昵称使用 `https://t.me/<username>` 超链接；群组订单/充值消息不输出数字 Telegram ID。顾客付款图片由 Bot 在私聊接收后，使用 Telegram `file_id` 作为回复发送到该订单群组消息下，并启用 `protect_content`；群组必须仅允许获授权的 Tea Cafe 员工加入。图片展示本身不改变付款状态。
 - Bot callback 同时验证来源 `chat_id` 属于配置群组、点击人的 Telegram ID 绑定到有效 `STAFF`/`MANAGER` 账号、当前订单状态允许该操作。仅是 Telegram 群管理员不构成 Tea Cafe 员工授权。
 - 群组和后台复用同一后端状态转换服务；数据库事务检查当前状态和支付状态，首个合法操作成功，重复/并发 callback 幂等拒绝或返回当前状态。
 - 成功后更新群组订单卡的状态和下一步按钮，并私聊顾客状态变化；所有操作写 `order_events`，记录执行员工、来源群组和时间。

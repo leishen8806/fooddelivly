@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import re
 from html import escape
 from functools import lru_cache
 from pathlib import Path
@@ -46,15 +47,18 @@ def _currency_amount(minor: int, currency: str) -> str:
 
 
 def _telegram_contact(customer) -> str:
-    """Return a clickable Telegram contact reference for staff messages."""
+    """Return a clickable Telegram contact reference without exposing numeric IDs."""
     if customer is None:
         return ""
-    telegram_id = str(getattr(customer, "telegram_user_id", "") or "")
     username = str(getattr(customer, "username", "") or "").lstrip("@")
-    if username:
-        suffix = f" · ID {telegram_id}" if telegram_id else ""
-        return f"@{username} (https://t.me/{username}){suffix}"
-    return f"ID {telegram_id} (tg://user?id={telegram_id})" if telegram_id else ""
+    display_name = str(getattr(customer, "display_name", "") or "").strip()
+    if username and re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+        label = display_name or f"@{username}"
+        if display_name and display_name != f"@{username}":
+            label = f"{display_name} (@{username})"
+        return f'<a href="https://t.me/{username}">{escape(label)}</a>'
+    # 没有公开用户名时只显示昵称；群消息不回显或嵌入 Telegram 数字 ID。
+    return escape(display_name)
 
 
 def order_keyboard(order_id: int, order_status: str, payment_status: str, language: str = "en") -> InlineKeyboardMarkup:
@@ -268,7 +272,6 @@ def recharge_review_text(recharge, customer, language: str = "en") -> str:
     state = "wallet.groupProof" if recharge["proof_count"] else "wallet.groupWaiting"
     lines = [
         f"💰 {tr('wallet.groupTitle', language, order=recharge['order_no'])}",
-        f"{tr('wallet.groupCustomer', language)}: {getattr(customer, 'display_name', None) or customer.telegram_user_id}",
         f"{tr('wallet.groupAmount', language)}: {_currency_amount(recharge['amount'], recharge['currency'])}",
     ]
     contact = _telegram_contact(customer)
@@ -301,9 +304,11 @@ async def notify_new_recharge(group_id: str | None, recharge, customer, language
     try:
         if file_id:
             message = await bot.send_photo(chat_id=group_id, photo=file_id, caption=text,
-                                           reply_markup=keyboard, protect_content=True)
+                                           reply_markup=keyboard, protect_content=True,
+                                           parse_mode="HTML")
         else:
-            message = await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard)
+            message = await bot.send_message(chat_id=group_id, text=text, reply_markup=keyboard,
+                                             parse_mode="HTML")
         return str(message.message_id)
     except Exception:  # noqa: BLE001 - 通知失败不影响用户
         return None

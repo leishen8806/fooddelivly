@@ -1293,7 +1293,7 @@
     "menu.saleWindowNext": "ពេលលក់ {{hours}} · លើកក្រោយ {{time}}",
     "admin.saleWindowsAndOptions": "ពេលលក់ / ជម្រើស",
     "admin.saleWindows": "ពេលលក់",
-    "admin.saleWindowsHint": "ទទេ = លក់ពេញមួយថ្ងៃ។ អាចកំណត់ច្រើន�ช่วง។",
+    "admin.saleWindowsHint": "ទទេ = លក់ពេញមួយថ្ងៃ។ អាចកំណត់ពេលលក់បានច្រើន។",
     "admin.addWindow": "បន្ថែមពេល",
     "admin.optionGroups": "ជម្រើស",
     "admin.optionGroupsHint": "ជម្រើសតែមួយ ឬច្រើន។ តម្លៃបន្ថែមលើតម្លៃម្ហូប។",
