@@ -345,6 +345,19 @@ function CustomerPage() {
     setCart((current) => quantity < 1 ? current.filter((line) => cartLineKey(line) !== key) : current.map((line) => cartLineKey(line) === key ? { ...line, quantity: Math.min(99, quantity) } : line));
   };
 
+  // 普通商品在菜单卡片上直接显示当前数量；有规格的商品仍通过规格弹窗区分不同组合。
+  const simpleCartLine = (product: Product) => cart.find((line) =>
+    line.product.id === product.id && line.sweetness === null && line.selections.length === 0);
+  const simpleQuantity = (product: Product) => simpleCartLine(product)?.quantity ?? 0;
+  const adjustSimpleQuantity = (product: Product, delta: number) => {
+    const line = simpleCartLine(product);
+    if (delta > 0) {
+      add(product);
+    } else if (line) {
+      setQuantity(cartLineKey(line), line.quantity - 1);
+    }
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!room.trim()) { setStatus(t('checkout.roomRequired')); return; }
@@ -427,7 +440,15 @@ function CustomerPage() {
             <div className="product-foot">
               <strong>{amount(product.price_minor, product.currency, i18n.language)}</strong>
               {orderable(product)
-                ? <button type="button" aria-label={t('menu.addToCart')} title={t('menu.addToCart')} onClick={() => needsConfig(product) ? setOptionsProduct(product) : add(product)}>➕</button>
+                ? needsConfig(product)
+                  ? <button className="multi-option-button" type="button" aria-label={t('menu.multiOptions')} title={t('menu.multiOptions')} onClick={() => setOptionsProduct(product)}>{t('menu.multiOptions')}</button>
+                  : simpleQuantity(product) > 0
+                    ? <div className="menu-quantity-control" role="group" aria-label={t('common.quantity')}>
+                        <button type="button" aria-label={t('menu.decreaseQuantity')} title={t('menu.decreaseQuantity')} onClick={() => adjustSimpleQuantity(product, -1)}>−</button>
+                        <strong aria-live="polite">{simpleQuantity(product)}</strong>
+                        <button type="button" aria-label={t('menu.increaseQuantity')} title={t('menu.increaseQuantity')} onClick={() => adjustSimpleQuantity(product, 1)}>+</button>
+                      </div>
+                    : <button className="product-add-button" type="button" aria-label={t('menu.addToCart')} title={t('menu.addToCart')} onClick={() => adjustSimpleQuantity(product, 1)}>+</button>
                 : <span className="product-closed" aria-label={t('menu.notOrderable')}>{t('menu.notOrderableShort')}</span>}
             </div>
           </article>)}</div>}
