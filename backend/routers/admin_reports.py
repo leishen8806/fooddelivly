@@ -22,7 +22,7 @@ import daily_report
 from database import get_db
 from store_context import staff_store
 from dependencies import get_current_staff
-from models import Store, StoreSettings
+from models import Store
 from sqlalchemy.future import select
 
 router = APIRouter(prefix="/api/v1/admin/reports", tags=["Admin Reports"])
