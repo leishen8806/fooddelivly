@@ -357,6 +357,22 @@ function CustomerPage() {
     }
   };
 
+  // 多规格商品可能在购物车中有多个配置组合，菜单卡片显示它们的合计数量。
+  // 加号再次打开规格弹窗，减号减少最近加入的配置组合。
+  const configuredCartLines = (product: Product) => cart.filter((line) =>
+    line.product.id === product.id && (line.sweetness !== null || line.selections.length > 0));
+  const configuredQuantity = (product: Product) => configuredCartLines(product)
+    .reduce((sum, line) => sum + line.quantity, 0);
+  const adjustConfiguredQuantity = (product: Product, delta: number) => {
+    const lines = configuredCartLines(product);
+    if (delta > 0) {
+      setOptionsProduct(product);
+      return;
+    }
+    const lastLine = lines[lines.length - 1];
+    if (lastLine) setQuantity(cartLineKey(lastLine), lastLine.quantity - 1);
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!room.trim()) { setStatus(t('checkout.roomRequired')); return; }
@@ -441,7 +457,13 @@ function CustomerPage() {
               <strong>{amount(product.price_minor, product.currency, i18n.language)}</strong>
               {orderable(product)
                 ? needsConfig(product)
-                  ? <button className="multi-option-button" type="button" aria-label={t('menu.multiOptions')} title={t('menu.multiOptions')} onClick={() => setOptionsProduct(product)}>{t('menu.multiOptions')}</button>
+                  ? configuredQuantity(product) > 0
+                    ? <div className="menu-quantity-control" role="group" aria-label={t('common.quantity')}>
+                        <button type="button" aria-label={t('menu.decreaseQuantity')} title={t('menu.decreaseQuantity')} onClick={() => adjustConfiguredQuantity(product, -1)}>−</button>
+                        <strong aria-live="polite">{configuredQuantity(product)}</strong>
+                        <button type="button" aria-label={t('menu.increaseQuantity')} title={t('menu.increaseQuantity')} onClick={() => adjustConfiguredQuantity(product, 1)}>+</button>
+                      </div>
+                    : <button className="multi-option-button" type="button" aria-label={t('menu.multiOptions')} title={t('menu.multiOptions')} onClick={() => setOptionsProduct(product)}>{t('menu.multiOptions')}</button>
                   : simpleQuantity(product) > 0
                     ? <div className="menu-quantity-control" role="group" aria-label={t('common.quantity')}>
                         <button type="button" aria-label={t('menu.decreaseQuantity')} title={t('menu.decreaseQuantity')} onClick={() => adjustSimpleQuantity(product, -1)}>−</button>
