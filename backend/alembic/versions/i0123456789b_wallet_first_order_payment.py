@@ -59,13 +59,13 @@ BEGIN
   IF v_bonus > 0 THEN
     PERFORM wallet.consume_bonus_lots(
       p_customer_id, p_currency, v_bonus,
-      'order', p_biz_id, p_idem || ':bonus', 'payment', NULL, p_remark
+      'order', p_biz_id, p_idem || '-bonus', 'payment', NULL, p_remark
     );
   END IF;
   IF v_principal > 0 THEN
     PERFORM wallet._apply(
       p_customer_id, p_currency, 'principal', -v_principal,
-      'payment', 'order', p_biz_id, p_idem || ':principal', NULL, p_remark
+      'payment', 'order', p_biz_id, p_idem || '-principal', NULL, p_remark
     );
   END IF;
 
