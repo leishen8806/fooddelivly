@@ -22,7 +22,7 @@ import daily_report
 from database import get_db
 from store_context import staff_store
 from dependencies import get_current_staff
-from models import StoreSettings
+from models import Store, StoreSettings
 from sqlalchemy.future import select
 
 router = APIRouter(prefix="/api/v1/admin/reports", tags=["Admin Reports"])
@@ -86,6 +86,32 @@ async def send_daily_report_now(
     db: AsyncSession = Depends(get_db),
 ):
     """把某天的报表发到员工群。默认发**昨天**，重复调用不会重复发。"""
+    # 外部 cron 没有员工会话，按每家活动门店分别投递；不能再落到全局配置。
+    if sender.get("role") == "CRON":
+        stores = (await db.execute(
+            select(Store).filter(Store.status == "ACTIVE").order_by(Store.id)
+        )).scalars().all()
+        deliveries = []
+        for store in stores:
+            if not store.telegram_staff_group_id:
+                continue
+            if payload.date:
+                report_date = _parse_date(payload.date)
+            else:
+                local_date = datetime.now(
+                    await daily_report.store_timezone(db, store.id)
+                ).date()
+                report_date = local_date - timedelta(days=1)
+            result = await daily_report.send_daily_report(
+                db, report_date, chat_id=str(store.telegram_staff_group_id),
+                language=store.staff_group_language or "en", force=payload.force,
+                store_id=store.id, store_code=store.code,
+            )
+            deliveries.append({"store": store.code, "date": report_date.isoformat(), **result})
+        if not deliveries:
+            raise HTTPException(status_code=409, detail="No active store staff group is configured")
+        return {"reports": deliveries}
+
     if payload.date:
         report_date = _parse_date(payload.date)
     else:

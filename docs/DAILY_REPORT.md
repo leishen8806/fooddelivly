@@ -53,7 +53,7 @@ DAILY_REPORT_HOUR=8          # 店铺时区的整点
 ## 3. 为什么不会重复发
 
 `report_deliveries` 表在 `(report_key, chat_id)` 上有唯一约束，
-`report_key = daily_sales:2026-10-01`。发送顺序是：
+`report_key = daily_sales:2026-10-01:STORE_CODE`。发送顺序是：
 
 1. **先抢占**这条记录（插入失败 = 已经发过 → 返回 `skipped`）；
 2. 再调 Telegram 发送；
