@@ -132,9 +132,9 @@ function CustomerPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
-  // 钱包余额（最小单位）。只有 > 0 时才在结算页提供「用余额支付」。
+  // 钱包余额（最小单位）。结算页始终显示 ABA / 钱包两种支付方式。
   const [walletTotal, setWalletTotal] = useState(0);
-  const [payWithWallet, setPayWithWallet] = useState(false);
+  const [paymentMethod, setPaymentMethod] = useState<'ABA' | 'WALLET'>('ABA');
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileError, setProfileError] = useState('');
@@ -153,11 +153,11 @@ function CustomerPage() {
     try {
       const response = await api.get('/api/v1/wallet');
       setWalletTotal(response.data.total_minor);
-      if (response.data.total_minor <= 0) setPayWithWallet(false);
+      if (response.data.total_minor <= 0) setPaymentMethod('ABA');
     } catch {
       // 钱包接口失败不影响点单主流程，降级为「不用余额」
       setWalletTotal(0);
-      setPayWithWallet(false);
+      setPaymentMethod('ABA');
     }
   }, []);
 
@@ -373,7 +373,7 @@ function CustomerPage() {
           options: { ...(line.sweetness === null ? {} : { sweetness: line.sweetness }), selections: line.selections },
         })),
         // 用钱包余额支付：后端在与建单同一个事务里扣款，余额不足则整单回滚
-        ...(payWithWallet ? { pay_with_wallet: true } : {}),
+        ...(paymentMethod === 'WALLET' ? { pay_with_wallet: true } : {}),
       }, { headers: { 'Idempotency-Key': idempotencyKey.current } });
       setCart([]);
       idempotencyKey.current = null;
@@ -464,7 +464,19 @@ function CustomerPage() {
         <div className="cart-lines">{cart.map((line) => <div className="cart-line" key={cartLineKey(line)}><span>{label(line.product.name, i18n.language)}{line.sweetness !== null && <small>{t('menu.sweetness')}: {line.sweetness}%</small>}{selectedNames(line).length > 0 && <small>{selectedNames(line).join(' + ')}</small>}{line.quantity > 1 && <small>{amount(line.unitPrice, line.product.currency, i18n.language)} × {line.quantity}</small>}<small>{amount(line.unitPrice * line.quantity, line.product.currency, i18n.language)}</small></span><div className="quantity-control"><button type="button" aria-label={t('common.delete')} onClick={() => setQuantity(cartLineKey(line), line.quantity - 1)}>−</button><strong>{line.quantity}</strong><button type="button" aria-label={t('common.add')} onClick={() => setQuantity(cartLineKey(line), line.quantity + 1)}>+</button></div></div>)}</div>
         <button className="continue-shopping" type="button" onClick={() => selectTab('menu')}>{t('menu.addMore')}</button>
         <label htmlFor="room">{t('checkout.roomNumber')}</label><input id="room" value={room} onChange={(event) => { idempotencyKey.current = null; setRoom(event.target.value); if (profile) localStorage.setItem(`teacafe.roomNumber.${profile.customer_id}`, event.target.value); }} autoComplete="off" maxLength={32} required />
-        {walletTotal > 0 && <label className="wallet-pay-toggle"><input type="checkbox" checked={payWithWallet} onChange={(event) => setPayWithWallet(event.target.checked)} /><span><strong>{t('wallet.payWithWallet')}</strong><small>{t('wallet.available')}: {amount(walletTotal, cart[0].product.currency, i18n.language)}</small></span></label>}
+        <fieldset className="payment-method-picker">
+          <legend>{t('payment.chooseMethod')}</legend>
+          <div className="payment-method-options">
+            <label className={`payment-method-option${paymentMethod === 'ABA' ? ' selected' : ''}`}>
+              <input type="radio" name="payment-method" value="ABA" checked={paymentMethod === 'ABA'} onChange={() => setPaymentMethod('ABA')} />
+              <span><strong>{t('payment.method.aba')}</strong><small>{t('payment.method.abaHint')}</small></span>
+            </label>
+            <label className={`payment-method-option${paymentMethod === 'WALLET' ? ' selected' : ''}${walletTotal <= 0 ? ' disabled' : ''}`}>
+              <input type="radio" name="payment-method" value="WALLET" checked={paymentMethod === 'WALLET'} disabled={walletTotal <= 0} onChange={() => setPaymentMethod('WALLET')} />
+              <span><strong>{t('payment.method.wallet')}</strong><small>{t('wallet.available')}: {amount(walletTotal, cart[0].product.currency, i18n.language)} · {t('payment.method.walletHint')}</small></span>
+            </label>
+          </div>
+        </fieldset>
         <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button>
         {status && <p className="status" role="status">{status}</p>}
       </form>}
@@ -492,7 +504,7 @@ function CustomerPage() {
       onConfirm={(picked, sweetness, quantity) => confirmOptions(optionsProduct, picked, sweetness, quantity)}
     />}
     {activeTab === 'me' && <section className="customer-page-section customer-profile">
-      <div className="customer-page-heading"><span className="eyebrow">{t('profile.telegramConnected')}</span><h2>{t('profile.title')}</h2></div>
+      <div className="customer-page-heading"><span className="eyebrow">{t('profile.telegramConnected')}</span></div>
       {profileLoading && <p className="state" role="status">{t('common.loading')}</p>}
       {profileError && <p className="error" role="alert">{profileError} <button type="button" onClick={() => { setProfileLoading(true); setProfileError(''); void loadProfile(); }}>{t('common.retry')}</button></p>}
       {ordersLoading && <p className="state" role="status">{t('common.loading')}</p>}
@@ -500,11 +512,10 @@ function CustomerPage() {
       {profile && <>
         <section className="profile-identity"><UserRound size={28} aria-hidden="true" /><div><strong>{profile.display_name || profile.username || 'Tea Cafe'}</strong>{profile.username && <span>@{profile.username}</span>}</div></section>
         {!ordersLoading && !ordersError && <div className="profile-stats"><article><span>{t('profile.orderCount')}</span><strong>{customerOrders.length}</strong></article><article><span>{t('profile.completedOrders')}</span><strong>{customerOrders.filter((customerOrder) => customerOrder.order_status === 'COMPLETED').length}</strong></article></div>}
+        <CustomerWallet onBalanceChange={() => void loadWalletTotal()} />
         <label className="profile-language">{t('common.language')}<select aria-label={t('common.language')} value={profile.preferred_language || languageDraft} disabled={languageSaving} onChange={(event) => { const language = event.target.value as LanguageCode; setLanguageDraft(language); void saveLanguage(language); }}><option value="en">English</option><option value="zh-CN">中文</option><option value="km">ខ្មែរ</option></select></label>
         {languageError && <p className="error" role="alert">{languageError}</p>}
       </>}
-      {/* 钱包（余额 / 可用 / 充值 / 充值单 / 明细）就在「我的」页里 */}
-      <CustomerWallet onBalanceChange={() => void loadWalletTotal()} />
     </section>}
 
     <nav className="customer-bottom-nav" aria-label={t('common.navigation')}>

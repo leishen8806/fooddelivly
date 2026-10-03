@@ -2235,25 +2235,71 @@ small {
   font-weight: var(--weight-regular);
 }
 
-.wallet-pay-toggle {
+.payment-method-picker {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.payment-method-picker legend {
+  margin-bottom: var(--space-1);
+  color: var(--color-text);
+  font-size: var(--type-small);
+  font-weight: var(--weight-semibold);
+}
+
+.payment-method-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.payment-method-option {
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-width: 0;
   padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
-  background: var(--color-tint);
+  background: var(--color-surface);
   cursor: pointer;
+  transition: border-color 160ms ease, background-color 160ms ease;
 }
 
-.wallet-pay-toggle span {
+.payment-method-option.selected {
+  border-color: var(--color-brand);
+  background: var(--color-tint);
+}
+
+.payment-method-option.disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.payment-method-option input {
+  flex: 0 0 auto;
+  margin-top: 0.15rem;
+  accent-color: var(--color-brand);
+}
+
+.payment-method-option span {
   display: grid;
   gap: var(--space-1);
 }
 
-.wallet-pay-toggle small {
+.payment-method-option small {
   color: var(--color-muted);
   font-size: var(--type-caption);
+  line-height: var(--line-caption);
+}
+
+@media (max-width: 30rem) {
+  .payment-method-options {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* 管理端「充值管理」表格：列比客户表多，小屏靠横向滚动 */
