@@ -6,7 +6,7 @@
 
 真发 Telegram 没法在本地验证，所以这里把发送层 `telegram_service._bot` 换成桩，
 重点验证：
-  * 统计口径是「店铺时区自然日」的左闭右开区间（前一天 00:00:00 ~ 23:59:59.999）；
+  * 统计口径是「店铺时区当天」的左闭右开区间（00:00:00 ~ 22:30:00）；
   * 同一天同一会话**只会成功发送一次**（重复调用返回 skipped）；
   * 发送失败时占位记录会被删掉，下一次还能补发（宁可迟到，不能漏发）；
   * `force=True` 才允许重发。
@@ -165,8 +165,8 @@ async def main() -> None:
 
         # ---- 调度器：到点才发，且只发一次 ----
         now_local = datetime.now(tz)
-        yesterday = now_local.date() - timedelta(days=1)
-        await db.execute(text("DELETE FROM report_deliveries WHERE report_date = :d"), {"d": yesterday})
+        today = now_local.date()
+        await db.execute(text("DELETE FROM report_deliveries WHERE report_date = :d"), {"d": today})
         await db.commit()
 
         # 只让主店配群：否则库里第二家店也会投递，计数就不是 1 了
@@ -176,20 +176,23 @@ async def main() -> None:
             "UPDATE stores SET telegram_staff_group_id = :c WHERE code = 'MAIN'"), {"c": CHAT_ID})
         await db.commit()
         os.environ["DAILY_REPORT_HOUR"] = str(now_local.hour)
+        os.environ["DAILY_REPORT_MINUTE"] = str(now_local.minute)
         StubBot.sent.clear()
         await daily_report._tick(None)          # None = 用真实的 AsyncSessionLocal
-        check("到点会发昨天的报表", len(StubBot.sent) == 1, str(len(StubBot.sent)))
+        check("到点会发当天的报表", len(StubBot.sent) == 1, str(len(StubBot.sent)))
         if StubBot.sent:
-            check("发的是「昨天 00:00-23:59:59」", yesterday.isoformat() in StubBot.sent[0],
+            check("发的是「当天 00:00-22:30」", today.isoformat() in StubBot.sent[0],
                   StubBot.sent[0].splitlines()[1] if len(StubBot.sent[0].splitlines()) > 1 else "")
         await daily_report._tick(None)
         check("再触发一次不会重发", len(StubBot.sent) == 1, str(len(StubBot.sent)))
 
         os.environ["DAILY_REPORT_HOUR"] = str((now_local.hour + 1) % 24)
+        os.environ["DAILY_REPORT_MINUTE"] = str(now_local.minute)
         StubBot.sent.clear()
         await daily_report._tick(None)
         check("非定时小时不发送", len(StubBot.sent) == 0, str(len(StubBot.sent)))
         os.environ["DAILY_REPORT_HOUR"] = str(now_local.hour)
+        os.environ["DAILY_REPORT_MINUTE"] = str(now_local.minute)
 
         # 没配员工群时必须安静跳过（否则会往 None 发消息报错刷日志）
         # 群现在挂在**门店**上（旧表的字段不再被读取）
@@ -198,7 +201,7 @@ async def main() -> None:
             "UPDATE stores SET telegram_staff_group_id = NULL WHERE code <> 'MAIN'"))
         await db.execute(text(
             "UPDATE stores SET telegram_staff_group_id = NULL WHERE code = 'MAIN'"))
-        await db.execute(text("DELETE FROM report_deliveries WHERE report_date = :d"), {"d": yesterday})
+        await db.execute(text("DELETE FROM report_deliveries WHERE report_date = :d"), {"d": today})
         await db.commit()
         StubBot.sent.clear()
         await daily_report._tick(None)
@@ -211,7 +214,7 @@ async def main() -> None:
         # 清理测试数据
         await db.execute(text("DELETE FROM orders WHERE public_code LIKE 'RPT-TEST-%'"))
         await db.execute(text("DELETE FROM report_deliveries WHERE report_date IN (:a, :b, :c, :d)"),
-                         {"a": report_date, "b": fail_date, "c": other_date, "d": yesterday})
+                         {"a": report_date, "b": fail_date, "c": other_date, "d": today})
         await db.execute(text("DELETE FROM customers WHERE id = 9999"))
         await db.commit()
 

@@ -1,8 +1,7 @@
 """每日经营报表：统计 + 投递 + 定时。
 
-时间口径：**店铺时区的自然日**（默认 Asia/Phnom_Penh）。
-「昨天的数据」= 昨天 00:00:00.000 至 23:59:59.999（含），
-换算成 UTC 再去查库——`admin_stats` 用的是同一套口径，两处数字应当一致。
+时间口径：**店铺时区当天 00:00 至 22:30（22:30 为右边界，不计入）**，
+换算成 UTC 再去查库。日报在当天 22:35 发送当天数据。
 
 投递保证「一天一份」：
   1. 先往 `report_deliveries` 抢一条记录（(report_key, chat_id) 唯一）；
@@ -17,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime, time, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select, text
@@ -30,7 +29,9 @@ from telegram_service import send_bot_message, tr
 log = logging.getLogger("teacafe.report")
 
 DEFAULT_TZ = "Asia/Phnom_Penh"
-DEFAULT_HOUR = 8
+DEFAULT_REPORT_HOUR = 22
+DEFAULT_REPORT_MINUTE = 35
+REPORT_END_TIME = time(22, 30)
 
 
 # ---------------------------------------------------------------------------
@@ -54,7 +55,7 @@ async def store_timezone(db: AsyncSession, store_id: int | None = None) -> ZoneI
 
 async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo | None = None,
                              store_id: int | None = None) -> dict:
-    """统计 `report_date` 这一天（店铺时区自然日）的经营数据。
+    """统计 `report_date` 当天 00:00 至 22:30（店铺时区，右边界不计入）的经营数据。
 
     `store_id` 非空时只统计该门店（门店群只应收到本店数据）；为空 = 总部视角。
     """
@@ -65,7 +66,7 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
     # branch setting falls back cleanly instead of aborting the report job.
     tz = tz or await store_timezone(db, store_id)
     start_local = datetime.combine(report_date, time.min, tz)
-    end_local = start_local + timedelta(days=1)          # 左闭右开：00:00:00 ~ 23:59:59.999
+    end_local = datetime.combine(report_date, REPORT_END_TIME, tz)  # 左闭右开：00:00:00 ~ 22:29:59.999
     start_utc, end_utc = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
 
     order_query = select(Order).filter(Order.created_at >= start_utc, Order.created_at < end_utc)
@@ -328,9 +329,16 @@ async def send_daily_report(
 
 def report_hour() -> int:
     try:
-        return max(0, min(23, int(os.getenv("DAILY_REPORT_HOUR", str(DEFAULT_HOUR)))))
+        return max(0, min(23, int(os.getenv("DAILY_REPORT_HOUR", str(DEFAULT_REPORT_HOUR)))))
     except ValueError:
-        return DEFAULT_HOUR
+        return DEFAULT_REPORT_HOUR
+
+
+def report_minute() -> int:
+    try:
+        return max(0, min(59, int(os.getenv("DAILY_REPORT_MINUTE", str(DEFAULT_REPORT_MINUTE)))))
+    except ValueError:
+        return DEFAULT_REPORT_MINUTE
 
 
 def report_enabled() -> bool:
@@ -338,7 +346,7 @@ def report_enabled() -> bool:
 
 
 async def _tick(db_factory) -> None:
-    """到点就发昨天的报表——**每家门店各发各的群**。
+    """到点就发当天的报表——**每家门店各发各的群**。
 
     以前只有一家店的群和一个全局报表，多门店之后：
       * 门店群只能收到本店数据；
@@ -361,13 +369,14 @@ async def _tick(db_factory) -> None:
             except ZoneInfoNotFoundError:
                 tz = ZoneInfo(DEFAULT_TZ)
             local_now = now.astimezone(tz)
-            if local_now.hour != report_hour():
+            scheduled_at = local_now.replace(hour=report_hour(), minute=report_minute(),
+                                             second=0, microsecond=0)
+            if local_now < scheduled_at:
                 continue
             if not chat_id:
                 continue          # 这家店没配群就跳过（不是错误）
-            yesterday = local_now.date() - timedelta(days=1)
             await send_daily_report(
-                db, yesterday, chat_id=str(chat_id),
+                db, local_now.date(), chat_id=str(chat_id),
                 language=(language or "en"),
                 store_id=store_id, store_code=code,
             )
@@ -375,8 +384,8 @@ async def _tick(db_factory) -> None:
 
 async def run_scheduler(db_factory=None) -> None:
     """每分钟醒一次；发送逻辑本身幂等，所以重启/多副本都不会重复发。"""
-    log.info("每日报表调度器已启动（每天 %02d:00 店铺时区，报表区间=前一天 00:00:00-23:59:59）",
-             report_hour())
+    log.info("每日报表调度器已启动（每天 %02d:%02d 店铺时区，报表区间=当天 00:00:00-22:30:00）",
+             report_hour(), report_minute())
     while True:
         try:
             await _tick(db_factory)

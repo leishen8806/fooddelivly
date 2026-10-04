@@ -27,21 +27,21 @@ type ReportResponse = {
   delivery: { chat_id: string; message_id: string | null; sent_at: string } | null;
   target_chat_id: string | null;
   scheduled_hour: number;
+  scheduled_minute: number;
 };
 
 /**
  * 管理端「每日报表」卡片。
  *
- * 报表按**店铺时区的自然日**统计（前一天 00:00:00 ~ 23:59:59.999）。
- * 后端每天早上 8:00（DAILY_REPORT_HOUR 可调）自动推送到员工群，
+ * 报表按**店铺时区当天 00:00:00 ~ 22:30:00（右边界不计入）**统计。
+ * 后端每天 22:35（DAILY_REPORT_HOUR/DAILY_REPORT_MINUTE 可调）自动推送到员工群，
  * 这里提供预览和一个手动补发入口——自动发送失败时不用等第二天。
  * 发送是幂等的：当天已经发过就会提示「已发送」，不会重复发。
  */
 export default function AdminDailyReport({ role }: { role: string | null }) {
   const { t, i18n } = useTranslation();
   const [date, setDate] = useState(() => {
-    const yesterday = new Date(Date.now() - 86400000);
-    return yesterday.toISOString().slice(0, 10);
+    return new Date().toISOString().slice(0, 10);
   });
   const [data, setData] = useState<ReportResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,7 +106,7 @@ export default function AdminDailyReport({ role }: { role: string | null }) {
               {t('admin.dailyReportSent', { time: formatDateTime(data.delivery.sent_at, i18n.language) })}
             </span>
           : <span className="wallet-status">{t('admin.dailyReportNotSent')}</span>}
-        <small>{t('report.daily.title')} · {data.report.date} · {data.scheduled_hour}:00</small>
+        <small>{t('report.daily.title')} · {data.report.date} · {String(data.scheduled_hour).padStart(2, '0')}:{String(data.scheduled_minute).padStart(2, '0')}</small>
       </div>
 
       <div className="daily-report-metrics">

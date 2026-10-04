@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import hmac
 import os
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -71,11 +71,12 @@ async def preview_daily_report(
             db, report_date, chat_id, store.code if store else None),
         "target_chat_id": chat_id,
         "scheduled_hour": daily_report.report_hour(),
+        "scheduled_minute": daily_report.report_minute(),
     }
 
 
 class SendDailyReport(BaseModel):
-    date: Optional[str] = None      # 缺省 = 昨天
+    date: Optional[str] = None      # 缺省 = 今天
     force: bool = False             # true = 忽略「已发送」，重发一次
 
 
@@ -85,7 +86,7 @@ async def send_daily_report_now(
     sender: dict = Depends(require_report_sender),
     db: AsyncSession = Depends(get_db),
 ):
-    """把某天的报表发到员工群。默认发**昨天**，重复调用不会重复发。"""
+    """把某天的报表发到员工群。默认发**今天**，重复调用不会重复发。"""
     # 外部 cron 没有员工会话，按每家活动门店分别投递；不能再落到全局配置。
     if sender.get("role") == "CRON":
         stores = (await db.execute(
@@ -101,7 +102,7 @@ async def send_daily_report_now(
                 local_date = datetime.now(
                     await daily_report.store_timezone(db, store.id)
                 ).date()
-                report_date = local_date - timedelta(days=1)
+                report_date = local_date
             result = await daily_report.send_daily_report(
                 db, report_date, chat_id=str(store.telegram_staff_group_id),
                 language=store.staff_group_language or "en", force=payload.force,
@@ -116,7 +117,7 @@ async def send_daily_report_now(
         report_date = _parse_date(payload.date)
     else:
         tz = await daily_report.store_timezone(db)
-        report_date = datetime.now(tz).date() - timedelta(days=1)
+        report_date = datetime.now(tz).date()
 
     sender_info = sender if isinstance(sender, dict) else {}
     store = await staff_store(db, sender_info) if sender_info.get("store_id") or sender_info.get("staff_id") else None

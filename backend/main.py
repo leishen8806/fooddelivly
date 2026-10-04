@@ -31,7 +31,7 @@ production = os.getenv("APP_ENV", "development").lower() == "production"
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
-    # 进程内定时：每天早上 DAILY_REPORT_HOUR（默认 8 点，店铺时区）发前一天的报表。
+    # 进程内定时：每天 DAILY_REPORT_HOUR:DAILY_REPORT_MINUTE（默认 22:35，店铺时区）发当天 00:00-22:30 的报表。
     # 发送本身幂等（report_deliveries 唯一约束），所以重启/多副本只会送达一次。
     task = start_scheduler()
     try:

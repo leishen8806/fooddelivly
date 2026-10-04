@@ -62,7 +62,7 @@ async def get_analytics(
                 PaymentReview.created_at < end_utc)
         .group_by(Order.currency)
     ))
-    confirmed_by_currency = {currency: int(amount or 0) for currency, amount in reviews_result.all()}
+    external_by_currency = {currency: int(amount or 0) for currency, amount in reviews_result.all()}
 
     # 钱包抵扣的订单没有 PaymentReview 记录（钱包部分下单即扣款），
     # 只按 PaymentReview 汇总会让财务日报**漏掉这部分收入**。
@@ -85,23 +85,55 @@ async def get_analytics(
         ),
         {"start_utc": start_utc, "end_utc": end_utc, "store_id": scope},
     )
-    for currency, net in wallet_result.all():
-        confirmed_by_currency[currency] = confirmed_by_currency.get(currency, 0) + int(net or 0)
+    wallet_by_currency = {currency: int(net or 0) for currency, net in wallet_result.all()}
+
+    # 充值是现金流入和钱包负债增加，不是订单销售额。
+    # 只统计已入账金额，赠送金另行展示，避免把未消费余额算成收入。
+    recharge_result = await db.execute(
+        text(
+            """
+            SELECT currency, COALESCE(sum(received_amount), 0) AS credited_minor
+              FROM wallet.recharge_orders
+             WHERE status = 'credited'
+               AND reviewed_at >= :start_utc AND reviewed_at < :end_utc
+               AND (CAST(:store_id AS INTEGER) IS NULL
+                    OR store_id = CAST(:store_id AS INTEGER))
+             GROUP BY currency
+            """
+        ),
+        {"start_utc": start_utc, "end_utc": end_utc, "store_id": scope},
+    )
+    recharge_by_currency = {currency: int(amount or 0) for currency, amount in recharge_result.all()}
 
     totals: dict[str, dict[str, int]] = {}
     for order in orders:
-        bucket = totals.setdefault(order.currency, {"order_total_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0})
+        bucket = totals.setdefault(order.currency, {"order_total_minor": 0, "order_sales_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0})
         bucket["order_total_minor"] += order.total_minor
+        if order.order_status != "CANCELLED":
+            bucket["order_sales_minor"] += order.total_minor
         if order.payment_status == "PROOF_SUBMITTED":
             bucket["in_review_minor"] += order.external_due_minor if order.external_due_minor is not None else order.total_minor
         if order.order_status == "CANCELLED":
             bucket["cancelled_total_minor"] += order.total_minor
     for currency, bucket in totals.items():
-        bucket["confirmed_receipts_minor"] = confirmed_by_currency.get(currency, 0)
+        external_amount = external_by_currency.get(currency, 0)
+        wallet_amount = wallet_by_currency.get(currency, 0)
+        recharge_amount = recharge_by_currency.get(currency, 0)
+        # confirmed_receipts_minor 保留原 API 兼容性；新字段拆开显示，防止
+        # 使用者将充值、订单销售额和钱包抵扣误相加。
+        bucket["external_order_receipts_minor"] = external_amount
+        bucket["wallet_paid_minor"] = wallet_amount
+        bucket["confirmed_receipts_minor"] = external_amount + wallet_amount
+        bucket["recharge_credited_minor"] = recharge_amount
+        bucket["cash_inflow_minor"] = external_amount + recharge_amount
 
-    for currency, amount in confirmed_by_currency.items():
-        totals.setdefault(currency, {"order_total_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0,
-                                     "confirmed_receipts_minor": amount})
+    for currency in set(external_by_currency) | set(wallet_by_currency) | set(recharge_by_currency):
+        totals.setdefault(currency, {"order_total_minor": 0, "order_sales_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0,
+                                     "external_order_receipts_minor": external_by_currency.get(currency, 0),
+                                     "wallet_paid_minor": wallet_by_currency.get(currency, 0),
+                                     "confirmed_receipts_minor": external_by_currency.get(currency, 0) + wallet_by_currency.get(currency, 0),
+                                     "recharge_credited_minor": recharge_by_currency.get(currency, 0),
+                                     "cash_inflow_minor": external_by_currency.get(currency, 0) + recharge_by_currency.get(currency, 0)})
 
     return {
         "from": start_date.isoformat(),

@@ -1,11 +1,10 @@
 # 每日经营报表
 
-每天 **早上 8:00**（店铺时区，默认 `Asia/Phnom_Penh`）把**前一天**的经营数据
+每天 **22:35**（店铺时区，默认 `Asia/Phnom_Penh`）把**当天**的经营数据
 推送到员工群。
 
-报表区间是**店铺时区的自然日**：`昨天 00:00:00.000` ~ `23:59:59.999`
-（左闭右开，`[start, end)`），换算成 UTC 再查库——与 `管理端 → 财务` 的
-统计口径一致，两处数字应当对得上。
+报表区间是**店铺时区当天**：`00:00:00.000` ~ `22:30:00.000`
+（左闭右开，`[start, end)`，22:30:00 之后不计入），换算成 UTC 再查库。
 
 ---
 
@@ -29,12 +28,13 @@
 
 ### 进程内定时（默认，开箱即用）
 
-`backend/daily_report.py` 里一个每分钟醒一次的协程：到达 `DAILY_REPORT_HOUR`
-（默认 8）就发前一天的报表。开关与时间：
+`backend/daily_report.py` 里一个每分钟醒一次的协程：到达
+`DAILY_REPORT_HOUR:DAILY_REPORT_MINUTE`（默认 22:35）就发当天的报表。开关与时间：
 
 ```bash
 DAILY_REPORT_ENABLED=true
-DAILY_REPORT_HOUR=8          # 店铺时区的整点
+DAILY_REPORT_HOUR=22         # 店铺时区
+DAILY_REPORT_MINUTE=35
 ```
 
 ### 外部 cron（可选）
@@ -43,8 +43,8 @@ DAILY_REPORT_HOUR=8          # 店铺时区的整点
 不需要管理员会话：
 
 ```bash
-# 每天早上 8:05（服务器时区）
-5 8 * * * curl -fsS -X POST https://<host>/api/v1/admin/reports/daily/send \
+# 每天 22:35（服务器时区应与店铺时区一致）
+35 22 * * * curl -fsS -X POST https://<host>/api/v1/admin/reports/daily/send \
   -H "X-Cron-Secret: $CRON_SECRET" -H "Content-Type: application/json" -d '{}'
 ```
 
@@ -68,7 +68,7 @@ DAILY_REPORT_HOUR=8          # 店铺时区的整点
 | 方法 | 路径 | 权限 | 说明 |
 |---|---|---|---|
 | GET | `/api/v1/admin/reports/daily?date=YYYY-MM-DD` | 任何在职员工 | 预览（默认今天），返回结构化数据 + 渲染好的文案 + 投递状态 |
-| POST | `/api/v1/admin/reports/daily/send` | MANAGER 或 `X-Cron-Secret` | 发送（默认昨天）；`force=true` 才允许重发 |
+| POST | `/api/v1/admin/reports/daily/send` | MANAGER 或 `X-Cron-Secret` | 发送（默认今天）；`force=true` 才允许重发 |
 
 管理端**财务**区块里有对应的「每日报表」卡片：可换日期预览、看是否已发送、
 MANAGER 可以手动补发。
