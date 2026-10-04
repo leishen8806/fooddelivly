@@ -635,6 +635,7 @@ function AdminPage() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
   const [imageErrors, setImageErrors] = useState<Set<number>>(() => new Set());
+  const [proofUploadingId, setProofUploadingId] = useState<number | null>(null);
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditOffset, setAuditOffset] = useState(0);
@@ -698,6 +699,26 @@ function AdminPage() {
     setBusyId(order.id);
     try { await api.post(`/api/v1/admin/orders/${order.id}/payment-review`, { decision, reason }); await fetchData(); }
     catch { setError(t('error.generic')); } finally { setBusyId(null); }
+  };
+  const uploadPaymentProof = async (order: Order, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError(t('admin.uploadTooLarge'));
+      return;
+    }
+    const form = new FormData();
+    form.append('file', file);
+    setProofUploadingId(order.id);
+    try {
+      await api.post(`/api/v1/admin/orders/${order.id}/payment-proof`, form);
+      await fetchData();
+    } catch {
+      setError(t('admin.uploadFailed'));
+    } finally {
+      setProofUploadingId(null);
+    }
   };
   const changeStatus = async (order: Order, status: string) => {
     const reason = status === 'CANCELLED' ? window.prompt(t('order.cancelReason'))?.trim() : undefined;
@@ -838,7 +859,7 @@ function AdminPage() {
           {(order.wallet_paid_minor ?? 0) > 0 && <small className="order-payment-breakdown">{t('payment.walletApplied')}: {amount(order.wallet_paid_minor ?? 0, order.currency, i18n.language)}{(order.external_due_minor ?? 0) > 0 && <> · {t('payment.abaDue')}: {amount(order.external_due_minor ?? 0, order.currency, i18n.language)}</>}</small>}
           {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined ? ` · ${t('order.sweetnessValue', { value: item.options.sweetness })}` : ''} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>)}</div> : null}
           {order.payment_status === 'PROOF_SUBMITTED' && <details><summary>{t('admin.openPaymentProof')}</summary>{imageErrors.has(order.id) ? <p className="error">{t('admin.paymentImageUnavailable')} <button type="button" onClick={() => setImageErrors((current) => { const next = new Set(current); next.delete(order.id); return next; })}>{t('common.retry')}</button></p> : <img className="payment-proof" src={`/api/v1/admin/orders/${order.id}/payment-proof`} alt={t('admin.paymentImage')} onError={() => setImageErrors((current) => new Set(current).add(order.id))} />}<p>{t('admin.checkActualPayment')}</p>{order.order_status === 'ACCEPTED' && <div className="actions"><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'APPROVED')}>{t('order.confirmPayment')}</button><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'REJECTED')}>{t('order.reject')}</button></div>}</details>}
-          <div className="actions">{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{['WALLET', 'MIXED'].includes(order.payment_method || '') && ['PAID_CONFIRMED', 'PARTIALLY_REFUNDED'].includes(order.payment_status) && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
+          <div className="actions">{role === 'MANAGER' && ['UNPAID', 'REJECTED'].includes(order.payment_status) && <label className="payment-proof-upload"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadPaymentProof(order, event)} /><span>{proofUploadingId === order.id ? t('admin.uploadingImage') : t('admin.uploadPaymentProof')}</span></label>}{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{['WALLET', 'MIXED'].includes(order.payment_method || '') && ['PAID_CONFIRMED', 'PARTIALLY_REFUNDED'].includes(order.payment_status) && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
         </article>)}</div>}
       </section>
     </>}

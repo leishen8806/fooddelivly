@@ -140,6 +140,7 @@ ABA 官方公开资料说明其商户服务提供静态 KHQR，ABA Merchant App 
 | `GET` | `/api/v1/admin/customers` | 店长查看顾客 Telegram 昵称、ID、聊天链接、订单数和完成数 |
 | `GET` | `/api/v1/admin/audit-logs?limit=&offset=` | 店长分页查看后台与 Telegram 群组操作人、来源和状态变化 |
 | `POST` | `/api/v1/admin/orders/{id}/payment-review` | 员工人工确认或拒绝，并记录原因 |
+| `POST` | `/api/v1/admin/orders/{id}/payment-proof` | 店长上传本地付款凭证；订单进入待核验，图片保存为受保护的凭证文件 |
 | `PATCH` | `/api/v1/admin/orders/{id}/status` | 更新履约状态，校验状态机 |
 | `GET/POST/PATCH` | `/api/v1/admin/staff`、`/api/v1/admin/staff/{id}` | 店长查询、授权或停用员工 |
 | `POST` | `/api/v1/telegram/webhook` | 接收 Bot 私聊图片、群组消息和状态按钮 callback；群组按钮走共享状态服务 |
@@ -150,7 +151,7 @@ Bot 私聊命令 `/myid` 显示当前 Telegram ID；员工群命令 `/getgroupid
 
 ## 7. 管理后台界面
 
-- **Orders：**状态计数、时间筛选、订单号/房间搜索、商品/总额、付款凭证预览、确认/拒绝和履约状态操作。
+- **Orders：**状态计数、时间筛选、订单号/房间搜索、商品/总额、付款凭证预览；店长可为未传凭证的订单上传图片，再由授权员工确认/拒绝并继续履约。
 - **Products：**分类、图片、价格、规格、售罄/上下架。
 - 商品发布/编辑可单独设置是否需要顾客选择甜度；启用时顾客必须先从 0%、25%、50%、75%、100% 中选择，才可加入购物车。只有启用的商品接受 `options.sweetness`，服务端拒绝未提供甜度的订单。未启用商品不渲染甜度控件，且不保存甜度选项。
 - **Analytics：**订单量、订单额、已确认收款、待核验金额、取消订单；明确标注统计日期和币种。

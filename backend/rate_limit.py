@@ -49,7 +49,7 @@ RULES: tuple[tuple[str, re.Pattern[str], int, int], ...] = (
     # 员工审核动作
     ("POST", re.compile(r"^/api/v1/admin/recharges/\d+/(approve|reject|received)$"), 60, 60),
     ("POST", re.compile(r"^/api/v1/admin/wallets/\d+/adjust$"), 20, 60),
-    ("POST", re.compile(r"^/api/v1/admin/orders/\d+/(status|refund|payment-review)$"), 60, 60),
+    ("POST", re.compile(r"^/api/v1/admin/orders/\d+/(status|refund|payment-review|payment-proof)$"), 60, 60),
     ("POST", re.compile(r"^/api/v1/admin/wallet/maintenance$"), 6, 60),
 )
 

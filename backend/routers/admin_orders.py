@@ -1,16 +1,32 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 from pydantic import BaseModel
 from database import get_db
 from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer
-from dependencies import get_current_staff
+from dependencies import get_current_manager, get_current_staff
 from store_context import can_access_store, store_for_order, store_scope_clause
+from routers.uploads import IMAGE_TYPES, MAX_UPLOAD_BYTES, UPLOAD_DIR
 import os
 import httpx
+from pathlib import Path
+from uuid import uuid4
 
 router = APIRouter(prefix="/api/v1/admin/orders", tags=["Admin Orders"])
+PAYMENT_PROOF_DIR = UPLOAD_DIR / "payment-proofs"
+
+
+def _image_content_type(body: bytes) -> str | None:
+    if body.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if body.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if body.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 @router.get("")
 async def list_orders(
@@ -48,6 +64,18 @@ async def get_payment_proof(order_id: int, staff_info: dict = Depends(get_curren
     proof = result.scalars().first()
     if not proof:
         raise HTTPException(status_code=404, detail="Payment proof not found")
+    if proof.telegram_file_id.startswith("local:"):
+        filename = Path(proof.telegram_file_id.removeprefix("local:")).name
+        path = PAYMENT_PROOF_DIR / filename
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Payment image is unavailable")
+        body = path.read_bytes()
+        content_type = _image_content_type(body)
+        if not content_type:
+            raise HTTPException(status_code=415, detail="Uploaded file is not an image")
+        return Response(content=body, media_type=content_type, headers={
+            "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
+        })
     token = os.getenv("BOT_TOKEN")
     if not token:
         raise HTTPException(status_code=503, detail="Payment image service is not configured")
@@ -64,19 +92,93 @@ async def get_payment_proof(order_id: int, staff_info: dict = Depends(get_curren
         body = image.content
         # Telegram's file endpoint can label valid uploaded photos as
         # application/octet-stream. Determine the safe raster MIME from bytes.
-        if body.startswith(b"\xff\xd8\xff"):
-            content_type = "image/jpeg"
-        elif body.startswith(b"\x89PNG\r\n\x1a\n"):
-            content_type = "image/png"
-        elif body.startswith((b"GIF87a", b"GIF89a")):
-            content_type = "image/gif"
-        elif len(body) >= 12 and body[:4] == b"RIFF" and body[8:12] == b"WEBP":
-            content_type = "image/webp"
-        else:
+        content_type = _image_content_type(body)
+        if not content_type:
             raise HTTPException(status_code=415, detail="Uploaded file is not an image")
         return Response(content=body, media_type=content_type, headers={
             "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff",
         })
+
+
+@router.post("/{order_id}/payment-proof", status_code=201)
+async def upload_payment_proof(
+    order_id: int,
+    file: UploadFile = File(...),
+    manager_info: dict = Depends(get_current_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Allow a manager to attach a locally uploaded payment screenshot to an order."""
+    image_type = IMAGE_TYPES.get(file.content_type or "")
+    if not image_type:
+        raise HTTPException(status_code=415, detail="Upload a PNG, JPEG, or WebP image")
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Image must be 5 MB or smaller")
+    if not image_type[1](content):
+        raise HTTPException(status_code=415, detail="The uploaded file is not a valid image")
+
+    result = await db.execute(
+        select(Order).options(selectinload(Order.items)).filter(Order.id == order_id).with_for_update())
+    order = result.scalars().first()
+    if not order or not can_access_store(manager_info, order.store_id):
+        raise HTTPException(status_code=404, detail="Order not found")
+    if order.payment_status not in {"UNPAID", "REJECTED"}:
+        raise HTTPException(status_code=409, detail="This order does not need a payment proof")
+    pending_result = await db.execute(select(PaymentProof).filter(
+        PaymentProof.order_id == order.id,
+        PaymentProof.review_status == "PENDING",
+    ).limit(1))
+    if pending_result.scalars().first() is not None:
+        raise HTTPException(status_code=409, detail="This order already has a pending payment proof")
+
+    PAYMENT_PROOF_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{uuid4().hex}{image_type[0]}"
+    path = PAYMENT_PROOF_DIR / filename
+    path.write_bytes(content)
+    old_payment_status = order.payment_status
+    proof = PaymentProof(
+        store_id=order.store_id,
+        order_id=order.id,
+        telegram_file_id=f"local:{filename}",
+        submitted_by=None,
+        review_status="PENDING",
+    )
+    db.add(proof)
+    order.payment_status = "PROOF_SUBMITTED"
+    staff_id = manager_info["staff_id"]
+    db.add(OrderEvent(
+        order_id=order.id, actor_type="STAFF", actor_id=staff_id,
+        event="PAYMENT_PROOF_UPLOADED",
+        from_state=f"{order.order_status}/{old_payment_status}",
+        to_state=f"{order.order_status}/{order.payment_status}",
+    ))
+    db.add(AuditLog(
+        actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
+        action="payment_proof_uploaded",
+        details={
+            "source": "admin_console", "operator_name": manager_info.get("login_name"),
+            "operator_telegram_id": manager_info.get("telegram_user_id"),
+            "public_code": order.public_code, "from_state": f"{order.order_status}/{old_payment_status}",
+            "to_state": f"{order.order_status}/{order.payment_status}",
+        },
+    ))
+    customer_result = await db.execute(select(Customer).filter(Customer.id == order.customer_id))
+    customer = customer_result.scalars().first()
+    settings = await store_for_order(db, order)
+    try:
+        await db.commit()
+    except Exception:
+        path.unlink(missing_ok=True)
+        await db.rollback()
+        raise
+    if settings and settings.telegram_staff_group_id and order.telegram_group_message_id:
+        from telegram_service import update_order_message
+        try:
+            await update_order_message(settings.telegram_staff_group_id, order.telegram_group_message_id,
+                                       order, settings.staff_group_language, order.items, customer)
+        except Exception:
+            pass
+    return {"payment_status": order.payment_status, "proof_source": "admin_upload"}
 
 class PaymentReviewRequest(BaseModel):
     decision: str # APPROVED or REJECTED
