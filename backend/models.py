@@ -1,7 +1,18 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint, Table
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
+
+
+# 商品可以出现在多个菜单分类中。products.category_id 保留为主分类和旧客户端兼容字段，
+# 新代码通过这个关联表读取完整分类集合。
+product_categories = Table(
+    "product_categories",
+    Base.metadata,
+    Column("product_id", Integer, ForeignKey("products.id", ondelete="CASCADE"), primary_key=True),
+    Column("category_id", Integer, ForeignKey("categories.id", ondelete="CASCADE"), primary_key=True),
+    Column("sort_order", Integer, nullable=False, default=0, server_default="0"),
+)
 
 class Customer(Base):
     __tablename__ = "customers"
@@ -41,7 +52,8 @@ class Category(Base):
     sort_order = Column(Integer, default=0)
     active = Column(Boolean, default=True)
     
-    products = relationship("Product", back_populates="category", order_by="(Product.sort_order, Product.id)")
+    products = relationship("Product", secondary=product_categories, back_populates="categories",
+                            order_by="(Product.sort_order, Product.id)")
 
 class Product(Base):
     __tablename__ = "products"
@@ -58,7 +70,9 @@ class Product(Base):
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
     sweetness_enabled = Column(Boolean, nullable=False, default=False, server_default="false")
     
-    category = relationship("Category", back_populates="products")
+    category = relationship("Category", foreign_keys=[category_id])
+    categories = relationship("Category", secondary=product_categories, back_populates="products",
+                              order_by="(Category.sort_order, Category.id)")
     store_overrides = relationship("StoreProductOverride", cascade="all, delete-orphan")
     # 售卖时间窗：没有记录 = 全天可售
     sale_windows = relationship("ProductSaleWindow", back_populates="product",

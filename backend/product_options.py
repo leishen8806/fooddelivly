@@ -70,11 +70,17 @@ def active_groups(groups: Iterable[ProductOptionGroup]) -> list[ProductOptionGro
     return out
 
 
-def serialize_groups(groups: Iterable[ProductOptionGroup], language: str = "en") -> list[dict]:
-    """给前端用的结构。带上 min/max，前端据此渲染单选/多选。"""
+def serialize_groups(groups: Iterable[ProductOptionGroup], language: str = "en",
+                     include_inactive: bool = False) -> list[dict]:
+    """给前端用的结构。带上 min/max，前端据此渲染单选/多选。
+
+    后台编辑器需要看到已停用的组和选项，顾客菜单仍只接收可用项。
+    """
     payload = []
-    for group in active_groups(groups):
+    source_groups = list(groups) if include_inactive else active_groups(groups)
+    for group in source_groups:
         is_multi = bool(group.multi_select) or group.kind == "ADDON"
+        source_options = list(group.options) if include_inactive else [option for option in group.options if option.active]
         payload.append({
             "id": group.id,
             "name": group.name,
@@ -84,13 +90,15 @@ def serialize_groups(groups: Iterable[ProductOptionGroup], language: str = "en")
             "multi_select": is_multi,
             "min_select": 1 if group.required else 0,
             "max_select": (group.max_select if group.max_select else (None if is_multi else 1)),
+            "active": bool(group.active),
             "options": [{
                 "id": option.id,
                 "name": option.name,
                 "name_text": _pick_name(option.name, language),
                 "price_delta_minor": int(option.price_delta_minor or 0),
                 "is_default": bool(option.is_default),
-            } for option in group.options if option.active],
+                "active": bool(option.active),
+            } for option in source_options],
         })
     return payload
 

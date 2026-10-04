@@ -14,6 +14,7 @@ export interface Category {
 export interface Product {
   id: number;
   category_id: number;
+  category_ids?: number[];
   name: LocalizedText;
   description?: LocalizedText;
   price_minor: number;

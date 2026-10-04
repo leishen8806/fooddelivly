@@ -8,7 +8,7 @@ from sqlalchemy.orm import selectinload
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from database import get_db
-from models import Category, Product, ProductOption, ProductOptionGroup, ProductSaleWindow, StoreSettings, AuditLog
+from models import Category, Product, ProductOption, ProductOptionGroup, ProductSaleWindow, StoreSettings, AuditLog, product_categories
 from dependencies import get_current_staff, get_current_manager
 from product_options import serialize_groups
 from store_context import effective_product, load_overrides, resolve_store, staff_store
@@ -28,6 +28,7 @@ class LocalizedText(BaseModel):
 class ProductResponse(BaseModel):
     id: int
     category_id: int
+    category_ids: List[int] = Field(default_factory=list)
     name: LocalizedText
     description: Optional[LocalizedText]
     price_minor: int
@@ -53,7 +54,9 @@ class CategoryResponse(BaseModel):
 def serialize_product(product: Product, *, language: str = "en",
                       now_local: datetime | None = None,
                       price_minor: int | None = None,
-                      sale_windows: list | None = None) -> dict:
+                      sale_windows: list | None = None,
+                      include_category_ids: bool = False,
+                      include_inactive_options: bool = False) -> dict:
     """菜品对外结构。
 
     `available` 是后厨/管理端开关（卖完了），`orderable` 是「此刻能不能下单」——
@@ -65,7 +68,7 @@ def serialize_product(product: Product, *, language: str = "en",
         windows = list(product.sale_windows or [])
     on_sale = is_on_sale(windows, now_local.time()) if now_local else True
     next_open = next_open_at(windows, now_local) if now_local else None
-    return {
+    payload = {
         "id": product.id,
         "category_id": product.category_id,
         "name": product.name,
@@ -81,13 +84,18 @@ def serialize_product(product: Product, *, language: str = "en",
         "on_sale_now": on_sale,
         "orderable": bool(product.available) and on_sale,
         "next_sale_start": next_open.isoformat() if (next_open and not on_sale) else None,
-        "option_groups": serialize_groups(product.option_groups or [], language),
+        "option_groups": serialize_groups(product.option_groups or [], language,
+                                           include_inactive=include_inactive_options),
     }
+    if include_category_ids:
+        payload["category_ids"] = [category.id for category in (product.categories or [])]
+    return payload
 
 
 _CHILD_LOADERS = (
     selectinload(Product.sale_windows),
     selectinload(Product.option_groups).selectinload(ProductOptionGroup.options),
+    selectinload(Product.categories),
 )
 
 
@@ -158,11 +166,14 @@ async def admin_get_products(
     products = result.scalars().all()
     store_row = await staff_store(db, staff_info)
     now_local, language = await store_now(db, store_row)
-    return [serialize_product(p, language=language, now_local=now_local) for p in products]
+    return [serialize_product(p, language=language, now_local=now_local,
+                              include_category_ids=True,
+                              include_inactive_options=True) for p in products]
 
 # We'll need schemas for creating products, updating them, etc.
 class ProductCreate(BaseModel):
-    category_id: int
+    category_id: Optional[int] = None
+    category_ids: Optional[List[int]] = Field(None, max_length=50)
     name: LocalizedText
     description: Optional[LocalizedText] = None
     price_minor: int = Field(gt=0, description="Price must be positive")
@@ -174,6 +185,7 @@ class ProductCreate(BaseModel):
 
 class ProductUpdate(BaseModel):
     category_id: Optional[int] = None
+    category_ids: Optional[List[int]] = Field(None, max_length=50)
     name: Optional[LocalizedText] = None
     description: Optional[LocalizedText] = None
     price_minor: Optional[int] = Field(None, gt=0)
@@ -192,6 +204,49 @@ class CategoryUpdate(BaseModel):
     name: Optional[LocalizedText] = None
     sort_order: Optional[int] = None
     active: Optional[bool] = None
+
+
+def _normalize_category_ids(category_ids: List[int] | None, category_id: int | None = None) -> List[int]:
+    raw = category_ids if category_ids is not None else ([category_id] if category_id is not None else [])
+    normalized: List[int] = []
+    for value in raw:
+        if value is None or value <= 0:
+            continue
+        if value not in normalized:
+            normalized.append(value)
+    if not normalized:
+        raise HTTPException(status_code=422, detail="At least one product category is required")
+    return normalized
+
+
+async def _validate_categories(db: AsyncSession, category_ids: List[int]) -> None:
+    rows = (await db.execute(select(Category.id).filter(Category.id.in_(category_ids)))).scalars().all()
+    if len(rows) != len(category_ids):
+        raise HTTPException(status_code=422, detail="One or more categories were not found")
+
+
+async def _replace_product_categories(db: AsyncSession, product_id: int, category_ids: List[int]) -> None:
+    await db.execute(product_categories.delete().where(product_categories.c.product_id == product_id))
+    await db.execute(product_categories.insert(), [
+        {"product_id": product_id, "category_id": category_id, "sort_order": index}
+        for index, category_id in enumerate(category_ids)
+    ])
+
+
+def _product_response_payload(product: Product, category_ids: List[int]) -> dict:
+    return {
+        "id": product.id,
+        "category_id": product.category_id,
+        "category_ids": category_ids,
+        "name": product.name,
+        "description": product.description,
+        "price_minor": product.price_minor,
+        "currency": product.currency,
+        "image_key": product.image_key,
+        "available": product.available,
+        "sort_order": product.sort_order,
+        "sweetness_enabled": product.sweetness_enabled,
+    }
 
 @router.get("/admin/categories")
 async def admin_get_categories(manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
@@ -232,11 +287,10 @@ async def admin_create_product(
     manager_info: dict = Depends(get_current_manager), 
     db: AsyncSession = Depends(get_db)
 ):
-    category_result = await db.execute(select(Category).filter(Category.id == product.category_id))
-    if not category_result.scalars().first():
-        raise HTTPException(status_code=422, detail="Category not found")
+    category_ids = _normalize_category_ids(product.category_ids, product.category_id)
+    await _validate_categories(db, category_ids)
     new_product = Product(
-        category_id=product.category_id,
+        category_id=category_ids[0],
         name=product.name.model_dump(by_alias=True, exclude_none=True),
         description=product.description.model_dump(by_alias=True, exclude_none=True) if product.description else None,
         price_minor=product.price_minor,
@@ -248,13 +302,14 @@ async def admin_create_product(
     )
     db.add(new_product)
     await db.flush()
+    await _replace_product_categories(db, new_product.id, category_ids)
     db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="product", entity_id=str(new_product.id),
                     action="created", details={"name": new_product.name, "price_minor": new_product.price_minor,
                                                "currency": new_product.currency,
                                                "sweetness_enabled": new_product.sweetness_enabled}))
     await db.commit()
     await db.refresh(new_product)
-    return new_product
+    return _product_response_payload(new_product, category_ids)
 
 @router.patch("/admin/products/{product_id}", response_model=ProductResponse)
 async def admin_update_product(product_id: int, changes: ProductUpdate,
@@ -264,20 +319,27 @@ async def admin_update_product(product_id: int, changes: ProductUpdate,
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
     values = changes.model_dump(exclude_unset=True, by_alias=True)
-    if "category_id" in values:
-        category_result = await db.execute(select(Category).filter(Category.id == values["category_id"]))
-        if not category_result.scalars().first():
-            raise HTTPException(status_code=422, detail="Category not found")
+    raw_category_ids = values.pop("category_ids", None)
+    legacy_category_id = values.pop("category_id", None)
+    category_ids = None
+    if raw_category_ids is not None or legacy_category_id is not None:
+        category_ids = _normalize_category_ids(raw_category_ids, legacy_category_id)
+        await _validate_categories(db, category_ids)
+        values["category_id"] = category_ids[0]
     for field, value in values.items():
         if field in {"name", "description"} and value is not None:
             value = value.model_dump(by_alias=True, exclude_none=True) if isinstance(value, LocalizedText) else value
         setattr(product, field, value)
+    if category_ids is not None:
+        await _replace_product_categories(db, product.id, category_ids)
     db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="product", entity_id=str(product.id),
                     action="updated", details={"changed_fields": list(values),
                                                 "sweetness_enabled": product.sweetness_enabled}))
     await db.commit()
     await db.refresh(product)
-    return product
+    if category_ids is None:
+        category_ids = [product.category_id]
+    return _product_response_payload(product, category_ids)
 
 @router.delete("/admin/products/{product_id}")
 async def admin_archive_product(product_id: int, manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):

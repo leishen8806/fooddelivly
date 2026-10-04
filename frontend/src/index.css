@@ -1336,6 +1336,15 @@ small {
   gap: var(--space-2);
 }
 
+.product-form select[multiple] {
+  min-height: 7rem;
+  padding: var(--space-2);
+}
+
+.product-form select[multiple] option {
+  padding: var(--space-2);
+}
+
 .image-upload-label {
   font-weight: var(--weight-semibold);
 }

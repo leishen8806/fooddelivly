@@ -7,6 +7,7 @@ export type OptionItem = {
   name_text: string;
   price_delta_minor: number;
   is_default: boolean;
+  active?: boolean;
 };
 
 export type OptionGroup = {
@@ -18,6 +19,7 @@ export type OptionGroup = {
   multi_select: boolean;
   min_select: number;
   max_select: number | null;
+  active?: boolean;
   options: OptionItem[];
 };
 
