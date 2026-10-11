@@ -146,6 +146,9 @@ function CustomerPage() {
   const walletApplied = Math.min(walletTotal, total);
   const abaDue = Math.max(total - walletApplied, 0);
   const itemCount = useMemo(() => cart.reduce((count, line) => count + line.quantity, 0), [cart]);
+  const miniAppShareActionUrl = useMemo(() => miniAppShareUrl
+    ? `https://t.me/share/url?url=${encodeURIComponent(miniAppShareUrl)}&text=${encodeURIComponent(t('menu.shareText'))}`
+    : null, [miniAppShareUrl, t]);
   const selectedCategory = categories.find((category) => category.id === selectedCategoryId) ?? categories[0];
   const orderDialogOpen = orderDetails !== null;
   const languageDialogOpen = profileLoaded && Boolean(profile) && !profile?.preferred_language;
@@ -441,7 +444,7 @@ function CustomerPage() {
   const orderStatusClass = (orderStatus: string) => `customer-order-status status-${orderStatus.toLowerCase()}`;
 
   return <main className="customer-shell">
-    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'menu' && miniAppShareUrl && <a className="share-shortcut" href={miniAppShareUrl} aria-label={t('menu.share')} title={t('menu.share')}><Share2 size={17} aria-hidden="true" /><span>{t('menu.share')}</span></a>}{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
+    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'menu' && miniAppShareActionUrl && <a className="share-shortcut" href={miniAppShareActionUrl} aria-label={t('menu.share')} title={t('menu.share')}><Share2 size={17} aria-hidden="true" /><span>{t('menu.share')}</span></a>}{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
 
     {activeTab === 'menu' && <>
       <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>
