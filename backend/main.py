@@ -11,6 +11,7 @@ import logging
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 import os
+import re
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
@@ -91,4 +92,13 @@ async def health_check():
     async with engine.connect() as connection:
         await connection.execute(text("SELECT 1"))
     return {"status": "ok", "version": "0.2"}
+
+
+@app.get("/api/v1/public/mini-app-share")
+async def mini_app_share():
+    """Return the public Telegram Mini App deep link used by menu sharing."""
+    bot_username = (os.getenv("BOT_USERNAME") or "").lstrip("@")
+    if re.fullmatch(r"[A-Za-z0-9_]{5,32}", bot_username):
+        return {"url": f"https://t.me/{bot_username}?startapp=menu", "available": True}
+    return {"url": None, "available": False}
 

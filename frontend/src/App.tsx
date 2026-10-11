@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import { ClipboardList, ShoppingCart, Store, UserRound } from 'lucide-react';
+import { ClipboardList, Share2, ShoppingCart, Store, UserRound } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import api from './api';
 import { TelegramProvider } from './components/TelegramProvider';
@@ -137,6 +137,7 @@ function CustomerPage() {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [miniAppShareUrl, setMiniAppShareUrl] = useState<string | null>(null);
   const idempotencyKey = useRef<string | null>(null);
   const roomLoadedFor = useRef<number | null>(null);
   const orderCloseRef = useRef<HTMLButtonElement>(null);
@@ -162,6 +163,11 @@ function CustomerPage() {
 
   useEffect(() => { void loadMenu(); }, [loadMenu]);
   useEffect(() => { void loadWalletTotal(); }, [loadWalletTotal]);
+  useEffect(() => {
+    void api.get('/api/v1/public/mini-app-share')
+      .then((response) => setMiniAppShareUrl(response.data.url || null))
+      .catch(() => setMiniAppShareUrl(null));
+  }, []);
 
   const loadCustomerOrders = useCallback(async () => {
     setOrdersLoading(true);
@@ -435,7 +441,7 @@ function CustomerPage() {
   const orderStatusClass = (orderStatus: string) => `customer-order-status status-${orderStatus.toLowerCase()}`;
 
   return <main className="customer-shell">
-    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
+    <header className="topbar"><div className="brand-title"><img className="brand-logo" src="/tea-cafe-logo.png" alt="Tea Cafe" /><div><span className="eyebrow">TEA CAFE</span><h1>{t(activeTab === 'menu' ? 'menu.title' : activeTab === 'cart' ? 'cart.title' : activeTab === 'orders' ? 'order.history' : 'profile.title')}</h1></div></div><div className="customer-header-actions">{activeTab === 'menu' && miniAppShareUrl && <a className="share-shortcut" href={miniAppShareUrl} aria-label={t('menu.share')} title={t('menu.share')}><Share2 size={17} aria-hidden="true" /><span>{t('menu.share')}</span></a>}{activeTab === 'cart' && <strong className="cart-count">{itemCount}</strong>}</div></header>
 
     {activeTab === 'menu' && <>
       <section className="hero"><p className="eyebrow">{t('menu.popular')}</p><h2>{t('brand')}</h2><p>{t('checkout.roomOnly')}</p></section>

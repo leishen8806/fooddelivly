@@ -310,6 +310,27 @@ small {
   white-space: nowrap;
 }
 
+.share-shortcut {
+  display: inline-flex;
+  min-height: var(--control-height);
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-pill);
+  color: var(--color-brand);
+  background: var(--color-surface);
+  font-size: var(--type-small);
+  font-weight: var(--weight-semibold);
+  line-height: var(--line-small);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.share-shortcut:hover {
+  background: var(--color-tint);
+}
+
 .cart-shortcut strong {
   display: grid;
   min-width: 1.75rem;
