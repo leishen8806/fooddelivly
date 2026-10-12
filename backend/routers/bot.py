@@ -211,7 +211,7 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
     settings = await _store_settings(db, order=order, customer=customer)
     await db.commit()
 
-    await send_bot_message(tg_user_id, f"{tr('bot.paymentProofSubmitted', language)}\n{tr('payment.notConfirmed', language)}")
+    await send_bot_message(tg_user_id, tr("bot.paymentProofSubmitted", language))
     if settings and settings.telegram_staff_group_id and order.telegram_group_message_id:
         proof_state = _message_status(order)
         try:
