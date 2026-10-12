@@ -16,6 +16,7 @@ from models import Order, OrderItem, Product
 from models import StoreSettings, Customer, PaymentProof
 from dependencies import get_current_customer
 from telegram_service import notify_new_order
+from coupon_service import CouponError, reserve_for_order
 from urllib.parse import urlparse
 import secrets
 import string
@@ -43,6 +44,7 @@ class OrderCreate(BaseModel):
     #: 用钱包余额直接支付：下单即扣款、即 PAID_CONFIRMED，不需要上传转账截图。
     #: 余额不足返回 409，订单不会创建（扣款与建单在同一个事务里）。
     pay_with_wallet: bool = False
+    customer_coupon_id: Optional[int] = Field(default=None, ge=1)
 
     @field_validator("room_number")
     @classmethod
@@ -115,6 +117,7 @@ async def create_order(
                 "public_code": existing_order.public_code,
                 "total_minor": existing_order.total_minor,
                 "subtotal_minor": existing_order.subtotal_minor if existing_order.subtotal_minor is not None else existing_order.total_minor,
+                "coupon_discount_minor": existing_order.coupon_discount_minor or 0,
                 "delivery_fee_minor": existing_order.delivery_fee_minor or 0,
                 "service_fee_minor": existing_order.service_fee_minor or 0,
                 "currency": existing_order.currency,
@@ -230,7 +233,17 @@ async def create_order(
             detail=f"最低起送 {min_order_minor / 100:.2f} {currency}，当前商品小计 {subtotal_minor / 100:.2f} {currency}")
     delivery_fee_minor = int(store_row.delivery_fee_minor or 0)
     service_fee_minor = int(store_row.service_fee_minor or 0)
-    total_minor = subtotal_minor + delivery_fee_minor + service_fee_minor
+    try:
+        customer_coupon, coupon_campaign, coupon_discount_minor = await reserve_for_order(
+            db,
+            customer_id=customer_id,
+            customer_coupon_id=order_req.customer_coupon_id,
+            subtotal_minor=subtotal_minor,
+            currency=currency,
+        )
+    except CouponError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.message)
+    total_minor = max(subtotal_minor - coupon_discount_minor, 0) + delivery_fee_minor + service_fee_minor
 
     wallet_paid_minor = 0
     try:
@@ -248,6 +261,10 @@ async def create_order(
             subtotal_minor=subtotal_minor,
             delivery_fee_minor=delivery_fee_minor,
             service_fee_minor=service_fee_minor,
+            coupon_id=customer_coupon.id if customer_coupon else None,
+            coupon_name_snapshot=coupon_campaign.name if coupon_campaign else None,
+            coupon_type_snapshot=coupon_campaign.coupon_type if coupon_campaign else None,
+            coupon_discount_minor=coupon_discount_minor,
             wallet_paid_minor=0,
             external_due_minor=total_minor,
             idempotency_key=idempotency_key,
@@ -259,6 +276,11 @@ async def create_order(
         for oi in order_items:
             oi.order_id = new_order.id
             db.add(oi)
+
+        if customer_coupon:
+            customer_coupon.status = "USED"
+            customer_coupon.used_order_id = new_order.id
+            customer_coupon.used_at = datetime.now(ZoneInfo("UTC"))
 
         if order_req.pay_with_wallet:
             # 钱包优先：在同一事务内最多扣掉当前可用余额，剩余金额走 ABA。
@@ -319,6 +341,8 @@ async def create_order(
                 return {
                     "public_code": existing_order.public_code,
                     "total_minor": existing_order.total_minor,
+                    "subtotal_minor": existing_order.subtotal_minor if existing_order.subtotal_minor is not None else existing_order.total_minor,
+                    "coupon_discount_minor": existing_order.coupon_discount_minor or 0,
                     "currency": existing_order.currency,
                     "status": existing_order.order_status,
                     "payment_status": existing_order.payment_status,
@@ -334,6 +358,7 @@ async def create_order(
         "public_code": new_order.public_code,
         "total_minor": new_order.total_minor,
         "subtotal_minor": new_order.subtotal_minor,
+        "coupon_discount_minor": new_order.coupon_discount_minor or 0,
         "delivery_fee_minor": new_order.delivery_fee_minor or 0,
         "service_fee_minor": new_order.service_fee_minor or 0,
         "currency": new_order.currency,
@@ -359,6 +384,8 @@ async def get_orders(
     return [{"public_code": o.public_code, "room_number": o.room_number, "order_status": o.order_status,
              "payment_status": o.payment_status, "payment_method": o.payment_method,
              "currency": o.currency, "total_minor": o.total_minor,
+             "subtotal_minor": o.subtotal_minor if o.subtotal_minor is not None else o.total_minor,
+             "coupon_discount_minor": o.coupon_discount_minor or 0,
              "wallet_paid_minor": o.wallet_paid_minor or 0,
              "external_due_minor": o.external_due_minor if o.external_due_minor is not None else o.total_minor,
              "created_at": o.created_at} for o in orders]
@@ -377,6 +404,8 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
         "order_status": order.order_status, "payment_status": order.payment_status,
         "payment_method": order.payment_method,
         "currency": order.currency, "total_minor": order.total_minor,
+        "coupon_name": order.coupon_name_snapshot,
+        "coupon_discount_minor": order.coupon_discount_minor or 0,
         "wallet_paid_minor": order.wallet_paid_minor or 0,
         "external_due_minor": order.external_due_minor if order.external_due_minor is not None else order.total_minor,
         "subtotal_minor": order.subtotal_minor if order.subtotal_minor is not None else order.total_minor,

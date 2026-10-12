@@ -151,6 +151,10 @@ class Order(Base):
     service_fee_minor = Column(Integer, nullable=False, default=0, server_default="0")
     wallet_paid_minor = Column(BigInteger, nullable=False, default=0, server_default="0")
     external_due_minor = Column(BigInteger, nullable=False, default=0, server_default="0")
+    coupon_id = Column(Integer, ForeignKey("customer_coupons.id"), nullable=True)
+    coupon_name_snapshot = Column(String, nullable=True)
+    coupon_type_snapshot = Column(String, nullable=True)
+    coupon_discount_minor = Column(Integer, nullable=False, default=0, server_default="0")
     telegram_group_message_id = Column(String, nullable=True)
     idempotency_key = Column(String, index=True, nullable=True)
     request_digest = Column(String, nullable=True)
@@ -198,6 +202,68 @@ class PaymentReview(Base):
     decision = Column(String, nullable=False) # 'APPROVED' or 'REJECTED'
     reason = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CouponCampaign(Base):
+    """优惠券规则。发布后规则冻结，只允许切换上线/下架状态。"""
+    __tablename__ = "coupon_campaigns"
+
+    id = Column(Integer, primary_key=True, index=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)
+    created_by = Column(Integer, ForeignKey("staff.id"), nullable=True)
+    name = Column(String, nullable=False)
+    description = Column(String, nullable=True)
+    currency = Column(String, nullable=False, default="USD", server_default="USD")
+    coupon_type = Column(String, nullable=False)  # DISCOUNT | FIXED
+    distribution_mode = Column(String, nullable=False)  # PRIVATE | PUBLIC
+    min_spend_minor = Column(Integer, nullable=False, default=0, server_default="0")
+    discount_percent = Column(Integer, nullable=True)
+    discount_cap_minor = Column(Integer, nullable=True)
+    fixed_discount_minor = Column(Integer, nullable=True)
+    starts_at = Column(DateTime(timezone=True), nullable=False)
+    ends_at = Column(DateTime(timezone=True), nullable=False)
+    per_user_claim_limit = Column(Integer, nullable=False, default=1, server_default="1")
+    total_claim_limit = Column(Integer, nullable=True)
+    total_claimed_quantity = Column(Integer, nullable=False, default=0, server_default="0")
+    status = Column(String, nullable=False, default="DRAFT", server_default="DRAFT")  # DRAFT | ACTIVE | PAUSED
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+
+class CouponClaimLink(Base):
+    """优惠券领取深链。私有链接一次性消费，广域链接在活动期间复用。"""
+    __tablename__ = "coupon_claim_links"
+
+    id = Column(Integer, primary_key=True, index=True)
+    coupon_id = Column(Integer, ForeignKey("coupon_campaigns.id", ondelete="CASCADE"), nullable=False)
+    token_value = Column(String, nullable=False, unique=True)
+    token_hash = Column(String, nullable=False, unique=True, index=True)
+    mode = Column(String, nullable=False)  # PRIVATE | PUBLIC
+    status = Column(String, nullable=False, default="ACTIVE", server_default="ACTIVE")  # ACTIVE | CLAIMED | DISABLED
+    claimed_by = Column(Integer, ForeignKey("customers.id"), nullable=True)
+    claimed_at = Column(DateTime(timezone=True), nullable=True)
+    created_by = Column(Integer, ForeignKey("staff.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class CustomerCoupon(Base):
+    """客户已领取的优惠券实例；广域券允许同一客户持有多张。"""
+    __tablename__ = "customer_coupons"
+
+    id = Column(Integer, primary_key=True, index=True)
+    coupon_id = Column(Integer, ForeignKey("coupon_campaigns.id", ondelete="RESTRICT"), nullable=False)
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="RESTRICT"), nullable=False)
+    claim_link_id = Column(Integer, ForeignKey("coupon_claim_links.id", ondelete="SET NULL"), nullable=True)
+    claim_request_key = Column(String, nullable=True)
+    status = Column(String, nullable=False, default="AVAILABLE", server_default="AVAILABLE")  # AVAILABLE | USED | EXPIRED | REVOKED
+    claimed_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    used_order_id = Column(Integer, ForeignKey("orders.id"), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("customer_id", "claim_request_key", name="uq_customer_coupon_claim_request"),
+    )
 
 class OrderEvent(Base):
     __tablename__ = "order_events"

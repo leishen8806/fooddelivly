@@ -2646,3 +2646,24 @@ small {
 .settings-block > strong { font-size: var(--type-body); }
 .settings-block > small { color: var(--color-muted); font-size: var(--type-caption); }
 
+
+.coupon-claim-notice {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 13px;
+}
+.coupon-claim-notice.success { background: #e5f5ef; color: #17634f; }
+.coupon-claim-notice.error { background: #fff0ed; color: #a53d2f; }
+.coupon-claim-notice button { border: 0; background: transparent; color: inherit; font-size: 20px; cursor: pointer; }
+.coupon-list { margin-top: 20px; }
+.coupon-card { display: flex; align-items: center; gap: 10px; padding: 14px; margin: 8px 0; border: 1px solid var(--line, #dbe4e6); border-radius: 14px; background: var(--surface, #fff); }
+.coupon-card > div { flex: 1; display: grid; gap: 4px; }
+.coupon-card small { color: var(--muted, #6f7f82); }
+.coupon-card > span { font-size: 12px; color: var(--muted, #6f7f82); }
+.coupon-card button { border: 0; border-radius: 999px; padding: 7px 11px; background: var(--accent, #4da9c8); color: #fff; cursor: pointer; }
+.coupon-discount strong { color: #16825d; }

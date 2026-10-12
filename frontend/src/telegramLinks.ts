@@ -1,5 +1,6 @@
 type TelegramWebApp = {
   openTelegramLink?: (url: string) => void;
+  initDataUnsafe?: { start_param?: string };
 };
 
 type TelegramWindow = Window & {
@@ -18,4 +19,15 @@ export function openTelegramLink(url: string) {
     }
   }
   window.location.assign(url);
+}
+
+/** Read the Mini App deep-link parameter from Telegram or its browser fallback. */
+export function getTelegramStartParam(): string | null {
+  const webAppParam = (window as TelegramWindow).Telegram?.WebApp?.initDataUnsafe?.start_param;
+  if (webAppParam) return webAppParam;
+  const read = (value: string) => {
+    try { return new URLSearchParams(value.replace(/^#/, '').replace(/^\?/, '')).get('tgWebAppStartParam'); }
+    catch { return null; }
+  };
+  return read(window.location.search) || read(window.location.hash);
 }

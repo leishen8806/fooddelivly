@@ -6,7 +6,7 @@ from sqlalchemy import text
 from pathlib import Path
 from daily_report import start_scheduler
 from rate_limit import RateLimitMiddleware
-from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet, admin_reports
+from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet, admin_reports, admin_coupons, coupons
 import logging
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
@@ -85,6 +85,8 @@ app.include_router(uploads.router)
 app.include_router(wallet.router)
 app.include_router(wallet.admin_router)
 app.include_router(admin_reports.router)
+app.include_router(admin_coupons.router)
+app.include_router(coupons.router)
 
 @app.get("/health")
 async def health_check():
