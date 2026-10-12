@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
+import { openTelegramLink } from '../telegramLinks';
 import { formatAmount, formatDateTime, toMinorUnits } from '../format';
 import type { LedgerEntry, RechargeOrder, WalletSummary } from '../types';
 
@@ -118,7 +119,7 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
         </div>
         {order.reject_reason && <p className="error">{order.reject_reason}</p>}
         {(order.status === 'awaiting_proof' || order.status === 'under_review') && <div className="actions">
-          {order.bot_deeplink && <a className="payment-link" href={order.bot_deeplink}>{t('wallet.uploadProof')}</a>}
+          {order.bot_deeplink && <button type="button" className="payment-link" onClick={() => openTelegramLink(order.bot_deeplink!)}>{t('wallet.uploadProof')}</button>}
           {order.status === 'awaiting_proof' && <button type="button" disabled={busy} onClick={() => void cancelRecharge(order)}>{t('wallet.cancelOrder')}</button>}
         </div>}
       </div>)}
@@ -197,7 +198,7 @@ export default function CustomerWallet({ onBalanceChange }: { onBalanceChange?: 
         {created.payment_link && <a className="primary payment-link" href={created.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
         <p>{t('wallet.remarkHint', { order: created.order_no })}</p>
         {created.bot_deeplink
-          ? <a className="primary payment-link" href={created.bot_deeplink}>{t('wallet.uploadProof')}</a>
+          ? <button type="button" className="primary payment-link" onClick={() => openTelegramLink(created.bot_deeplink!)}>{t('wallet.uploadProof')}</button>
           : <p className="error">{t('payment.botNotConfigured')}</p>}
         <div className="actions">
           <button type="button" disabled={busy} onClick={() => void cancelRecharge(created)}>{t('wallet.cancelOrder')}</button>

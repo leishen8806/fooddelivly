@@ -12,6 +12,7 @@ import { type OptionGroup } from './components/ProductOptionsPicker';
 import ProductOptionsModal from './components/ProductOptionsModal';
 import AdminProductRules from './components/AdminProductRules';
 import { useAuthStore } from './store/authStore';
+import { openTelegramLink } from './telegramLinks';
 import './index.css';
 
 type SaleWindow = { start: string; end: string; overnight: boolean };
@@ -563,8 +564,8 @@ function CustomerPage() {
         {orderDetails.payment_qr_url && <img className="payment-qr" src={orderDetails.payment_qr_url} alt={t('payment.aba')} />}
         {orderDetails.payment_link && <a className="primary payment-link" href={orderDetails.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
         {!orderDetails.payment_qr_url && !orderDetails.payment_link && <p className="error">{t('payment.notConfigured')}</p>}
-        <p>{t('payment.instruction')}</p><p>{t('payment.notConfirmed')}</p>
-        {orderDetails.bot_deeplink ? <a className="primary payment-link" href={orderDetails.bot_deeplink}>{t('payment.sendProof')}</a> : <p>{t('payment.botNotConfigured')}</p>}
+        <p>{t('payment.instruction')}</p>
+        {orderDetails.bot_deeplink ? <button type="button" className="primary payment-link" onClick={() => openTelegramLink(orderDetails.bot_deeplink!)}>{t('payment.sendProof')}</button> : <p>{t('payment.botNotConfigured')}</p>}
       </>}
       {orderDetails.payment_status === 'REJECTED' && <p className="error">{t('payment.resubmit')}</p>}
       <button type="button" onClick={() => void refreshStatus()}>{t('payment.refreshStatus')}</button>
