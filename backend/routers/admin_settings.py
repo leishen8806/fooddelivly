@@ -11,6 +11,7 @@ from database import get_db
 from models import StoreSettings, AuditLog
 from store_context import default_store as load_default_store
 from dependencies import get_current_manager, get_current_staff
+from telegram_service import _bot
 from jose import jwt
 import os
 
@@ -36,6 +37,7 @@ class BusinessHour(BaseModel):
 
 class SettingsUpdate(BaseModel):
     currency: str = Field(pattern=r"^[A-Z]{3}$")
+    confirm_currency_change: bool = False
     timezone: str = Field(min_length=1, max_length=64)
     aba_qr_asset_key: str | None = None
     payment_link: str | None = None
@@ -197,6 +199,12 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
                 raise HTTPException(status_code=422,
                                     detail="营业时间的开始与结束不能相同（全天营业请留空）")
 
+    currency_before = target.currency
+    if req.currency != target.currency:
+        if manager_info.get("store_id") is not None:
+            raise HTTPException(status_code=403, detail="Only headquarters can change currency")
+        if not req.confirm_currency_change:
+            raise HTTPException(status_code=422, detail="confirm_currency_change is required")
     target.currency = req.currency
     target.timezone = req.timezone
     target.aba_qr_asset_key = req.aba_qr_asset_key
@@ -246,9 +254,8 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
         legacy.shortage_customer_response_timeout_minutes = int(target.shortage_customer_response_timeout_minutes or 0)
         legacy.shortage_refund_review_minor = int(target.shortage_refund_review_minor or 0)
 
-    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
-                    entity_id=str(target.id), action="updated", store_id=target.id,
-                    details={"store_code": target.code, "currency": target.currency,
+    details = {"store_code": target.code, "currency_before": currency_before,
+                             "currency_after": target.currency,
                              "timezone": target.timezone,
                              "payment_link_configured": bool(target.payment_link),
                              "qr_configured": bool(target.aba_qr_asset_key),
@@ -262,7 +269,10 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
                              "unpaid_order_timeout_minutes": target.unpaid_order_timeout_minutes,
                              "unpaid_order_reminder_minutes": target.unpaid_order_reminder_minutes,
                              "shortage_customer_response_timeout_minutes": target.shortage_customer_response_timeout_minutes,
-                             "shortage_refund_review_minor": target.shortage_refund_review_minor}))
+                             "shortage_refund_review_minor": target.shortage_refund_review_minor}
+    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
+                    entity_id=str(target.id), action="updated", store_id=target.id,
+                    details=details))
     await db.commit()
     await db.refresh(target)
     return _store_payload(target)
@@ -287,10 +297,16 @@ async def test_notification(req: TestNotificationRequest, store: str | None = No
     if target is None:
         raise HTTPException(status_code=404, detail="Store not found")
     if not target.telegram_staff_group_id:
-        return {"ok": False, "reason": "Staff group is not configured"}
-    # Delivery is intentionally delegated to the bot layer in production. This
-    # endpoint validates configuration and records the requested test without
-    # exposing message contents to audit logs.
+        return {"ok": False, "reason": "Telegram staff group is not configured"}
+    bot = _bot()
+    if bot is None:
+        return {"ok": False, "reason": "Telegram bot is not configured"}
+    try:
+        await bot.send_message(chat_id=target.telegram_staff_group_id, text=req.message)
+    except Exception as exc:  # noqa: BLE001 - return a safe provider reason
+        return {"ok": False, "reason": f"Telegram send failed: {exc}"}
+    finally:
+        await bot.session.close()
     db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
                     entity_id=str(target.id), action="test_notification", store_id=target.id,
                     details={"group_configured": True, "language": target.staff_group_language}))

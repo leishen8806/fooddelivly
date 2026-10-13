@@ -17,7 +17,7 @@ describe('C1 catalog list pages', () => {
     const html = render(<AdminProductsPage />);
     expect(html).not.toContain('<form');
     expect(html).toContain('href="/admin/products/new"');
-    for (const key of ['admin.productImage', 'admin.productName', 'admin.categories', 'admin.price', 'admin.productOptions', 'admin.saleWindows', 'admin.sweetness', 'admin.productStatus', 'admin.sortOrder', 'admin.actions']) expect(html).toContain(i18n.t(key));
+    for (const key of ['admin.productImage', 'admin.productName', 'admin.category', 'admin.price', 'admin.productOptions', 'admin.saleWindows', 'admin.sweetness', 'admin.productStatus', 'admin.sortOrder', 'admin.actions']) expect(html).toContain(i18n.t(key));
   });
 
   it('keeps the category list free of forms and exposes the absolute create route', () => {

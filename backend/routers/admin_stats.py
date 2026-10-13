@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, text
+from sqlalchemy import case, cast, func, Integer, or_, text
 
 from database import get_db
 from dependencies import get_current_staff
@@ -206,64 +206,69 @@ async def get_dashboard(days: int = Query(7, ge=7, le=30), store: str | None = N
     start_utc = datetime.combine(start_date, time.min, store_tz).astimezone(timezone.utc)
     end_utc = datetime.combine(today + timedelta(days=1), time.min, store_tz).astimezone(timezone.utc)
 
-    def scoped_order(query):
-        return query.filter(Order.created_at >= start_utc, Order.created_at < end_utc,
-                            (Order.store_id == scope) | (Order.store_id.is_(None)) if scope is not None else True)
+    def order_scope():
+        return or_(Order.store_id == scope, Order.store_id.is_(None)) if scope is not None else True
 
-    orders = (await db.execute(scoped_order(select(Order)))).scalars().all()
-    customer_query = select(Customer).filter(Customer.created_at < end_utc,
-                                             (Customer.store_id == scope) | (Customer.store_id.is_(None)) if scope is not None else True)
-    customers = (await db.execute(customer_query)).scalars().all()
-    activities_query = select(CustomerDailyActivity).filter(CustomerDailyActivity.activity_date >= start_date,
-                                                             CustomerDailyActivity.activity_date <= today,
-                                                             (CustomerDailyActivity.store_id == scope) | (CustomerDailyActivity.store_id.is_(None)) if scope is not None else True)
-    activities = (await db.execute(activities_query)).scalars().all()
+    # Use bounded GROUP BY queries instead of loading every order/customer/item
+    # into Python just to render the dashboard.
+    local_day = func.date(func.timezone(timezone_name, Order.created_at))
+    local_hour = cast(func.extract("hour", func.timezone(timezone_name, Order.created_at)), Integer)
+    sales_case = case((Order.order_status != "CANCELLED", Order.total_minor), else_=0)
+    series = {(start_date + timedelta(days=i)).isoformat(): {"orders": 0, "sales_minor": 0, "new_users": 0, "daily_active": 0} for i in range(days)}
+    day_rows = await db.execute(select(local_day, func.count(Order.id), func.coalesce(func.sum(sales_case), 0)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(local_day))
+    for day, count, amount in day_rows.all():
+        if day.isoformat() in series:
+            series[day.isoformat()]["orders"] = int(count or 0)
+            series[day.isoformat()]["sales_minor"] = int(amount or 0)
 
-    def day_key(value: datetime) -> str:
-        return value.astimezone(store_tz).date().isoformat() if value.tzinfo else value.date().isoformat()
-    series = { (start_date + timedelta(days=i)).isoformat(): {"orders": 0, "sales_minor": 0, "new_users": 0, "daily_active": 0} for i in range(days) }
-    status_breakdown: dict[str, int] = {}
-    payment_breakdown: dict[str, int] = {}
+    customer_day = func.date(func.timezone(timezone_name, Customer.created_at))
+    customer_rows = await db.execute(select(customer_day, func.count(Customer.id)).where(
+        Customer.created_at < end_utc,
+        or_(Customer.store_id == scope, Customer.store_id.is_(None)) if scope is not None else True,
+    ).group_by(customer_day))
+    total_users = 0
+    for day, count in customer_rows.all():
+        total_users += int(count or 0)
+        if day.isoformat() in series:
+            series[day.isoformat()]["new_users"] = int(count or 0)
+
+    activity_rows = await db.execute(select(CustomerDailyActivity.activity_date, func.count(func.distinct(CustomerDailyActivity.customer_id))).where(
+        CustomerDailyActivity.activity_date >= start_date,
+        CustomerDailyActivity.activity_date <= today,
+        or_(CustomerDailyActivity.store_id == scope, CustomerDailyActivity.store_id.is_(None)) if scope is not None else True,
+    ).group_by(CustomerDailyActivity.activity_date))
+    for day, count in activity_rows.all():
+        if day.isoformat() in series:
+            series[day.isoformat()]["daily_active"] = int(count or 0)
+
+    status_rows = await db.execute(select(Order.order_status, func.count(Order.id)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(Order.order_status))
+    status_breakdown = {status: int(count or 0) for status, count in status_rows.all()}
+    payment_rows = await db.execute(select(Order.payment_method, func.count(Order.id)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(Order.payment_method))
+    payment_breakdown = {method or "UNKNOWN": int(count or 0) for method, count in payment_rows.all()}
+    hourly_rows = await db.execute(select(local_hour, func.count(Order.id)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(local_hour))
     hourly = [0] * 24
-    sales = 0
-    pending_review = 0
-    for order in orders:
-        key = day_key(order.created_at)
-        if key in series:
-            series[key]["orders"] += 1
-            if order.order_status != "CANCELLED":
-                series[key]["sales_minor"] += int(order.total_minor or 0); sales += int(order.total_minor or 0)
-        status_breakdown[order.order_status] = status_breakdown.get(order.order_status, 0) + 1
-        payment_breakdown[order.payment_method] = payment_breakdown.get(order.payment_method, 0) + 1
-        local = order.created_at.astimezone(store_tz) if order.created_at.tzinfo else order.created_at.replace(tzinfo=store_tz)
-        hourly[local.hour] += 1
-        if order.payment_status == "PROOF_SUBMITTED": pending_review += 1
-    for customer in customers:
-        if customer.created_at:
-            key = day_key(customer.created_at)
-            if key in series: series[key]["new_users"] += 1
-    active_by_day: dict[str, set[int]] = {}
-    for activity in activities:
-        active_by_day.setdefault(activity.activity_date.isoformat(), set()).add(activity.customer_id)
-    for key, user_ids in active_by_day.items():
-        if key in series: series[key]["daily_active"] = len(user_ids)
+    for hour, count in hourly_rows.all():
+        if hour is not None and 0 <= int(hour) < 24:
+            hourly[int(hour)] = int(count or 0)
 
-    item_rows = (await db.execute(select(OrderItem).join(Order, OrderItem.order_id == Order.id).filter(
+    pending_orders = await db.scalar(select(func.count(Order.id)).where(Order.order_status == "NEW", order_scope())) or 0
+    pending_review = await db.scalar(select(func.count(Order.id)).where(Order.payment_status == "PROOF_SUBMITTED", order_scope())) or 0
+    name_expr = func.coalesce(OrderItem.product_name_snapshot.op("->>")("en"), "—")
+    item_rows = await db.execute(select(name_expr, func.sum(OrderItem.quantity)).join(Order, OrderItem.order_id == Order.id).where(
         Order.created_at >= start_utc, Order.created_at < end_utc,
-        Order.order_status != "CANCELLED",
-        (Order.store_id == scope) | (Order.store_id.is_(None)) if scope is not None else True))).scalars().all()
-    top: dict[str, int] = {}
-    for item in item_rows:
-        name = item.product_name_snapshot if isinstance(item.product_name_snapshot, str) else (item.product_name_snapshot or {}).get("en", "—")
-        top[name] = top.get(name, 0) + int(item.quantity or 0)
-    top_products = [{"name": name, "quantity": qty} for name, qty in sorted(top.items(), key=lambda pair: (-pair[1], pair[0]))[:10]]
-    pending_refunds = (await db.execute(select(func.count(OrderRefund.id)).join(Order, OrderRefund.order_id == Order.id).filter(
-        OrderRefund.status == "PENDING",
-        (Order.store_id == scope) | (Order.store_id.is_(None)) if scope is not None else True))).scalar_one() or 0
+        Order.order_status != "CANCELLED", order_scope()).group_by(name_expr).order_by(func.sum(OrderItem.quantity).desc()).limit(10))
+    top_products = [{"name": str(name), "quantity": int(quantity or 0)} for name, quantity in item_rows.all()]
+    pending_refunds = await db.scalar(select(func.count(OrderRefund.id)).join(Order, OrderRefund.order_id == Order.id).where(
+        OrderRefund.status == "PENDING", order_scope())) or 0
+    sales = sum(item["sales_minor"] for item in series.values())
     return {"from": start_date.isoformat(), "to": today.isoformat(), "timezone": timezone_name,
             "kpis": {"today_orders": series[today.isoformat()]["orders"], "today_sales_minor": series[today.isoformat()]["sales_minor"],
-                     "pending_orders": sum(1 for item in orders if item.order_status == "NEW"), "pending_review": pending_review,
-                     "pending_refunds": int(pending_refunds), "total_users": len(customers),
+                     "pending_orders": int(pending_orders), "pending_review": int(pending_review),
+                     "pending_refunds": int(pending_refunds), "total_users": total_users,
                      "new_users": series[today.isoformat()]["new_users"], "daily_active": series[today.isoformat()]["daily_active"]},
             "series": [{"date": key, **value} for key, value in series.items()],
             "status_breakdown": status_breakdown, "payment_breakdown": payment_breakdown,

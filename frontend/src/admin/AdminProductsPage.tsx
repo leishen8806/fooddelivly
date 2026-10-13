@@ -74,7 +74,7 @@ export default function AdminProductsPage() {
   const columns = [
     { key: 'image', header: t('admin.productImage'), render: (product: Product) => product.image_key ? <img className="catalog-thumb" src={product.image_key} alt="" /> : <span className="catalog-thumb-placeholder" aria-hidden="true">{localizedLabel(product.name, i18n.language).slice(0, 1)}</span> },
     { key: 'name', header: t('admin.productName'), render: (product: Product) => <span className="catalog-name-cell"><strong>{localizedLabel(product.name, i18n.language)}</strong>{hasMissingTranslation(product.name) && <small className="translation-missing">{t('admin.localized.missing')}</small>}</span> },
-    { key: 'categories', header: t('admin.categories'), render: (product: Product) => <span className="catalog-chips">{(product.category_ids?.length ? product.category_ids : [product.category_id]).map((id) => <span className="catalog-chip" key={id}>{categoryName(id)}</span>)}</span> },
+    { key: 'categories', header: t('admin.category'), render: (product: Product) => <span className="catalog-chips">{(product.category_ids?.length ? product.category_ids : [product.category_id]).map((id) => <span className="catalog-chip" key={id}>{categoryName(id)}</span>)}</span> },
     { key: 'price', header: t('admin.price'), render: (product: Product) => formatAmount(product.price_minor, product.currency, i18n.language) },
     { key: 'options', header: t('admin.productOptions'), render: (product: Product) => (product.option_groups || []).length || '—' },
     { key: 'saleWindows', header: t('admin.saleWindows'), render: (product: Product) => product.has_sale_window ? (product.sale_windows || []).map((window) => `${window.start}–${window.end}`).join(', ') : t('admin.allDay') },

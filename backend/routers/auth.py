@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import func
 from database import get_db
-from models import Customer, Staff, Store
+from models import AuditLog, Customer, Staff, Store
 from auth_utils import validate_telegram_init_data, verify_password, create_access_token
 from dependencies import get_current_customer, get_current_staff
 from customer_activity import record_customer_activity_best_effort
@@ -29,6 +29,7 @@ class AdminLoginRequest(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     password: str
+    old_password: str | None = None
 
 class LanguagePreferenceRequest(BaseModel):
     language: Literal["zh-CN", "en", "km"]
@@ -183,8 +184,20 @@ async def admin_change_password(req: PasswordChangeRequest,
     staff = result.scalars().first()
     if staff is None:
         raise HTTPException(status_code=401, detail="Staff account not found")
+    forced_change = bool(staff.must_change_password)
+    if not forced_change:
+        if not req.old_password or not verify_password(req.old_password, staff.password_hash):
+            raise HTTPException(status_code=403, detail="Current password is required")
     staff.password_hash = get_password_hash(req.password)
     staff.must_change_password = False
+    db.add(AuditLog(
+        actor_staff_id=staff.id,
+        entity_type="staff",
+        entity_id=str(staff.id),
+        action="password_changed",
+        store_id=staff.store_id,
+        details={"forced": forced_change},
+    ))
     await db.commit()
     return {"message": "Password updated"}
 

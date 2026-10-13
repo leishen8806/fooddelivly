@@ -1,4 +1,6 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
+import { join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const locales = JSON.parse(await readFile(new URL('../../docs/ui/locales.json', import.meta.url), 'utf8'));
 const languages = Object.keys(locales);
@@ -12,6 +14,26 @@ for (const language of rest) {
   for (const key of actual) if (!expected.has(key)) errors.push(`${language}: extra ${key}`);
 }
 
+if (errors.length) {
+  console.error(errors.join('\n'));
+  process.exit(1);
+}
+
+const referenced = new Set();
+async function scan(directory) {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) await scan(path);
+    if (!entry.isFile() || !['.ts', '.tsx'].includes(extname(entry.name))) continue;
+    const source = await readFile(path, 'utf8');
+    const pattern = /(?:^|[^A-Za-z0-9_$])(?:[A-Za-z_$][\w$]*\.)?t\(\s*["']([^"']+)["']/g;
+    for (const match of source.matchAll(pattern)) referenced.add(match[1]);
+  }
+}
+await scan(fileURLToPath(new URL('../src', import.meta.url)));
+for (const key of [...referenced].sort()) {
+  if (!expected.has(key) && !key.includes('${')) errors.push(`source: missing ${key}`);
+}
 if (errors.length) {
   console.error(errors.join('\n'));
   process.exit(1);
