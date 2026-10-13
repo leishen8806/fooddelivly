@@ -4,13 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import AdminRecharges from '../components/AdminRecharges';
-import AdminDailyReport from '../components/AdminDailyReport';
 import { type OptionGroup } from '../components/ProductOptionsPicker';
 import AdminProductRules from '../components/AdminProductRules';
 import AdminCoupons from '../components/AdminCoupons';
 import { useAuthStore } from '../store/authStore';
 import { AdminLayout } from './layout/AdminLayout';
-import type { AdminSection } from './layout/nav';
+import { adminPathForSection, type AdminSection } from './layout/nav';
 
 type SaleWindow = { start: string; end: string; overnight: boolean };
 type Product = { id: number; category_id: number; category_ids?: number[]; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean; sweetness_enabled: boolean; sale_windows?: SaleWindow[]; has_sale_window?: boolean; on_sale_now?: boolean; orderable?: boolean; next_sale_start?: string | null; option_groups?: OptionGroup[] };
@@ -98,11 +97,11 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [section, setSection] = useState<AdminSection>(initialSection);
-  const selectSection = (next: AdminSection) => { setSection(next); navigate(`/admin/${next}`); };
+  const selectSection = (next: AdminSection) => { setSection(next); navigate(adminPathForSection(next)); };
   const [orderFilter, setOrderFilter] = useState('ALL');
   const [error, setError] = useState('');
-  const [from, setFrom] = useState(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
-  const [to, setTo] = useState(() => new Date().toISOString().slice(0, 10));
+  const [from] = useState(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
+  const [to] = useState(() => new Date().toISOString().slice(0, 10));
   const emptyProduct = { nameEn: '', nameZh: '', nameKm: '', descriptionEn: '', descriptionZh: '', descriptionKm: '', price: '', categoryIds: [] as number[], imageUrl: '', currency: '', sweetnessEnabled: false };
   const [newProduct, setNewProduct] = useState(emptyProduct);
   const [editingProductId, setEditingProductId] = useState<number | null>(null);
@@ -374,8 +373,7 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
       </section>
     </>}
     {section === 'recharges' && <AdminRecharges role={role} />}
-    {section === 'finance' && <AdminDailyReport role={role} />}
-    {section === 'finance' && <section className="panel"><div className="panel-heading"><h2>{t('admin.finance')}</h2><div><label>{t('admin.from')} <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>{t('admin.to')} <input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div></div><p>{t('admin.timezone')}: {stats?.timezone}</p><p>{t('admin.manualReviewBasis')}</p><p className="finance-note">{t('admin.financeSeparationHint')}</p><div className="metric-row"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><div className="metric"><span>{t('admin.cancelledCount')}</span><strong>{stats?.cancelled_count ?? '—'}</strong></div></div>{(stats?.by_currency || []).map((row: FinanceCurrencyRow) => <div className="metric-row" key={row.currency}><div className="metric"><span>{t('admin.orderSales')}</span><strong>{amount(row.order_sales_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.orderSalesSubtotal')}: {amount(row.order_sales_subtotal_minor ?? 0, row.currency, i18n.language)} · {t('admin.orderDiscount')}: -{amount(row.order_sales_discount_minor ?? 0, row.currency, i18n.language)} · {t('admin.orderTotalGross')}: {amount(row.order_total_minor ?? 0, row.currency, i18n.language)}</small></div><div className="metric"><span>{t('admin.externalOrderReceipts')}</span><strong>{amount(row.external_order_receipts_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.walletOrderPayments')}</span><strong>{amount(row.wallet_paid_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.rechargeCredited')}</span><strong>{amount(row.recharge_credited_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric accent" title={t('admin.netCashInflowHint')}><span>{t('admin.netCashInflow')}</span><strong>{amount(row.net_cash_inflow_minor ?? row.cash_inflow_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.cashInflow')}: {amount(row.cash_inflow_minor ?? 0, row.currency, i18n.language)} · {t('admin.refundAbaDone')}: -{amount(row.refund_aba_done_minor ?? 0, row.currency, i18n.language)}</small></div><div className="metric"><span>{t('admin.refundWalletDone')}</span><strong>{amount(row.refund_wallet_done_minor ?? 0, row.currency, i18n.language)}</strong></div><div className={`metric${(row.refund_pending_count ?? 0) > 0 ? ' warning' : ''}`}><span>{t('admin.refundPending')}</span><strong>{amount(row.refund_pending_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.refundPendingDetail', { count: row.refund_pending_count ?? 0 })}</small></div><div className="metric"><span>{t('admin.shortageRemoved')}</span><strong>{amount(row.shortage_removed_minor ?? 0, row.currency, i18n.language)}</strong></div>{(row.refund_reconcile_diff_minor ?? 0) !== 0 && <div className="metric warning" role="alert"><span>{t('admin.refundReconcileDiff')}</span><strong>{amount(row.refund_reconcile_diff_minor ?? 0, row.currency, i18n.language)}</strong></div>}<div className="metric warning"><span>{t('admin.inReview')}</span><strong>{amount(row.in_review_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.cancelledAmount')}</span><strong>{amount(row.cancelled_total_minor ?? 0, row.currency, i18n.language)}</strong></div></div>)}</section>}
+
     {section === 'customers' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><div><span className="eyebrow">{t('admin.customerList')}</span><h2>{t('nav.customers')}</h2></div><label>{t('common.search')}<input type="search" value={customerSearch} onChange={(event) => setCustomerSearch(event.target.value)} placeholder={t('admin.searchCustomers')} /></label></div>
       {customers.length === 0 ? <p className="state">{t('admin.noCustomers')}</p> : <div className="customer-table-wrap"><table className="customer-table"><thead><tr><th>{t('admin.telegramName')}</th><th>{t('admin.telegramId')}</th><th>{t('admin.telegramChat')}</th><th>{t('admin.orderCount')}</th><th>{t('admin.completedOrderCount')}</th></tr></thead><tbody>{customers.filter((customer) => `${customer.display_name || ''} ${customer.username || ''} ${customer.telegram_user_id}`.toLowerCase().includes(customerSearch.trim().toLowerCase())).map((customer) => <tr key={customer.id}><td>{customer.display_name || customer.username || '—'}{customer.username && <small>@{customer.username}</small>}</td><td>{customer.telegram_user_id}</td><td><a href={customer.telegram_chat_url}>{t('admin.telegramChat')}</a></td><td>{customer.order_count}</td><td>{customer.completed_order_count}</td></tr>)}</tbody></table></div>}
     </section>}
@@ -441,4 +439,3 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
     </div>
   </AdminLayout>;
 }
-

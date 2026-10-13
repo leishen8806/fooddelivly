@@ -5,6 +5,7 @@ import axios from 'axios';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import { AdminLayout } from './layout/AdminLayout';
+import { adminPathForSection } from './layout/nav';
 import { DataTable } from './components/DataTable';
 import { ConfirmDialog } from './components/ConfirmDialog';
 
@@ -111,7 +112,7 @@ function AdminOrdersList() {
   useEffect(() => { void load(filters); }, [filters, load]);
 
   const update = (patch: Partial<OrderListFilters>) => setFilters((current) => ({ ...current, ...patch, page: patch.page ?? 1 }));
-  const navigateSection = (section: ComponentProps<typeof AdminLayout>['activeSection']) => navigate(`/admin/${section}`);
+  const navigateSection = (section: ComponentProps<typeof AdminLayout>['activeSection']) => navigate(adminPathForSection(section));
   const copyTelegramId = async (telegramUserId?: string) => {
     if (telegramUserId) await navigator.clipboard.writeText(telegramUserId);
   };
@@ -286,7 +287,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
     return !['CANCELLED', 'COMPLETED'].includes(current.order_status)
       && (current.payment_status !== 'PAID_CONFIRMED' || (walletOnly && ['NEW', 'ACCEPTED', 'PREPARING'].includes(current.order_status)));
   };
-  const navigateSection = (section: ComponentProps<typeof AdminLayout>['activeSection']) => navigate(`/admin/${section}`);
+  const navigateSection = (section: ComponentProps<typeof AdminLayout>['activeSection']) => navigate(adminPathForSection(section));
 
   return <AdminLayout role={role || 'STAFF'} activeSection="orders" onNavigate={navigateSection} onSignOut={() => { logoutAdmin(); navigate('/admin/login'); }} isHq={role === 'MANAGER' && storeId === null}>
     <section className="admin-page admin-order-detail">

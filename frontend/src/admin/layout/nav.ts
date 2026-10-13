@@ -7,6 +7,8 @@ export type AdminSection =
   | 'customers'
   | 'products'
   | 'coupons'
+  | 'financeDaily'
+  | 'financeStats'
   | 'finance'
   | 'audit'
   | 'staff'
@@ -47,7 +49,10 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
   {
     key: 'finance',
     labelKey: 'admin.nav.finance',
-    items: [{ key: 'finance', path: '/admin/finance', labelKey: 'nav.finance' }],
+    items: [
+      { key: 'financeDaily', path: '/admin/finance/daily', labelKey: 'admin.dailyReport' },
+      { key: 'financeStats', path: '/admin/finance/stats', labelKey: 'nav.finance' },
+    ],
   },
   {
     key: 'system',
@@ -60,6 +65,9 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     ],
   },
 ];
+
+export const adminPathForSection = (section: AdminSection) =>
+  ADMIN_NAV_GROUPS.flatMap((group) => group.items).find((item) => item.key === section)?.path || `/admin/${section}`;
 
 export const isNavItemVisible = (item: AdminNavItem, role: AdminRole, isHq = false) => {
   if (item.roles && !item.roles.includes(role)) return false;

@@ -14,5 +14,10 @@ describe('admin navigation', () => {
     expect(isNavItemVisible(item, 'MANAGER', false)).toBe(false);
     expect(isNavItemVisible(item, 'MANAGER', true)).toBe(true);
   });
+
+  it('keeps daily reports and interval finance stats as separate entries', () => {
+    const finance = ADMIN_NAV_GROUPS.find((group) => group.key === 'finance');
+    expect(finance?.items.map((item) => item.path)).toEqual(['/admin/finance/daily', '/admin/finance/stats']);
+  });
 });
 

@@ -18,7 +18,7 @@ export function AdminLayout({ role, activeSection, onNavigate, onSignOut, childr
         {ADMIN_NAV_GROUPS.map((group) => {
           const items = group.items.filter((item) => isNavItemVisible(item, role, isHq));
           if (!items.length) return null;
-          return <div className="admin-nav-group" key={group.key}><span className="admin-nav-group-label">{t(group.labelKey)}</span>{items.map((item) => <button className={activeSection === item.key ? 'active' : ''} key={item.key} type="button" onClick={() => onNavigate(item.key)}><span aria-hidden="true">{item.key === 'overview' ? '▦' : item.key === 'orders' ? '▤' : item.key === 'recharges' ? '💰' : item.key === 'products' ? '▧' : item.key === 'coupons' ? '🎟' : item.key === 'finance' ? '▥' : item.key === 'audit' ? '◷' : item.key === 'staff' ? '⚙' : item.key === 'settings' ? '⌘' : '♧'}</span>{t(item.labelKey)}</button>)}</div>;
+          return <div className="admin-nav-group" key={group.key}><span className="admin-nav-group-label">{t(group.labelKey)}</span>{items.map((item) => <button className={activeSection === item.key ? 'active' : ''} key={item.key} type="button" onClick={() => onNavigate(item.key)}><span aria-hidden="true">{item.key === 'overview' ? '▦' : item.key === 'orders' ? '▤' : item.key === 'recharges' ? '💰' : item.key === 'products' ? '▧' : item.key === 'coupons' ? '🎟' : item.key === 'financeDaily' || item.key === 'financeStats' || item.key === 'finance' ? '▥' : item.key === 'audit' ? '◷' : item.key === 'staff' ? '⚙' : item.key === 'settings' ? '⌘' : '♧'}</span>{t(item.labelKey)}</button>)}</div>;
         })}
       </nav><div className="sidebar-footer"><span>{role === 'MANAGER' ? t('admin.manager') : t('admin.waiter')}</span><span>TEA CAFE</span></div>
     </aside>
