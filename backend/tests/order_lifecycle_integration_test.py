@@ -543,5 +543,127 @@ class LifecycleIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("4,500", text.replace(" ", ""), text)
 
 
+    # ------------------------------------------------ B1: 订单搜索 / 日期 / 隔离
+    async def _search(self, who="manager_a", **params):
+        async with self.client(who) as c:
+            resp = await c.get("/api/v1/admin/orders/search", params=params)
+        return resp
+
+    async def _local(self, y, m, d, hh=0, mm=0, ss=0):
+        from zoneinfo import ZoneInfo
+        await self.set_store(timezone="Asia/Phnom_Penh", currency="USD")
+        return datetime(y, m, d, hh, mm, ss, tzinfo=ZoneInfo("Asia/Phnom_Penh")).astimezone(timezone.utc)
+
+    async def test_b1_date_range_covers_whole_end_day_in_store_timezone(self):
+        cases = {
+            "before": await self._local(2026, 9, 30, 23, 59, 59),
+            "start": await self._local(2026, 10, 1, 0, 0, 0),
+            "end": await self._local(2026, 10, 2, 23, 59, 59),
+            "after": await self._local(2026, 10, 3, 0, 0, 0),
+        }
+        codes = {}
+        for name, ts in cases.items():
+            codes[name] = (await self.make_order(created_at=ts))["code"]
+        resp = await self._search(**{"from": "2026-10-01", "to": "2026-10-02"})
+        self.assertEqual(resp.status_code, 200, resp.text)
+        found = {row["public_code"] for row in resp.json()["items"]}
+        self.assertIn(codes["start"], found)
+        self.assertIn(codes["end"], found)
+        self.assertNotIn(codes["before"], found)
+        self.assertNotIn(codes["after"], found)
+        only_from = {r["public_code"] for r in (await self._search(**{"from": "2026-10-02"})).json()["items"]}
+        self.assertIn(codes["end"], only_from)
+        self.assertIn(codes["after"], only_from)
+        self.assertNotIn(codes["start"], only_from)
+        only_to = {r["public_code"] for r in (await self._search(**{"to": "2026-10-01"})).json()["items"]}
+        self.assertIn(codes["before"], only_to)
+        self.assertIn(codes["start"], only_to)
+        self.assertNotIn(codes["end"], only_to)
+        self.assertEqual((await self._search(**{"from": "2026-10-05", "to": "2026-10-01"})).status_code, 422)
+        self.assertEqual((await self._search(**{"from": "not-a-date"})).status_code, 422)
+
+    async def test_b1_search_by_code_nickname_username_and_escapes_wildcards(self):
+        async with self.sessions() as db:
+            c1 = await db.get(models.Customer, self.ids["cust1"])
+            c2 = await db.get(models.Customer, self.ids["cust2"])
+            c1.display_name, c1.username = "Aa_Bb", "tea_lover1"
+            c2.display_name, c2.username = "AaxBb", "other_user2"
+            await db.commit()
+        o1 = await self.make_order(customer="cust1")
+        o2 = await self.make_order(customer="cust2")
+
+        def codes(resp):
+            self.assertEqual(resp.status_code, 200, resp.text)
+            return {r["public_code"] for r in resp.json()["items"]}
+
+        self.assertEqual(codes(await self._search(q=o1["code"][2:7])) & {o1["code"], o2["code"]}, {o1["code"]})
+        self.assertEqual(codes(await self._search(q="aa_bb")) & {o1["code"], o2["code"]}, {o1["code"]},
+                         "下划线必须按字面匹配，不能当通配符匹配到 AaxBb")
+        self.assertEqual(codes(await self._search(q="@tea_lover1")) & {o1["code"], o2["code"]}, {o1["code"]})
+        self.assertEqual(codes(await self._search(q="%")) & {o1["code"], o2["code"]}, set(), "百分号不是通配符")
+        injected = await self._search(q="' OR 1=1 --")
+        self.assertEqual(injected.status_code, 200)
+        self.assertEqual(codes(injected) & {o1["code"], o2["code"]}, set())
+        item = next(r for r in (await self._search(q=o1["code"])).json()["items"] if r["public_code"] == o1["code"])
+        self.assertEqual(item["customer"]["username"], "tea_lover1")
+        self.assertEqual(item["customer"]["telegram_chat_url"], "https://t.me/tea_lover1")
+
+    async def test_b1_isolation_roles_and_received_amount(self):
+        paid = await self.make_order(order_status="PREPARING", payment_status="PARTIALLY_REFUNDED", external_paid=1000,
+                                     total=300)
+        unpaid = await self.make_order()
+        await self.add_refund(paid["id"], 450, "ABA_MANUAL", "DONE", done_at=_now())
+        await self.add_refund(paid["id"], 250, "ABA_MANUAL", "PENDING")
+        rows = {r["public_code"]: r for r in (await self._search(limit=100)).json()["items"]}
+        self.assertEqual(rows[paid["code"]]["received_minor"], 550, "实收 = 已确认收款 1000 - 已完成退款 450")
+        self.assertEqual(rows[paid["code"]]["refund_pending_minor"], 250)
+        self.assertEqual(rows[unpaid["code"]]["received_minor"], 0)
+        # 他店经理：列表看不到，详情 404；本店 STAFF 可用
+        other = {r["public_code"] for r in (await self._search("manager_b", limit=100)).json()["items"]}
+        self.assertNotIn(paid["code"], other)
+        async with self.client("manager_b") as c:
+            self.assertEqual((await c.get(f"/api/v1/admin/orders/{paid['code']}")).status_code, 404)
+        async with self.client("staff_a") as c:
+            detail = await c.get(f"/api/v1/admin/orders/{paid['code']}")
+            self.assertEqual(detail.status_code, 200, detail.text)
+            body = detail.json()
+            self.assertEqual(body["received_minor"], 550)
+            self.assertEqual(len(body["refunds"]), 2)
+        async with self.client(None) as c:
+            self.assertEqual((await c.get("/api/v1/admin/orders/search")).status_code, 401)
+        # 非法参数
+        self.assertEqual((await self._search(sort="password")).status_code, 422)
+        self.assertEqual((await self._search(status="DROP TABLE")).status_code, 422)
+        self.assertEqual((await self._search(limit=1000)).status_code, 422)
+        async with self.client("manager_a") as c:
+            data = (await c.get("/api/v1/admin/orders/counts")).json()
+        self.assertGreaterEqual(data["counts"]["NEW"], 1)
+
+    async def test_b1_search_sql_statement_count_does_not_grow_with_rows(self):
+        from sqlalchemy import event
+        statements = []
+
+        def count(conn, cursor, statement, params, context, executemany):
+            statements.append(statement)
+
+        for _ in range(3):
+            await self.make_order(created_at=await self._local(2026, 8, 1, 12))
+        event.listen(self.engine.sync_engine, "before_cursor_execute", count)
+        try:
+            statements.clear()
+            small = await self._search(limit=3, **{"from": "2026-08-01", "to": "2026-08-01"})
+            small_count = len(statements)
+            for _ in range(22):
+                await self.make_order(created_at=await self._local(2026, 8, 1, 13))
+            statements.clear()
+            large = await self._search(limit=25, **{"from": "2026-08-01", "to": "2026-08-01"})
+            large_count = len(statements)
+        finally:
+            event.remove(self.engine.sync_engine, "before_cursor_execute", count)
+        self.assertEqual(len(small.json()["items"]), 3)
+        self.assertEqual(len(large.json()["items"]), 25)
+        self.assertEqual(small_count, large_count, f"3 行 {small_count} 条 SQL，25 行 {large_count} 条：存在 N+1")
+
+
 if __name__ == "__main__":
     unittest.main()
