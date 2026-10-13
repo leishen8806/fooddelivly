@@ -135,6 +135,8 @@ function CustomerPage() {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersError, setOrdersError] = useState('');
   const [profile, setProfile] = useState<CustomerProfile | null>(null);
+  // 购物车按 Telegram 用户隔离保存，关闭 Mini App 后再次进入仍可恢复。
+  const [cartOwnerId, setCartOwnerId] = useState<number | null>(null);
   // 钱包余额（最小单位）。结算时自动优先抵扣，剩余金额走 ABA。
   const [walletTotal, setWalletTotal] = useState(0);
   const [profileLoading, setProfileLoading] = useState(true);
@@ -236,6 +238,42 @@ function CustomerPage() {
     }
   }, [t]);
   useEffect(() => { void loadProfile(); }, [loadProfile]);
+  useEffect(() => {
+    const customerId = profile?.customer_id;
+    if (!customerId) return;
+    setCartOwnerId(null);
+    try {
+      const stored = localStorage.getItem(`teacafe.cart.${customerId}`);
+      const parsed = stored ? JSON.parse(stored) : [];
+      const restored = Array.isArray(parsed) ? parsed.filter((line) => (
+        line && line.product && Number.isFinite(line.product.id)
+        && Number.isInteger(line.quantity) && line.quantity > 0
+        && Number.isFinite(line.unitPrice)
+        && (line.sweetness === null || Number.isFinite(line.sweetness))
+        && Array.isArray(line.selections)
+      )).map((line) => ({
+        ...line,
+        quantity: Math.min(99, line.quantity),
+        selections: line.selections.filter((selection: CartSelection) => (
+          Number.isFinite(selection?.group_id) && Number.isFinite(selection?.option_id)
+        )),
+      })) : [];
+      setCart(restored);
+    } catch {
+      // 损坏或不可用的本地缓存不应阻止用户继续点餐。
+      setCart([]);
+    }
+    setCartOwnerId(customerId);
+  }, [profile?.customer_id]);
+  useEffect(() => {
+    const customerId = profile?.customer_id;
+    if (!customerId || cartOwnerId !== customerId) return;
+    try {
+      localStorage.setItem(`teacafe.cart.${customerId}`, JSON.stringify(cart));
+    } catch {
+      // 浏览器存储空间不足时仍保留当前会话内的购物车。
+    }
+  }, [cart, cartOwnerId, profile?.customer_id]);
   useEffect(() => { void loadCustomerCoupons(); }, [loadCustomerCoupons]);
   useEffect(() => {
     let active = true;
