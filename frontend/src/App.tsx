@@ -461,6 +461,12 @@ function CustomerPage() {
       if (status === 409) idempotencyKey.current = null;
       if (detail.includes('余额')) {
         setStatus(t('wallet.balanceInsufficient'));
+      } else if (selectedCouponId && detail === 'Coupon has been fully claimed') {
+        setStatus(t('coupon.fullyClaimed'));
+      } else if (selectedCouponId && (detail.includes('expired') || detail.includes('not available') || detail.includes('not started'))) {
+        setStatus(t('coupon.unavailable'));
+      } else if (selectedCouponId && detail.includes('minimum spend')) {
+        setStatus(t('coupon.notApplicable'));
       } else {
         setStatus(status === 409 ? t('cart.priceChanged') : t('checkout.failed'));
       }

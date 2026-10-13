@@ -497,7 +497,8 @@
     "coupon.fullyClaimed": "该优惠券已领完",
     "report.daily.totalCustomers": "总用户数：{count} 人",
     "admin.reportTotalCustomers": "总用户数",
-    "admin.reportNewCustomers": "今日用户数"
+    "admin.reportNewCustomers": "今日用户数",
+    "coupon.unavailable": "该优惠券已失效或不在活动时间内"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -997,7 +998,8 @@
     "coupon.fullyClaimed": "This coupon has been fully claimed",
     "report.daily.totalCustomers": "Total users: {count}",
     "admin.reportTotalCustomers": "Total users",
-    "admin.reportNewCustomers": "Today's users"
+    "admin.reportNewCustomers": "Today's users",
+    "coupon.unavailable": "This coupon is unavailable or outside its active period"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1497,6 +1499,7 @@
     "coupon.fullyClaimed": "គូប៉ុងនេះត្រូវបានទទួលអស់ហើយ",
     "report.daily.totalCustomers": "អ្នកប្រើប្រាស់សរុប៖ {count} នាក់",
     "admin.reportTotalCustomers": "អ្នកប្រើប្រាស់សរុប",
-    "admin.reportNewCustomers": "អ្នកប្រើប្រាស់ថ្ងៃនេះ"
+    "admin.reportNewCustomers": "អ្នកប្រើប្រាស់ថ្ងៃនេះ",
+    "coupon.unavailable": "គូប៉ុងនេះមិនអាចប្រើបាន ឬនៅក្រៅរយៈពេលសកម្ម"
   }
 }

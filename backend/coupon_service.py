@@ -76,13 +76,18 @@ def discount_for(coupon: CouponCampaign, subtotal_minor: int) -> int:
     return max(0, min(discount, subtotal_minor))
 
 
-def ensure_campaign_usable(coupon: CouponCampaign, now: datetime | None = None) -> None:
+def ensure_campaign_usable(
+    coupon: CouponCampaign,
+    now: datetime | None = None,
+    *,
+    check_claim_limit: bool = True,
+) -> None:
     current = now or now_utc()
     if coupon.status != "ACTIVE":
         raise CouponError("Coupon is not available", 409)
     if current < coupon.starts_at or current > coupon.ends_at:
         raise CouponError("Coupon is expired or not started", 409)
-    if coupon.distribution_mode == "PUBLIC" and coupon.total_claim_limit is not None and coupon.total_claimed_quantity >= coupon.total_claim_limit:
+    if check_claim_limit and coupon.distribution_mode == "PUBLIC" and coupon.total_claim_limit is not None and coupon.total_claimed_quantity >= coupon.total_claim_limit:
         raise CouponError("Coupon has been fully claimed", 409)
 
 
@@ -225,6 +230,8 @@ async def reserve_for_order(
         raise CouponError("Coupon has already been used", 409)
     if coupon.currency != currency:
         raise CouponError("Coupon currency does not match the order", 409)
-    ensure_campaign_usable(coupon)
+    # The campaign's total claim cap only limits new claims. Users who already
+    # hold a coupon can still redeem it while the campaign remains active.
+    ensure_campaign_usable(coupon, check_claim_limit=False)
     discount = discount_for(coupon, subtotal_minor)
     return customer_coupon, coupon, discount
