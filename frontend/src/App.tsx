@@ -13,7 +13,7 @@ import ProductOptionsModal from './components/ProductOptionsModal';
 import AdminProductRules from './components/AdminProductRules';
 import AdminCoupons from './components/AdminCoupons';
 import { useAuthStore } from './store/authStore';
-import { getTelegramStartParam, openTelegramLink } from './telegramLinks';
+import { openTelegramLink, waitForTelegramStartParam } from './telegramLinks';
 import './index.css';
 
 type SaleWindow = { start: string; end: string; overnight: boolean };
@@ -230,18 +230,22 @@ function CustomerPage() {
   useEffect(() => { void loadProfile(); }, [loadProfile]);
   useEffect(() => { void loadCustomerCoupons(); }, [loadCustomerCoupons]);
   useEffect(() => {
-    const startParam = getTelegramStartParam();
-    if (!startParam || claimedStartParam.current === startParam) return;
-    claimedStartParam.current = startParam;
-    const requestKey = crypto.randomUUID();
-    void api.post('/api/v1/coupons/claim', { code: startParam }, { headers: { 'Idempotency-Key': requestKey } })
-      .then((response) => {
-        setCouponClaimNotice({ kind: 'success', text: `${t('coupon.claimSuccess')}: ${response.data?.coupon?.name || ''}` });
-        void loadCustomerCoupons();
-      })
-      .catch((requestError: any) => {
-        setCouponClaimNotice({ kind: 'error', text: requestError?.response?.data?.detail || t('coupon.claimFailed') });
-      });
+    let active = true;
+    void waitForTelegramStartParam().then((startParam) => {
+      if (!active || !startParam || claimedStartParam.current === startParam) return;
+      claimedStartParam.current = startParam;
+      const requestKey = crypto.randomUUID();
+      void api.post('/api/v1/coupons/claim', { code: startParam }, { headers: { 'Idempotency-Key': requestKey } })
+        .then((response) => {
+          if (!active) return;
+          setCouponClaimNotice({ kind: 'success', text: `${t('coupon.claimSuccess')}: ${response.data?.coupon?.name || ''}` });
+          void loadCustomerCoupons();
+        })
+        .catch((requestError: any) => {
+          if (active) setCouponClaimNotice({ kind: 'error', text: requestError?.response?.data?.detail || t('coupon.claimFailed') });
+        });
+    });
+    return () => { active = false; };
   }, [loadCustomerCoupons, t]);
 
   useEffect(() => {

@@ -2648,7 +2648,13 @@ small {
 
 
 .coupon-claim-notice {
-  margin: 12px 16px 0;
+  position: fixed;
+  z-index: 70;
+  top: max(1rem, env(safe-area-inset-top));
+  right: 1rem;
+  left: 1rem;
+  max-width: 34rem;
+  margin: 0 auto;
   padding: 10px 14px;
   border-radius: 12px;
   display: flex;
@@ -2656,6 +2662,7 @@ small {
   justify-content: space-between;
   gap: 12px;
   font-size: 13px;
+  box-shadow: 0 0.75rem 2rem rgb(25 42 47 / 18%);
 }
 .coupon-claim-notice.success { background: #e5f5ef; color: #17634f; }
 .coupon-claim-notice.error { background: #fff0ed; color: #a53d2f; }
