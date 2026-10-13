@@ -14,6 +14,12 @@ type ReportPayload = {
   order_sales_discount_minor: number;
   order_sales_delivery_fee_minor: number;
   order_sales_service_fee_minor: number;
+  shortage_removed_minor: number;
+  refund_wallet_done_minor: number;
+  refund_aba_done_minor: number;
+  refund_pending_minor: number;
+  refund_pending_count: number;
+  refund_reconcile_diff_minor: number;
   received_total_minor: number;
   received_manual_minor: number;
   received_wallet_minor: number;
@@ -124,6 +130,11 @@ export default function AdminDailyReport({ role }: { role: string | null }) {
         <div className="metric"><span>{t('admin.reportServiceFee')}</span><strong>{formatAmount(data.report.order_sales_service_fee_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.orderTotalGross')}</span><strong>{formatAmount(data.report.orders_total_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.confirmedReceipts')}</span><strong>{formatAmount(data.report.received_total_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.shortageRemoved')}</span><strong>{formatAmount(data.report.shortage_removed_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.refundWalletDone')}</span><strong>{formatAmount(data.report.refund_wallet_done_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.refundAbaDone')}</span><strong>{formatAmount(data.report.refund_aba_done_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className={`metric${data.report.refund_pending_count > 0 ? ' warning' : ''}`}><span>{t('admin.refundPending')}</span><strong>{formatAmount(data.report.refund_pending_minor, data.report.currency, i18n.language)}</strong><small>{t('admin.refundPendingDetail', { count: data.report.refund_pending_count })}</small></div>
+        {data.report.refund_reconcile_diff_minor !== 0 && <div className="metric warning" role="alert"><span>{t('admin.refundReconcileDiff')}</span><strong>{formatAmount(data.report.refund_reconcile_diff_minor, data.report.currency, i18n.language)}</strong></div>}
         <div className="metric"><span>{t('admin.reportTopUps')} × {data.report.recharges_credited}</span><strong>{formatAmount(data.report.recharges_amount_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.reportBonus')}</span><strong>{formatAmount(data.report.recharges_bonus_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.reportTotalCustomers')}</span><strong>{data.report.total_customers}</strong></div>

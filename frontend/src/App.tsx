@@ -27,16 +27,18 @@ type OrderItemOptions = { sweetness?: number; price_delta_minor?: number; select
 type CartSelection = { group_id: number; option_id: number };
 type CartLine = { product: Product; quantity: number; sweetness: number | null; selections: CartSelection[]; unitPrice: number };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
-type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; subtotal_minor?: number; coupon_name_snapshot?: string | null; coupon_discount_minor?: number; delivery_fee_minor?: number; service_fee_minor?: number; wallet_paid_minor?: number; external_due_minor?: number; items?: Array<{ name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: OrderItemOptions }> };
+type OrderRefund = { id: number; amount_minor: number; method: string; status: string; requires_approval?: boolean };
+type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; subtotal_minor?: number; coupon_name_snapshot?: string | null; coupon_discount_minor?: number; delivery_fee_minor?: number; service_fee_minor?: number; wallet_paid_minor?: number; external_due_minor?: number; refunds?: OrderRefund[]; items?: Array<{ id?: number; name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: OrderItemOptions }> };
 type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; wallet_paid_minor?: number; external_due_minor?: number; created_at: string };
-type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; subtotal_minor?: number; coupon_name?: string | null; coupon_discount_minor?: number; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null };
+type OrderIssue = { id: number; issue_type: string; status: string; note?: string | null; replacement_name?: string | null; replacement_unit_price_minor?: number | null; order_item_id?: number | null };
+type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; subtotal_minor?: number; coupon_name?: string | null; coupon_discount_minor?: number; delivery_fee_minor?: number; service_fee_minor?: number; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null; issues?: OrderIssue[] };
 type CustomerCoupon = { id: number; coupon_id: number; name: string; description?: string | null; currency: string; coupon_type: 'DISCOUNT' | 'FIXED'; min_spend_minor: number; discount_percent?: number | null; discount_cap_minor?: number | null; fixed_discount_minor?: number | null; starts_at: string; ends_at: string; status: 'AVAILABLE' | 'USED' | 'EXPIRED' | 'REVOKED' };
 type LanguageCode = 'zh-CN' | 'en' | 'km';
 type CustomerProfile = { customer_id: number; display_name: string | null; username: string | null; language: LanguageCode; preferred_language: LanguageCode | null };
 type BusinessHourRow = { start: string; end: string };
 type StoreSettings = { currency: string; timezone: string; aba_qr_asset_key: string | null; payment_link: string | null; telegram_staff_group_id: string | null; staff_group_language: string; open_hours: string | null;
   // 经营参数：下单时由服务端强制校验
-  is_accepting_orders: boolean; business_hours: BusinessHourRow[]; min_order_minor: number; delivery_fee_minor: number; service_fee_minor: number };
+  is_accepting_orders: boolean; business_hours: BusinessHourRow[]; min_order_minor: number; delivery_fee_minor: number; service_fee_minor: number; unpaid_order_timeout_minutes: number; unpaid_order_reminder_minutes: number; shortage_customer_response_timeout_minutes: number; shortage_refund_review_minor: number };
 type Staff = { id: number; login_name: string; role: string; active: boolean; telegram_user_id: string | null };
 type Customer = { id: number; telegram_user_id: string; display_name: string | null; username: string | null; telegram_chat_url: string; order_count: number; completed_order_count: number; created_at: string };
 type AuditEntry = { id: number; entity_type: string; entity_id: string; action: string; operator_name: string; operator_telegram_id: string | null; source: string; details: Record<string, any>; created_at: string };
@@ -527,6 +529,28 @@ function CustomerPage() {
     void loadCustomerOrders();
   };
 
+  const cancelCustomerOrder = async () => {
+    if (!orderDetails || !window.confirm(t('order.cancelConfirm'))) return;
+    try {
+      await api.post(`/api/v1/orders/${orderDetails.public_code}/cancel`);
+      await openCustomerOrder(orderDetails.public_code);
+      void loadCustomerOrders();
+    } catch (requestError: any) {
+      setOrdersError(requestError?.response?.data?.detail || t('error.generic'));
+    }
+  };
+
+  const resolveCustomerIssue = async (issue: OrderIssue, resolution: 'REMOVE_ITEM' | 'REPLACE_ITEM' | 'CANCEL_ORDER') => {
+    if (!orderDetails) return;
+    try {
+      await api.post(`/api/v1/orders/${orderDetails.public_code}/issues/${issue.id}/resolve`, { resolution });
+      await openCustomerOrder(orderDetails.public_code);
+      void loadCustomerOrders();
+    } catch (requestError: any) {
+      setOrdersError(requestError?.response?.data?.detail || t('error.generic'));
+    }
+  };
+
   const saveLanguage = async (language = languageDraft) => {
     setLanguageSaving(true);
     setLanguageError('');
@@ -667,6 +691,7 @@ function CustomerPage() {
       {(orderDetails.wallet_paid_minor ?? 0) > 0 && <p className="payment-breakdown-line">{t('payment.walletApplied')}: <strong>{amount(orderDetails.wallet_paid_minor ?? 0, orderDetails.currency, i18n.language)}</strong></p>}
       {(orderDetails.coupon_discount_minor ?? 0) > 0 && <p className="payment-breakdown-line coupon-discount">{t('coupon.couponDiscount')}: <strong>-{amount(orderDetails.coupon_discount_minor ?? 0, orderDetails.currency, i18n.language)}</strong></p>}
       {(orderDetails.external_due_minor ?? orderDetails.total_minor) > 0 && <p className="payment-breakdown-line">{t('payment.abaDue')}: <strong>{amount(orderDetails.external_due_minor ?? orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>}
+      {(orderDetails.issues ?? []).length > 0 && <section className="order-issues"><strong>{t('order.shortageChoose')}</strong>{orderDetails.issues?.map((issue) => <div className="order-issue" key={issue.id}><p>{issue.note || t('order.shortagePending')}</p><div className="actions"><button type="button" onClick={() => void resolveCustomerIssue(issue, 'REMOVE_ITEM')}>{t('order.shortageRemove')}</button>{issue.replacement_name && <button type="button" onClick={() => void resolveCustomerIssue(issue, 'REPLACE_ITEM')}>{t('order.shortageReplace')}: {issue.replacement_name}</button>}<button type="button" onClick={() => void resolveCustomerIssue(issue, 'CANCEL_ORDER')}>{t('order.shortageCancel')}</button></div></div>)}</section>}
       {!['PAID_CONFIRMED', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(orderDetails.payment_status) && <>
         {orderDetails.payment_qr_url && <img className="payment-qr" src={orderDetails.payment_qr_url} alt={t('payment.aba')} />}
         {orderDetails.payment_link && <a className="primary payment-link" href={orderDetails.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
@@ -675,6 +700,7 @@ function CustomerPage() {
         {orderDetails.bot_deeplink ? <button type="button" className="primary payment-link" onClick={() => openTelegramLink(orderDetails.bot_deeplink!)}>{t('payment.sendProof')}</button> : <p>{t('payment.botNotConfigured')}</p>}
       </>}
       {orderDetails.payment_status === 'REJECTED' && <p className="error">{t('payment.resubmit')}</p>}
+      {orderDetails.order_status === 'NEW' && ['UNPAID', 'REJECTED'].includes(orderDetails.payment_status) && <button type="button" className="danger-button" onClick={() => void cancelCustomerOrder()}>{t('order.cancel')}</button>}
       <button type="button" onClick={() => void refreshStatus()}>{t('payment.refreshStatus')}</button>
     </section></div>}
 
@@ -747,7 +773,7 @@ function AdminPage() {
   const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [feeInputs, setFeeInputs] = useState({ minOrder: '', delivery: '', service: '' });
-  const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null, is_accepting_orders: true, business_hours: [], min_order_minor: 0, delivery_fee_minor: 0, service_fee_minor: 0 });
+  const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null, is_accepting_orders: true, business_hours: [], min_order_minor: 0, delivery_fee_minor: 0, service_fee_minor: 0, unpaid_order_timeout_minutes: 0, unpaid_order_reminder_minutes: 0, shortage_customer_response_timeout_minutes: 0, shortage_refund_review_minor: 0 });
   const [staff, setStaff] = useState<Staff[]>([]);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerSearch, setCustomerSearch] = useState('');
@@ -844,6 +870,18 @@ function AdminPage() {
     try { await api.post(`/api/v1/admin/orders/${order.id}/status`, { status, reason }); await fetchData(); }
     catch { setError(t('error.generic')); } finally { setBusyId(null); }
   };
+  const reportShortage = async (order: Order, item: { id?: number; name: Record<string, string> | string }) => {
+    if (!item.id) return;
+    const note = window.prompt(t('admin.shortageNotePrompt'), label(typeof item.name === 'string' ? undefined : item.name, i18n.language) || (typeof item.name === 'string' ? item.name : ''));
+    if (note === null) return;
+    setBusyId(order.id);
+    try {
+      await api.post(`/api/v1/admin/orders/${order.id}/shortage`, { order_item_id: item.id, note });
+      await fetchData();
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.detail || t('error.generic'));
+    } finally { setBusyId(null); }
+  };
   const saveProduct = async (event: FormEvent) => {
     event.preventDefault();
     if (newProduct.categoryIds.length === 0) {
@@ -909,6 +947,10 @@ function AdminPage() {
         min_order_minor: toMinor(Number(feeInputs.minOrder || 0), storeSettings.currency),
         delivery_fee_minor: toMinor(Number(feeInputs.delivery || 0), storeSettings.currency),
         service_fee_minor: toMinor(Number(feeInputs.service || 0), storeSettings.currency),
+        unpaid_order_timeout_minutes: storeSettings.unpaid_order_timeout_minutes,
+        unpaid_order_reminder_minutes: storeSettings.unpaid_order_reminder_minutes,
+        shortage_customer_response_timeout_minutes: storeSettings.shortage_customer_response_timeout_minutes,
+        shortage_refund_review_minor: storeSettings.shortage_refund_review_minor,
       });
       await fetchData();
       setError('');
@@ -925,6 +967,15 @@ function AdminPage() {
       await fetchData();
     } catch (requestError: any) {
       setError(requestError?.response?.data?.detail || t('error.generic'));
+    }
+  };
+  const approveShortageRefund = async (refund: OrderRefund) => {
+    setError('');
+    try {
+      await api.post(`/api/v1/admin/order-refunds/${refund.id}/approve`, {});
+      await fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('common.error'));
     }
   };
 
@@ -981,9 +1032,9 @@ function AdminPage() {
           <strong>{order.public_code}</strong><span>{t('checkout.roomNumber')} {order.room_number}</span><span className={`admin-order-status status-${order.order_status.toLowerCase()}`}>{t(`order.status.${order.order_status.toLowerCase()}`)}</span><span className={`admin-payment-status payment-status-${order.payment_status.toLowerCase()}`}>{order.payment_status === 'PAID_CONFIRMED' ? t('payment.confirmed') : order.payment_status === 'REFUNDED' ? t('order.status.refunded') : order.payment_status === 'PARTIALLY_REFUNDED' ? t('payment.partiallyRefunded') : order.payment_status === 'PROOF_SUBMITTED' ? t('payment.pending') : order.payment_status === 'REJECTED' ? t('payment.rejected') : t('order.status.unpaid')}</span><b>{t('common.total')}: {amount(order.total_minor, order.currency, i18n.language)}</b>
           {((order.subtotal_minor ?? 0) > 0 || order.coupon_name_snapshot || (order.coupon_discount_minor ?? 0) > 0) && <small className="order-amount-breakdown">{order.subtotal_minor !== undefined && <>{t('common.subtotal')}: {amount(order.subtotal_minor, order.currency, i18n.language)}</>}{order.coupon_name_snapshot && <> · {t('bot.coupon')}: {order.coupon_name_snapshot}</>}{(order.coupon_discount_minor ?? 0) > 0 && <> · {t('coupon.couponDiscount')}: -{amount(order.coupon_discount_minor ?? 0, order.currency, i18n.language)}</>}</small>}
           {(order.wallet_paid_minor ?? 0) > 0 && <small className="order-payment-breakdown">{t('payment.walletApplied')}: {amount(order.wallet_paid_minor ?? 0, order.currency, i18n.language)}{(order.external_due_minor ?? 0) > 0 && <> · {t('payment.abaDue')}: {amount(order.external_due_minor ?? 0, order.currency, i18n.language)}</>}</small>}
-          {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined ? ` · ${t('order.sweetnessValue', { value: item.options.sweetness })}` : ''} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>)}</div> : null}
+          {order.items?.length ? <div className="order-items">{order.items.map((item, index) => <span key={`${order.id}-${index}`}><span>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined ? ` · ${t('order.sweetnessValue', { value: item.options.sweetness })}` : ''} · {amount(item.line_total_minor, order.currency, i18n.language)}</span>{item.id && order.order_status === 'NEW' && ['UNPAID', 'REJECTED'].includes(order.payment_status) && <button type="button" onClick={() => void reportShortage(order, item)}>{t('admin.reportShortage')}</button>}</span>)}</div> : null}
           {order.payment_status === 'PROOF_SUBMITTED' && <details><summary>{t('admin.openPaymentProof')}</summary>{imageErrors.has(order.id) ? <p className="error">{t('admin.paymentImageUnavailable')} <button type="button" onClick={() => setImageErrors((current) => { const next = new Set(current); next.delete(order.id); return next; })}>{t('common.retry')}</button></p> : <img className="payment-proof" src={`/api/v1/admin/orders/${order.id}/payment-proof`} alt={t('admin.paymentImage')} onError={() => setImageErrors((current) => new Set(current).add(order.id))} />}<p>{t('admin.checkActualPayment')}</p>{order.order_status === 'ACCEPTED' && <div className="actions"><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'APPROVED')}>{t('order.confirmPayment')}</button><button disabled={busyId === order.id} onClick={() => void reviewPayment(order, 'REJECTED')}>{t('order.reject')}</button></div>}</details>}
-          <div className="actions">{role === 'MANAGER' && ['UNPAID', 'REJECTED'].includes(order.payment_status) && <label className="payment-proof-upload"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadPaymentProof(order, event)} /><span>{proofUploadingId === order.id ? t('admin.uploadingImage') : t('admin.uploadPaymentProof')}</span></label>}{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{['WALLET', 'MIXED'].includes(order.payment_method || '') && ['PAID_CONFIRMED', 'PARTIALLY_REFUNDED'].includes(order.payment_status) && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
+          <div className="actions">{role === 'MANAGER' && order.refunds?.filter((refund) => refund.method === 'WALLET' && refund.status === 'PENDING' && refund.requires_approval).map((refund) => <button key={`approve-refund-${refund.id}`} onClick={() => void approveShortageRefund(refund)}>{t('admin.approveRefund')} · {amount(refund.amount_minor, order.currency, i18n.language)}</button>)}{role === 'MANAGER' && ['UNPAID', 'REJECTED'].includes(order.payment_status) && <label className="payment-proof-upload"><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void uploadPaymentProof(order, event)} /><span>{proofUploadingId === order.id ? t('admin.uploadingImage') : t('admin.uploadPaymentProof')}</span></label>}{order.order_status === 'NEW' && <button onClick={() => void changeStatus(order, 'ACCEPTED')}>{t('order.accept')}</button>}{order.order_status === 'PREPARING' && order.payment_status === 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'READY')}>{t('order.markReady')}</button>}{order.order_status === 'READY' && <button onClick={() => void changeStatus(order, 'DELIVERED')}>{t('order.markDelivered')}</button>}{order.order_status === 'DELIVERED' && <button onClick={() => void changeStatus(order, 'COMPLETED')}>{t('order.complete')}</button>}{!['CANCELLED', 'COMPLETED'].includes(order.order_status) && order.payment_status !== 'PAID_CONFIRMED' && <button onClick={() => void changeStatus(order, 'CANCELLED')}>{t('order.cancel')}</button>}{['WALLET', 'MIXED'].includes(order.payment_method || '') && ['PAID_CONFIRMED', 'PARTIALLY_REFUNDED'].includes(order.payment_status) && role === 'MANAGER' && <button onClick={() => void refundOrder(order)}>{t('admin.refundOrder')}</button>}</div>
         </article>)}</div>}
       </section>
     </>}
@@ -1011,7 +1062,7 @@ function AdminPage() {
       <div className="order-list">{products.map((product) => <article className="order-row" key={product.id}><strong>{label(product.name, i18n.language)}</strong><small>{(product.category_ids?.length ? product.category_ids : [product.category_id]).map((categoryId) => label(categories.find((category) => category.id === categoryId)?.name, i18n.language)).join(' · ')}</small><span>{amount(product.price_minor, product.currency, i18n.language)}</span><span>{product.sweetness_enabled ? t('admin.sweetnessOn') : t('admin.sweetnessOff')}</span><span>{product.available ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startProductEdit(product)}>{t('common.edit')}</button><button onClick={() => void toggleProduct(product)}>{product.available ? t('common.soldOut') : t('common.available')}</button><button onClick={() => setRulesProductId((current) => current === product.id ? null : product.id)}>{t('admin.saleWindowsAndOptions')}</button>{rulesProductId === product.id && <AdminProductRules productId={product.id} productName={label(product.name, i18n.language)} currency={product.currency} initialWindows={toRulesWindows(product)} initialGroups={toRulesGroups(product)} onSaved={async () => { const response = await api.get('/api/v1/admin/products'); setProducts(response.data); }} />}</article>)}</div>
     </section>}
     {section === 'coupons' && role === 'MANAGER' && <AdminCoupons />}
-    {section === 'finance' && <section className="panel"><div className="panel-heading"><h2>{t('admin.finance')}</h2><div><label>{t('admin.from')} <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>{t('admin.to')} <input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div></div><p>{t('admin.timezone')}: {stats?.timezone}</p><p>{t('admin.manualReviewBasis')}</p><p className="finance-note">{t('admin.financeSeparationHint')}</p><div className="metric-row"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><div className="metric"><span>{t('admin.cancelledCount')}</span><strong>{stats?.cancelled_count ?? '—'}</strong></div></div>{(stats?.by_currency || []).map((row: any) => <div className="metric-row" key={row.currency}><div className="metric"><span>{t('admin.orderSales')}</span><strong>{amount(row.order_sales_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.orderSalesSubtotal')}: {amount(row.order_sales_subtotal_minor ?? 0, row.currency, i18n.language)} · {t('admin.orderDiscount')}: -{amount(row.order_sales_discount_minor ?? 0, row.currency, i18n.language)} · {t('admin.orderTotalGross')}: {amount(row.order_total_minor ?? 0, row.currency, i18n.language)}</small></div><div className="metric"><span>{t('admin.externalOrderReceipts')}</span><strong>{amount(row.external_order_receipts_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.walletOrderPayments')}</span><strong>{amount(row.wallet_paid_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.rechargeCredited')}</span><strong>{amount(row.recharge_credited_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric accent"><span>{t('admin.cashInflow')}</span><strong>{amount(row.cash_inflow_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric warning"><span>{t('admin.inReview')}</span><strong>{amount(row.in_review_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.cancelledAmount')}</span><strong>{amount(row.cancelled_total_minor, row.currency, i18n.language)}</strong></div></div>)}</section>}
+    {section === 'finance' && <section className="panel"><div className="panel-heading"><h2>{t('admin.finance')}</h2><div><label>{t('admin.from')} <input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label><label>{t('admin.to')} <input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label></div></div><p>{t('admin.timezone')}: {stats?.timezone}</p><p>{t('admin.manualReviewBasis')}</p><p className="finance-note">{t('admin.financeSeparationHint')}</p><div className="metric-row"><div className="metric"><span>{t('admin.orderVolume')}</span><strong>{stats?.order_volume ?? '—'}</strong></div><div className="metric"><span>{t('admin.cancelledCount')}</span><strong>{stats?.cancelled_count ?? '—'}</strong></div></div>{(stats?.by_currency || []).map((row: any) => <div className="metric-row" key={row.currency}><div className="metric"><span>{t('admin.orderSales')}</span><strong>{amount(row.order_sales_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.orderSalesSubtotal')}: {amount(row.order_sales_subtotal_minor ?? 0, row.currency, i18n.language)} · {t('admin.orderDiscount')}: -{amount(row.order_sales_discount_minor ?? 0, row.currency, i18n.language)} · {t('admin.orderTotalGross')}: {amount(row.order_total_minor ?? 0, row.currency, i18n.language)}</small></div><div className="metric"><span>{t('admin.externalOrderReceipts')}</span><strong>{amount(row.external_order_receipts_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.walletOrderPayments')}</span><strong>{amount(row.wallet_paid_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.rechargeCredited')}</span><strong>{amount(row.recharge_credited_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric accent" title={t('admin.netCashInflowHint')}><span>{t('admin.netCashInflow')}</span><strong>{amount(row.net_cash_inflow_minor ?? row.cash_inflow_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.cashInflow')}: {amount(row.cash_inflow_minor ?? 0, row.currency, i18n.language)} · {t('admin.refundAbaDone')}: -{amount(row.refund_aba_done_minor ?? 0, row.currency, i18n.language)}</small></div><div className="metric"><span>{t('admin.refundWalletDone')}</span><strong>{amount(row.refund_wallet_done_minor ?? 0, row.currency, i18n.language)}</strong></div><div className={`metric${(row.refund_pending_count ?? 0) > 0 ? ' warning' : ''}`}><span>{t('admin.refundPending')}</span><strong>{amount(row.refund_pending_minor ?? 0, row.currency, i18n.language)}</strong><small>{t('admin.refundPendingDetail', { count: row.refund_pending_count ?? 0 })}</small></div><div className="metric"><span>{t('admin.shortageRemoved')}</span><strong>{amount(row.shortage_removed_minor ?? 0, row.currency, i18n.language)}</strong></div>{(row.refund_reconcile_diff_minor ?? 0) !== 0 && <div className="metric warning" role="alert"><span>{t('admin.refundReconcileDiff')}</span><strong>{amount(row.refund_reconcile_diff_minor ?? 0, row.currency, i18n.language)}</strong></div>}<div className="metric warning"><span>{t('admin.inReview')}</span><strong>{amount(row.in_review_minor ?? 0, row.currency, i18n.language)}</strong></div><div className="metric"><span>{t('admin.cancelledAmount')}</span><strong>{amount(row.cancelled_total_minor, row.currency, i18n.language)}</strong></div></div>)}</section>}
     {section === 'settings' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('nav.settings')}</h2></div><form className="product-form" onSubmit={saveSettings}>
       <label>{t('common.currency')}<input maxLength={3} value={storeSettings.currency} onChange={(event) => setStoreSettings({ ...storeSettings, currency: event.target.value.toUpperCase() })} required /></label>
       <label>{t('admin.timezone')}<input value={storeSettings.timezone} onChange={(event) => setStoreSettings({ ...storeSettings, timezone: event.target.value })} required /></label>
@@ -1038,6 +1089,10 @@ function AdminPage() {
       <label>{t('admin.minOrder')}<input type="number" min="0" step="0.01" value={feeInputs.minOrder} onChange={(event) => setFeeInputs({ ...feeInputs, minOrder: event.target.value })} /><small>{t('admin.minOrderHint')}</small></label>
       <label>{t('admin.deliveryFee')}<input type="number" min="0" step="0.01" value={feeInputs.delivery} onChange={(event) => setFeeInputs({ ...feeInputs, delivery: event.target.value })} /></label>
       <label>{t('admin.serviceFee')}<input type="number" min="0" step="0.01" value={feeInputs.service} onChange={(event) => setFeeInputs({ ...feeInputs, service: event.target.value })} /></label>
+      <label>{t('admin.unpaidOrderTimeout')}<input type="number" min="0" max="1440" step="1" value={storeSettings.unpaid_order_timeout_minutes} onChange={(event) => setStoreSettings({ ...storeSettings, unpaid_order_timeout_minutes: Number(event.target.value) || 0 })} /><small>{t('admin.unpaidOrderTimeoutHint')}</small></label>
+      <label>{t('admin.unpaidOrderReminder')}<input type="number" min="0" max="1440" step="1" value={storeSettings.unpaid_order_reminder_minutes} onChange={(event) => setStoreSettings({ ...storeSettings, unpaid_order_reminder_minutes: Number(event.target.value) || 0 })} /><small>{t('admin.unpaidOrderReminderHint')}</small></label>
+      <label>{t('admin.shortageResponseTimeout')}<input type="number" min="0" max="10080" step="1" value={storeSettings.shortage_customer_response_timeout_minutes} onChange={(event) => setStoreSettings({ ...storeSettings, shortage_customer_response_timeout_minutes: Number(event.target.value) || 0 })} /><small>{t('admin.shortageResponseTimeoutHint')}</small></label>
+      <label>{t('admin.shortageRefundReview')}<input type="number" min="0" step="0.01" value={(storeSettings.shortage_refund_review_minor / 100).toFixed(2)} onChange={(event) => setStoreSettings({ ...storeSettings, shortage_refund_review_minor: Math.round((Number(event.target.value) || 0) * 100) })} /><small>{t('admin.shortageRefundReviewHint')}</small></label>
       <button className="primary" type="submit">{t('admin.updateSettings')}</button>
     </form></section>}
     {section === 'staff' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('admin.staffList')}</h2></div><form className="product-form" onSubmit={addStaff}>
