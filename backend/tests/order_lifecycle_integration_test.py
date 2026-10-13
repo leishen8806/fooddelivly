@@ -527,5 +527,21 @@ class LifecycleIntegrationTest(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("Order refunds", text)
 
 
+    async def test_shortage_resolved_group_message_uses_store_currency(self):
+        """群里的处理结果不能写死 USD：KHR 无小数位，金额应按币种格式化。"""
+        from order_lifecycle import notify_issue_resolved
+        order = await self.make_order(order_status="PREPARING", payment_status="PAID_CONFIRMED", external_paid=1000,
+                                      group_message_id="555")
+        async with self.sessions() as db:
+            row = await db.get(models.Order, order["id"])
+            row.currency = "KHR"
+            await db.commit()
+            await notify_issue_resolved(db, row, None, 4500)
+        text = self.send.await_args_list[-1].args[1]
+        self.assertNotIn("USD", text)
+        self.assertIn("KHR", text)
+        self.assertIn("4,500", text.replace(" ", ""), text)
+
+
 if __name__ == "__main__":
     unittest.main()
