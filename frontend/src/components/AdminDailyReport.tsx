@@ -17,6 +17,7 @@ type ReportPayload = {
   recharges_amount_minor: number;
   recharges_bonus_minor: number;
   recharges_pending: number;
+  total_customers: number;
   new_customers: number;
   awaiting_payment_review: number;
 };
@@ -115,6 +116,8 @@ export default function AdminDailyReport({ role }: { role: string | null }) {
         <div className="metric"><span>{t('admin.confirmedReceipts')}</span><strong>{formatAmount(data.report.received_total_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.reportTopUps')} × {data.report.recharges_credited}</span><strong>{formatAmount(data.report.recharges_amount_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.reportBonus')}</span><strong>{formatAmount(data.report.recharges_bonus_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.reportTotalCustomers')}</span><strong>{data.report.total_customers}</strong></div>
+        <div className="metric"><span>{t('admin.reportNewCustomers')}</span><strong>{data.report.new_customers}</strong></div>
         <div className={`metric${data.report.awaiting_payment_review ? ' warning' : ''}`}><span>{t('admin.reportAwaitingReview')}</span><strong>{data.report.awaiting_payment_review}</strong></div>
       </div>
 

@@ -169,6 +169,11 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         new_customer_query = new_customer_query.filter(Customer.store_id == store_id)
     new_customers = (await db.execute(new_customer_query)).scalar() or 0
 
+    total_customer_query = select(func.count()).select_from(Customer)
+    if store_id is not None:
+        total_customer_query = total_customer_query.filter(Customer.store_id == store_id)
+    total_customers = (await db.execute(total_customer_query)).scalar() or 0
+
     # 遗留待处理：截至当天结束时仍未审核的收款凭证（不是当天新增，而是「还压着」）
     backlog_query = select(func.count()).select_from(Order).filter(
         Order.payment_status == "PROOF_SUBMITTED",
@@ -194,6 +199,7 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         "recharges_bonus_minor": int(recharges["bonus_minor"]),
         "recharges_pending": int(pending_recharges),
         "new_customers": int(new_customers),
+        "total_customers": int(total_customers),
         "awaiting_payment_review": int(backlog_review),
     }
 
@@ -231,6 +237,7 @@ def format_daily_report(report: dict, language: str = "en") -> str:
         tr("report.daily.bonus", language, amount=money(report["recharges_bonus_minor"])),
         tr("report.daily.pendingRecharges", language, count=report["recharges_pending"]),
         tr("report.daily.awaitingReview", language, count=report["awaiting_payment_review"]),
+        tr("report.daily.totalCustomers", language, count=report["total_customers"]),
         tr("report.daily.newCustomers", language, count=report["new_customers"]),
     ]
     return "\n".join(lines)
