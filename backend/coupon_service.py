@@ -147,6 +147,14 @@ async def claim(
         raise CouponError("Coupon is not available", 404)
     ensure_campaign_usable(coupon)
     if link.mode == "PRIVATE" and link.status != "ACTIVE":
+        existing_private = (await db.execute(select(CustomerCoupon).where(
+            CustomerCoupon.claim_link_id == link.id,
+            CustomerCoupon.customer_id == customer_id,
+        ))).scalars().first()
+        if existing_private:
+            payload = coupon_payload(coupon, existing_private)
+            payload["already_claimed"] = True
+            return payload
         raise CouponError("This private coupon link has already been claimed", 409)
 
     # Public links can be claimed repeatedly by the same user up to the
@@ -155,6 +163,15 @@ async def claim(
     if link.mode == "PUBLIC":
         user_count = await _claim_count(db, coupon.id, customer_id)
         if user_count >= coupon.per_user_claim_limit:
+            existing_public = (await db.execute(select(CustomerCoupon).where(
+                CustomerCoupon.coupon_id == coupon.id,
+                CustomerCoupon.customer_id == customer_id,
+                CustomerCoupon.status == "AVAILABLE",
+            ).order_by(CustomerCoupon.id.desc()))).scalars().first()
+            if existing_public:
+                payload = coupon_payload(coupon, existing_public)
+                payload["already_claimed"] = True
+                return payload
             raise CouponError("You have reached the claim limit for this coupon", 409)
 
     customer_coupon = CustomerCoupon(

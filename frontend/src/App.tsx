@@ -238,7 +238,8 @@ function CustomerPage() {
       void api.post('/api/v1/coupons/claim', { code: startParam }, { headers: { 'Idempotency-Key': requestKey } })
         .then((response) => {
           if (!active) return;
-          setCouponClaimNotice({ kind: 'success', text: `${t('coupon.claimSuccess')}: ${response.data?.coupon?.name || ''}` });
+          const message = response.data?.coupon?.already_claimed ? t('coupon.alreadyClaimed') : t('coupon.claimSuccess');
+          setCouponClaimNotice({ kind: 'success', text: `${message}: ${response.data?.coupon?.name || ''}` });
           void loadCustomerCoupons();
         })
         .catch((requestError: any) => {
