@@ -48,6 +48,10 @@ class SettingsUpdate(BaseModel):
     min_order_minor: Optional[int] = Field(None, ge=0, le=100_000_000)
     delivery_fee_minor: Optional[int] = Field(None, ge=0, le=10_000_000)
     service_fee_minor: Optional[int] = Field(None, ge=0, le=10_000_000)
+    unpaid_order_timeout_minutes: Optional[int] = Field(None, ge=0, le=1440)
+    unpaid_order_reminder_minutes: Optional[int] = Field(None, ge=0, le=1440)
+    shortage_customer_response_timeout_minutes: Optional[int] = Field(None, ge=0, le=10080)
+    shortage_refund_review_minor: Optional[int] = Field(None, ge=0, le=100_000_000)
 
     @field_validator("timezone")
     @classmethod
@@ -126,6 +130,10 @@ def _store_payload(store) -> dict:
         "min_order_minor": store.min_order_minor or 0,
         "delivery_fee_minor": store.delivery_fee_minor or 0,
         "service_fee_minor": store.service_fee_minor or 0,
+        "unpaid_order_timeout_minutes": store.unpaid_order_timeout_minutes or 0,
+        "unpaid_order_reminder_minutes": store.unpaid_order_reminder_minutes or 0,
+        "shortage_customer_response_timeout_minutes": store.shortage_customer_response_timeout_minutes or 0,
+        "shortage_refund_review_minor": store.shortage_refund_review_minor or 0,
         "commission_bps": store.commission_bps or 0,
         "commission_fixed_minor": store.commission_fixed_minor or 0,
         "settlement_cycle": store.settlement_cycle,
@@ -181,6 +189,14 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
         target.delivery_fee_minor = req.delivery_fee_minor
     if req.service_fee_minor is not None:
         target.service_fee_minor = req.service_fee_minor
+    if req.unpaid_order_timeout_minutes is not None:
+        target.unpaid_order_timeout_minutes = req.unpaid_order_timeout_minutes
+    if req.unpaid_order_reminder_minutes is not None:
+        target.unpaid_order_reminder_minutes = req.unpaid_order_reminder_minutes
+    if req.shortage_customer_response_timeout_minutes is not None:
+        target.shortage_customer_response_timeout_minutes = req.shortage_customer_response_timeout_minutes
+    if req.shortage_refund_review_minor is not None:
+        target.shortage_refund_review_minor = req.shortage_refund_review_minor
 
     # 过渡期：主店配置同时镜像到旧的 store_settings，给还没迁移的读取方兜底。
     # 所有读取方都走 stores 之后会删掉这张表。
@@ -201,6 +217,10 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
         legacy.min_order_minor = int(target.min_order_minor or 0)
         legacy.delivery_fee_minor = int(target.delivery_fee_minor or 0)
         legacy.service_fee_minor = int(target.service_fee_minor or 0)
+        legacy.unpaid_order_timeout_minutes = int(target.unpaid_order_timeout_minutes or 0)
+        legacy.unpaid_order_reminder_minutes = int(target.unpaid_order_reminder_minutes or 0)
+        legacy.shortage_customer_response_timeout_minutes = int(target.shortage_customer_response_timeout_minutes or 0)
+        legacy.shortage_refund_review_minor = int(target.shortage_refund_review_minor or 0)
 
     db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
                     entity_id=str(target.id), action="updated", store_id=target.id,
@@ -214,7 +234,11 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
                              "business_hours": target.business_hours,
                              "min_order_minor": target.min_order_minor,
                              "delivery_fee_minor": target.delivery_fee_minor,
-                             "service_fee_minor": target.service_fee_minor}))
+                             "service_fee_minor": target.service_fee_minor,
+                             "unpaid_order_timeout_minutes": target.unpaid_order_timeout_minutes,
+                             "unpaid_order_reminder_minutes": target.unpaid_order_reminder_minutes,
+                             "shortage_customer_response_timeout_minutes": target.shortage_customer_response_timeout_minutes,
+                             "shortage_refund_review_minor": target.shortage_refund_review_minor}))
     await db.commit()
     await db.refresh(target)
     return _store_payload(target)

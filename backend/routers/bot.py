@@ -9,7 +9,7 @@ from aiogram.exceptions import TelegramForbiddenError
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, WebAppInfo
 
 from database import get_db
-from models import AuditLog, Customer, Order, OrderEvent, PaymentProof, PaymentReview, Staff
+from models import AuditLog, Customer, Order, OrderEvent, OrderIssue, PaymentProof, PaymentReview, Staff
 from store_context import can_access_store, store_for_group
 from telegram_service import (
     answer_callback, notify_new_order, notify_new_recharge, notify_recharge_review,
@@ -182,7 +182,25 @@ async def _handle_private_message(msg: dict, db: AsyncSession) -> None:
         Order.id == customer.pending_payment_order_id, Order.customer_id == customer.id
     ).with_for_update())
     order = order_result.scalars().first()
-    if not order or order.order_status in {"CANCELLED", "COMPLETED"} or order.payment_status not in {"UNPAID", "REJECTED"}:
+    cancelled_event = None
+    if order and order.order_status == "CANCELLED":
+        cancelled_event = (await db.execute(select(OrderEvent).filter(
+            OrderEvent.order_id == order.id, OrderEvent.event.like("ORDER_CANCELLED:%")
+        ).order_by(OrderEvent.created_at.desc()).limit(1))).scalars().first()
+    if order and order.order_status == "CANCELLED" and cancelled_event and "expired" in (cancelled_event.event or "").lower():
+        customer.pending_payment_order_id = None
+        db.add(OrderEvent(order_id=order.id, actor_type="CUSTOMER", actor_id=customer.id,
+                          event="LATE_PROOF_AFTER_EXPIRY",
+                          from_state=_message_status(order), to_state=_message_status(order)))
+        await db.commit()
+        await send_bot_message(tg_user_id, tr("payment.lateProofAfterExpiry", language))
+        return
+    if order and order.order_status == "CANCELLED":
+        customer.pending_payment_order_id = None
+        await db.commit()
+        await send_bot_message(tg_user_id, tr("error.generic", language))
+        return
+    if not order or order.order_status == "COMPLETED" or order.payment_status not in {"UNPAID", "REJECTED"}:
         customer.pending_payment_order_id = None
         await db.commit()
         await send_bot_message(tg_user_id, tr("error.generic", language))
@@ -291,6 +309,13 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
     old_state = _message_status(order)
     proof = None
 
+    open_issue = (await db.execute(select(OrderIssue.id).filter(
+        OrderIssue.order_id == order.id, OrderIssue.status == "OPEN"
+    ).limit(1))).first()
+    if open_issue and action in {"accept", "confirmpay", "ready", "deliver", "complete"}:
+        await answer_callback(callback_id, tr("order.openShortage", group_language), alert=True)
+        return
+
     if action == "accept" and order.order_status == "NEW":
         order.order_status = "ACCEPTED"
     elif action == "confirmpay" and order.order_status == "ACCEPTED" and order.payment_status == "PROOF_SUBMITTED":
@@ -302,6 +327,7 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
             await answer_callback(callback_id, tr("error.generic", group_language), alert=True)
             return
         order.payment_status = "PAID_CONFIRMED"
+        order.paid_confirmed_minor = int(order.wallet_paid_minor or 0) + int(order.external_due_minor or 0)
         order.order_status = "PREPARING"
         proof.review_status = "APPROVED"
         db.add(PaymentReview(order_id=order.id, staff_id=staff.id, decision="APPROVED",

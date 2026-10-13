@@ -5,6 +5,7 @@ from starlette.responses import JSONResponse
 from sqlalchemy import text
 from pathlib import Path
 from daily_report import start_scheduler
+from order_lifecycle import start_expiry_scheduler
 from rate_limit import RateLimitMiddleware
 from routers import auth, products, orders, admin_orders, admin_customers, admin_audit, bot, admin_stats, admin_settings, admin_staff, uploads, wallet, admin_reports, admin_coupons, coupons
 import logging
@@ -35,11 +36,13 @@ async def lifespan(_app: FastAPI):
     # 进程内定时：每天 DAILY_REPORT_HOUR:DAILY_REPORT_MINUTE（默认 22:35，店铺时区）发当天 00:00-22:30 的报表。
     # 发送本身幂等（report_deliveries 唯一约束），所以重启/多副本只会送达一次。
     task = start_scheduler()
+    expiry_task = start_expiry_scheduler()
     try:
         yield
     finally:
         if task is not None:
             task.cancel()
+        expiry_task.cancel()
 
 
 app = FastAPI(title="Tea Cafe API", lifespan=lifespan, docs_url=None if production else "/docs", redoc_url=None if production else "/redoc", openapi_url=None if production else "/openapi.json")
@@ -75,6 +78,7 @@ app.include_router(auth.router)
 app.include_router(products.router)
 app.include_router(orders.router)
 app.include_router(admin_orders.router)
+app.include_router(admin_orders.refund_router)
 app.include_router(admin_customers.router)
 app.include_router(admin_audit.router)
 app.include_router(bot.router)

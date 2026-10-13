@@ -12,11 +12,12 @@ from database import get_db
 from product_options import OptionError, load_groups, resolve_selections
 from store_context import effective_product, load_overrides, resolve_store, store_for_order
 from sale_window import describe, is_on_sale, windows_from_json
-from models import Order, OrderItem, Product
-from models import StoreSettings, Customer, PaymentProof
+from models import Order, OrderItem, Product, OrderIssue, OrderRefund, OrderEvent, Customer, Store
+from models import StoreSettings, PaymentProof, CouponCampaign, CustomerCoupon
 from dependencies import get_current_customer
 from telegram_service import notify_new_order
-from coupon_service import CouponError, reserve_for_order
+from coupon_service import CouponError, reserve_for_order, discount_for
+from order_lifecycle import cancel_order_record, customer_can_cancel
 from urllib.parse import urlparse
 import secrets
 import string
@@ -267,6 +268,7 @@ async def create_order(
             coupon_discount_minor=coupon_discount_minor,
             wallet_paid_minor=0,
             external_due_minor=total_minor,
+            paid_confirmed_minor=0,
             idempotency_key=idempotency_key,
             request_digest=request_digest
         )
@@ -302,6 +304,7 @@ async def create_order(
                 raise HTTPException(status_code=exc.http_status, detail=exc.message)
             new_order.wallet_paid_minor = wallet_paid_minor
             new_order.external_due_minor = max(total_minor - wallet_paid_minor, 0)
+            new_order.paid_confirmed_minor = wallet_paid_minor if wallet_paid_minor >= total_minor else 0
             if wallet_paid_minor >= total_minor:
                 new_order.payment_method = "WALLET"
                 new_order.payment_status = "PAID_CONFIRMED"
@@ -390,6 +393,40 @@ async def get_orders(
              "external_due_minor": o.external_due_minor if o.external_due_minor is not None else o.total_minor,
              "created_at": o.created_at} for o in orders]
 
+
+@router.post("/orders/{public_code}/cancel")
+async def cancel_customer_order(
+    public_code: str,
+    customer_id: int = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """自助取消尚未接单、且尚未确认 ABA 的订单。"""
+    result = await db.execute(select(Order).filter(
+        Order.public_code == public_code,
+        Order.customer_id == customer_id,
+    ).with_for_update())
+    order = result.scalars().first()
+    if order is None:
+        raise HTTPException(status_code=404, detail="Order not found")
+    if not customer_can_cancel(order.order_status, order.payment_status):
+        raise HTTPException(status_code=409, detail="Only a new unpaid order can be cancelled")
+    try:
+        result = await cancel_order_record(
+            db, order, actor_type="CUSTOMER", actor_id=customer_id,
+            reason="Cancelled by customer",
+        )
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        from wallet_service import WalletError
+        if isinstance(exc, WalletError):
+            raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+        raise
+    from order_lifecycle import notify_cancelled
+    await notify_cancelled(db, order, "order.cancelledByCustomer")
+    return {"public_code": order.public_code, "order_status": order.order_status,
+            "payment_status": order.payment_status, **result}
+
 @router.get("/orders/{public_code}")
 async def get_order(public_code: str, customer_id: int = Depends(get_current_customer), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Order).filter(Order.public_code == public_code, Order.customer_id == customer_id))
@@ -399,6 +436,12 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
     items_result = await db.execute(select(OrderItem).filter(OrderItem.order_id == order.id))
     proofs_result = await db.execute(select(PaymentProof).filter(PaymentProof.order_id == order.id).order_by(PaymentProof.submitted_at.desc()))
     proof = proofs_result.scalars().first()
+    issues_result = await db.execute(select(OrderIssue).filter(
+        OrderIssue.order_id == order.id, OrderIssue.status == "OPEN"
+    ).order_by(OrderIssue.created_at.desc()))
+    refunds_result = await db.execute(select(OrderRefund).filter(
+        OrderRefund.order_id == order.id
+    ).order_by(OrderRefund.created_at.desc()))
     return {
         "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
@@ -416,4 +459,207 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
         "items": [{"name": x.product_name_snapshot, "quantity": x.quantity, "unit_price_minor": x.unit_price_minor,
                    "line_total_minor": x.line_total_minor, "options": x.options_json or {}} for x in items_result.scalars().all()],
         "proof_status": proof.review_status if proof else None,
+        "issues": [{"id": issue.id, "issue_type": issue.issue_type, "status": issue.status,
+                    "note": issue.note, "replacement_name": issue.replacement_name_snapshot,
+                    "replacement_unit_price_minor": issue.replacement_unit_price_minor,
+                    "order_item_id": issue.order_item_id} for issue in issues_result.scalars().all()],
+        "refunds": [{"id": refund.id, "amount_minor": refund.amount_minor, "method": refund.method,
+                     "status": refund.status, "reference": refund.reference}
+                    for refund in refunds_result.scalars().all()],
     }
+
+
+class OrderIssueResolution(BaseModel):
+    resolution: Literal["REMOVE_ITEM", "REPLACE_ITEM", "CANCEL_ORDER"]
+
+
+async def _recalculate_unpaid_order(db: AsyncSession, order: Order) -> None:
+    items = (await db.execute(select(OrderItem).filter(OrderItem.order_id == order.id))).scalars().all()
+    if not items:
+        raise HTTPException(status_code=409, detail="The order has no remaining items")
+    subtotal = sum(int(item.line_total_minor or 0) for item in items)
+    discount = 0
+    if order.coupon_id:
+        coupon_row = (await db.execute(select(CustomerCoupon, CouponCampaign).join(
+            CouponCampaign, CouponCampaign.id == CustomerCoupon.coupon_id
+        ).filter(CustomerCoupon.id == order.coupon_id))).first()
+        campaign = coupon_row[1] if coupon_row else None
+        if campaign:
+            try:
+                discount = discount_for(campaign, subtotal)
+            except CouponError:
+                # Removing an item may invalidate the minimum spend. Return
+                # the coupon instead of silently consuming it without benefit.
+                coupon_instance = coupon_row[0]
+                coupon_instance.status = "AVAILABLE"
+                coupon_instance.used_order_id = None
+                coupon_instance.used_at = None
+                order.coupon_id = None
+                order.coupon_name_snapshot = None
+                order.coupon_type_snapshot = None
+                discount = 0
+    order.subtotal_minor = subtotal
+    order.coupon_discount_minor = discount
+    order.total_minor = max(subtotal - discount, 0) + int(order.delivery_fee_minor or 0) + int(order.service_fee_minor or 0)
+    order.external_due_minor = max(order.total_minor - int(order.wallet_paid_minor or 0), 0)
+
+
+async def _recalculate_paid_shortage_order(db: AsyncSession, order: Order, old_total: int) -> int:
+    """Reprice after removing a paid shortage item without rewriting receipts.
+
+    The original coupon discount is preserved and only capped by the new
+    subtotal.  Fees stay unchanged.  ``external_due_minor`` is historical
+    once ABA has been confirmed, so it is deliberately left untouched.
+    """
+    items = (await db.execute(select(OrderItem).filter(OrderItem.order_id == order.id))).scalars().all()
+    if not items:
+        raise HTTPException(status_code=409, detail="The order has no remaining items")
+    subtotal = sum(int(item.line_total_minor or 0) for item in items)
+    discount = min(int(order.coupon_discount_minor or 0), subtotal)
+    order.subtotal_minor = subtotal
+    order.coupon_discount_minor = discount
+    new_total = max(subtotal - discount, 0) + int(order.delivery_fee_minor or 0) + int(order.service_fee_minor or 0)
+    order.total_minor = new_total
+    order.adjusted_total_minor = new_total
+    order.removed_minor = int(order.removed_minor or 0) + max(0, old_total - new_total)
+    return max(0, old_total - new_total)
+
+
+@router.post("/orders/{public_code}/issues/{issue_id}/resolve")
+async def resolve_customer_order_issue(
+    public_code: str,
+    issue_id: int,
+    payload: OrderIssueResolution,
+    customer_id: int = Depends(get_current_customer),
+    db: AsyncSession = Depends(get_db),
+):
+    """顾客处理缺货；已付款订单按方案 A 只能删品并生成退款记录。"""
+    result = await db.execute(select(Order).filter(
+        Order.public_code == public_code, Order.customer_id == customer_id
+    ).with_for_update())
+    order = result.scalars().first()
+    issue = (await db.execute(select(OrderIssue).filter(
+        OrderIssue.id == issue_id, OrderIssue.order_id == (order.id if order else -1)
+    ).with_for_update())).scalars().first()
+    if order is None or issue is None:
+        raise HTTPException(status_code=404, detail="Order issue not found")
+    if issue.status != "OPEN":
+        raise HTTPException(status_code=409, detail="This issue has already been resolved")
+    paid_shortage = (
+        order.order_status in {"ACCEPTED", "PREPARING"}
+        and (order.payment_status in {"PAID_CONFIRMED", "PARTIALLY_REFUNDED"}
+             or int(order.wallet_paid_minor or 0) >= int(order.total_minor or 0))
+    )
+    if paid_shortage:
+        if payload.resolution not in {"REMOVE_ITEM", "CANCEL_ORDER"}:
+            raise HTTPException(status_code=409, detail="Paid shortage orders only support removing the item or cancelling the order")
+    elif not customer_can_cancel(order.order_status, order.payment_status) or order.wallet_paid_minor:
+        raise HTTPException(status_code=409, detail="This order needs staff handling before it can be changed")
+    old_total = int(order.total_minor or 0)
+    refund_amount = 0
+    cancelled_for_shortage = False
+    refund_rows: list[OrderRefund] = []
+    try:
+        if payload.resolution == "CANCEL_ORDER":
+            await cancel_order_record(db, order, actor_type="CUSTOMER", actor_id=customer_id,
+                                      reason="Cancelled after an item became unavailable")
+        else:
+            item = await db.get(OrderItem, issue.order_item_id) if issue.order_item_id else None
+            if item is None or item.order_id != order.id:
+                raise HTTPException(status_code=409, detail="The unavailable item is no longer in this order")
+            if payload.resolution == "REMOVE_ITEM":
+                await db.delete(item)
+            else:
+                if not issue.replacement_product_id or issue.replacement_unit_price_minor is None:
+                    raise HTTPException(status_code=409, detail="No replacement was offered")
+                item.product_id = issue.replacement_product_id
+                item.product_name_snapshot = issue.replacement_name_snapshot or item.product_name_snapshot
+                item.unit_price_minor = issue.replacement_unit_price_minor
+                item.options_json = {}
+                item.line_total_minor = item.unit_price_minor * item.quantity
+            await db.flush()
+            remaining_items = (await db.execute(select(OrderItem.id).filter(OrderItem.order_id == order.id))).scalars().all()
+            if paid_shortage and not remaining_items:
+                await cancel_order_record(db, order, actor_type="CUSTOMER", actor_id=customer_id,
+                                          reason="Cancelled because all items became unavailable")
+                refund_amount = 0
+                cancelled_for_shortage = True
+            elif paid_shortage:
+                refund_amount = await _recalculate_paid_shortage_order(db, order, old_total)
+                if refund_amount <= 0:
+                    raise HTTPException(status_code=409, detail="The shortage does not reduce the order total")
+                existing_payment = None
+                refunded_before = 0
+                refund_rows_before = 0
+                if int(order.wallet_paid_minor or 0) > 0:
+                    import wallet_service as wallet_service_module
+                    existing_payment = await wallet_service_module.get_payment(db, order.public_code)
+                    refunded_before = int(existing_payment["refunded_amount"] or 0) if existing_payment else 0
+                from order_lifecycle import _refund_totals
+                refund_rows_before, _ = await _refund_totals(db, order.id)
+                wallet_remaining = max(int(order.wallet_paid_minor or 0) - max(refunded_before, refund_rows_before), 0)
+                wallet_refund = min(refund_amount, wallet_remaining)
+                store_row = await db.get(Store, order.store_id) if order.store_id else None
+                review_threshold = int(store_row.shortage_refund_review_minor or 0) if store_row else 0
+                wallet_requires_review = bool(wallet_refund and review_threshold > 0 and refund_amount > review_threshold)
+                if wallet_refund:
+                    if not wallet_requires_review:
+                        import wallet_service as wallet_service_module
+                        await wallet_service_module.refund_payment(
+                            db, biz_id=order.public_code, amount_minor=wallet_refund,
+                            idem=f"refund:{order.public_code}:shortage:{issue.id}:{max(refunded_before, refund_rows_before)}:{wallet_refund}",
+                            reason="Shortage item removed",
+                        )
+                    refund_rows.append(OrderRefund(
+                        store_id=order.store_id, order_id=order.id, issue_id=issue.id,
+                        amount_minor=wallet_refund, method="WALLET",
+                        status="PENDING" if wallet_requires_review else "DONE",
+                        requires_approval=wallet_requires_review,
+                        note=("Shortage item removed; manager approval required"
+                              if wallet_requires_review else "Shortage item removed; refunded to wallet"),
+                        done_at=None if wallet_requires_review else datetime.now(ZoneInfo("UTC")),
+                    ))
+                aba_refund = refund_amount - wallet_refund
+                if aba_refund:
+                    refund_rows.append(OrderRefund(
+                        store_id=order.store_id, order_id=order.id, issue_id=issue.id,
+                        amount_minor=aba_refund, method="ABA_MANUAL", status="PENDING",
+                        note="Shortage item removed; manual ABA refund required",
+                    ))
+                if (wallet_refund and not wallet_requires_review) or aba_refund:
+                    # The order continues with the remaining items, so this
+                    # is never a terminal REFUNDED state.  For mixed payment,
+                    # the ABA leg may still be fully valid as well.
+                    order.payment_status = "PARTIALLY_REFUNDED"
+                for row in refund_rows:
+                    db.add(row)
+            else:
+                await _recalculate_unpaid_order(db, order)
+        issue.status = "RESOLVED"
+        issue.resolution = payload.resolution
+        issue.resolved_by_type = "CUSTOMER"
+        issue.resolved_by_id = customer_id
+        issue.resolved_at = datetime.now(ZoneInfo("UTC"))
+        db.add(OrderEvent(
+            order_id=order.id, actor_type="CUSTOMER", actor_id=customer_id,
+            event=f"ORDER_ISSUE_RESOLVED:{payload.resolution}",
+            from_state=f"{order.order_status}/{order.payment_status}",
+            to_state=f"{order.order_status}/{order.payment_status}",
+        ))
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        from wallet_service import WalletError
+        if isinstance(exc, WalletError):
+            raise HTTPException(status_code=exc.http_status, detail=exc.message) from exc
+        raise
+    if payload.resolution == "CANCEL_ORDER" or cancelled_for_shortage:
+        from order_lifecycle import notify_cancelled
+        await notify_cancelled(db, order, "order.cancelledAfterShortage")
+    else:
+        from order_lifecycle import notify_issue_resolved
+        await notify_issue_resolved(db, order, issue, refund_amount)
+    return {"public_code": order.public_code, "order_status": order.order_status,
+            "payment_status": order.payment_status, "total_minor": order.total_minor,
+            "resolution": issue.resolution, "refund_amount_minor": refund_amount,
+            "refund_pending_manager_review": any(getattr(row, "requires_approval", False) for row in refund_rows)}

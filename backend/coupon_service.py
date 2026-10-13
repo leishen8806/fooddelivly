@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import CouponCampaign, CouponClaimLink, CustomerCoupon
+from models import CouponCampaign, CouponClaimLink, CustomerCoupon, Order
 
 
 class CouponError(Exception):
@@ -235,3 +235,32 @@ async def reserve_for_order(
     ensure_campaign_usable(coupon, check_claim_limit=False)
     discount = discount_for(coupon, subtotal_minor)
     return customer_coupon, coupon, discount
+
+
+async def release_for_cancel(db: AsyncSession, order: Order) -> bool:
+    """Return the coupon reserved by a cancelled order.
+
+    A coupon that is already past its campaign end remains EXPIRED and cannot
+    be used again.  The row is locked so a concurrent cancellation/retry cannot
+    release another order's coupon.
+    """
+    if not order.coupon_id:
+        return False
+    result = await db.execute(
+        select(CustomerCoupon, CouponCampaign)
+        .join(CouponCampaign, CouponCampaign.id == CustomerCoupon.coupon_id)
+        .where(CustomerCoupon.id == order.coupon_id)
+        .with_for_update()
+    )
+    row = result.first()
+    if row is None:
+        return False
+    customer_coupon, campaign = row
+    if customer_coupon.used_order_id not in (None, order.id):
+        return False
+    if customer_coupon.status != "USED":
+        return False
+    customer_coupon.status = "EXPIRED" if now_utc() > campaign.ends_at else "AVAILABLE"
+    customer_coupon.used_order_id = None
+    customer_coupon.used_at = None
+    return True

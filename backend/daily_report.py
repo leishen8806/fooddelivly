@@ -23,6 +23,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from refund_metrics import ZERO_REFUND_METRICS, refund_metrics
 from models import Customer, Order, ReportDelivery, Store, StoreSettings
 from telegram_service import send_bot_message, tr
 
@@ -188,6 +189,10 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         backlog_query = backlog_query.filter(Order.store_id == store_id)
     backlog_review = (await db.execute(backlog_query)).scalar() or 0
 
+    refund_rows = (await refund_metrics(
+        db, start_utc=start_utc, end_utc=end_utc, store_id=store_id,
+        include_legacy_null_store=False)).get(currency, ZERO_REFUND_METRICS)
+
     return {
         "date": report_date.isoformat(),
         "store_id": store_id,
@@ -212,6 +217,7 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         "new_customers": int(new_customers),
         "total_customers": int(total_customers),
         "awaiting_payment_review": int(backlog_review),
+        **{key: int(value) for key, value in refund_rows.items()},
     }
 
 
@@ -246,6 +252,17 @@ def format_daily_report(report: dict, language: str = "en") -> str:
     ]
     if report["refunded_minor"]:
         lines.append(tr("report.daily.refunded", language, amount=money(report["refunded_minor"])))
+    if report.get("refund_wallet_done_minor"):
+        lines.append(tr("report.daily.refundWallet", language, amount=money(report["refund_wallet_done_minor"])))
+    if report.get("refund_aba_done_minor"):
+        lines.append(tr("report.daily.refundAba", language, amount=money(report["refund_aba_done_minor"])))
+    if report.get("shortage_removed_minor"):
+        lines.append(tr("report.daily.shortageRemoved", language, amount=money(report["shortage_removed_minor"])))
+    if report.get("refund_pending_count"):
+        lines.append(tr("report.daily.refundPending", language, count=report["refund_pending_count"],
+                        amount=money(report["refund_pending_minor"])))
+    if report.get("refund_reconcile_diff_minor"):
+        lines.append(tr("report.daily.refundReconcile", language, amount=money(report["refund_reconcile_diff_minor"])))
     lines += [
         "━━━━━━━━━━━━━━",
         tr("report.daily.recharges", language, count=report["recharges_credited"],

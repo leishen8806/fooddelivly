@@ -10,6 +10,7 @@ from database import get_db
 from dependencies import get_current_staff
 from store_context import default_store, get_store, visible_store_id
 from models import Order, PaymentReview, StoreSettings
+from refund_metrics import ZERO_REFUND_METRICS, refund_metrics
 
 router = APIRouter(prefix="/api/v1/admin/analytics", tags=["Admin Stats"])
 
@@ -152,6 +153,22 @@ async def get_analytics(
                                      "confirmed_receipts_minor": external_by_currency.get(currency, 0) + wallet_by_currency.get(currency, 0),
                                      "recharge_credited_minor": recharge_by_currency.get(currency, 0),
                                      "cash_inflow_minor": external_by_currency.get(currency, 0) + recharge_by_currency.get(currency, 0)})
+
+    # 订单退款（缺货删品 / 取消）：ABA 已转账的退款是真实现金流出，从净流入里扣除；
+    # 钱包退款已体现在钱包扣款净额里，只展示；待处理退款是快照，不进现金流。
+    refunds = await refund_metrics(db, start_utc=start_utc, end_utc=end_utc, store_id=scope,
+                                   include_legacy_null_store=scope is not None)
+    for currency in refunds:
+        if currency not in totals:
+            totals[currency] = {key: 0 for key in (
+                "order_total_minor", "order_sales_minor", "order_subtotal_minor", "order_discount_minor",
+                "order_sales_subtotal_minor", "order_sales_discount_minor", "order_sales_delivery_fee_minor",
+                "order_sales_service_fee_minor", "in_review_minor", "cancelled_total_minor",
+                "external_order_receipts_minor", "wallet_paid_minor", "confirmed_receipts_minor",
+                "recharge_credited_minor", "cash_inflow_minor")}
+    for currency, bucket in totals.items():
+        bucket.update(refunds.get(currency, ZERO_REFUND_METRICS))
+        bucket["net_cash_inflow_minor"] = bucket.get("cash_inflow_minor", 0) - bucket["refund_aba_done_minor"]
 
     return {
         "from": start_date.isoformat(),
