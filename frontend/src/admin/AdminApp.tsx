@@ -46,7 +46,7 @@ function AdminFinanceStatsRoute() {
 
 export default function AdminApp() {
   return <AdminGuard><Routes>
-    <Route index element={<Navigate to="overview" replace />} />
+    <Route index element={<Navigate to="/admin/overview" replace />} />
     <Route path="overview" element={<AdminLegacyPage initialSection="overview" />} />
     <Route path="orders" element={<AdminOrdersPage />} />
     <Route path="orders/:code" element={<AdminOrdersPage />} />
@@ -54,13 +54,13 @@ export default function AdminApp() {
     <Route path="customers" element={<AdminLegacyPage initialSection="customers" />} />
     <Route path="products" element={<AdminLegacyPage initialSection="products" />} />
     <Route path="coupons" element={<AdminLegacyPage initialSection="coupons" />} />
-    <Route path="finance" element={<Navigate to="finance/daily" replace />} />
+    <Route path="finance" element={<Navigate to="/admin/finance/daily" replace />} />
     <Route path="finance/daily" element={<AdminFinanceDailyPage />} />
     <Route path="finance/stats" element={<AdminFinanceStatsRoute />} />
     <Route path="audit" element={<AdminLegacyPage initialSection="audit" />} />
     <Route path="staff" element={<AdminLegacyPage initialSection="staff" />} />
     <Route path="settings" element={<AdminLegacyPage initialSection="settings" />} />
-    <Route path="*" element={<Navigate to="overview" replace />} />
+    <Route path="*" element={<Navigate to="/admin/overview" replace />} />
   </Routes></AdminGuard>;
 }
 
