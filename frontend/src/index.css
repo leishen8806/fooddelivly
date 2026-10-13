@@ -2861,6 +2861,9 @@ small {
 .settings-block { display: grid; gap: var(--space-2); grid-column: 1 / -1; }
 .settings-block > strong { font-size: var(--type-body); }
 .settings-block > small { color: var(--color-muted); font-size: var(--type-caption); }
+.dashboard-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-top: var(--space-4); }
+.admin-chart { width: 100%; min-height: 180px; color: var(--color-accent); overflow: visible; }
+@media (max-width: 768px) { .dashboard-grid { grid-template-columns: 1fr; } .admin-chart { min-height: 140px; } }
 
 
 .coupon-claim-notice {
