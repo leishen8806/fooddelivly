@@ -11,6 +11,8 @@ from database import get_db
 from models import Customer, Staff
 from auth_utils import validate_telegram_init_data, verify_password, create_access_token
 from dependencies import get_current_customer, get_current_staff
+from customer_activity import record_customer_activity_best_effort
+from store_context import default_store, get_store
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 logger = logging.getLogger("teacafe.telegram_auth")
@@ -95,6 +97,22 @@ async def telegram_login(req: TelegramLoginRequest, response: Response, request:
         customer.language_code = user_data.get("language_code")
         await db.commit()
     
+    # Activity writes are deliberately isolated from the login transaction:
+    # an unavailable activity table must never turn a valid Telegram login into
+    # a 500 response.
+    try:
+        activity_store = await get_store(db, customer.store_id) if customer.store_id else await default_store(db)
+    except Exception:  # noqa: BLE001 - activity is best effort by contract
+        await db.rollback()
+        logger.exception("customer_daily_activity_store_resolution_failed customer_id=%s", customer.id)
+    else:
+        await record_customer_activity_best_effort(
+            db,
+            customer_id=customer.id,
+            store_id=activity_store.id if activity_store else customer.store_id,
+            store_timezone=activity_store.timezone if activity_store else None,
+        )
+
     token = create_access_token({"sub": str(customer.id), "type": "customer"})
     
     response.set_cookie(key="session_token", value=token, **_cookie_options())

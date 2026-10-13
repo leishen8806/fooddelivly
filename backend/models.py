@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint, Table
+from sqlalchemy import Column, Integer, BigInteger, String, Boolean, Date, DateTime, ForeignKey, JSON, Time, UniqueConstraint, Table, Index
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database import Base
@@ -30,6 +30,21 @@ class Customer(Base):
     # （不建外键，与上面的 pending_payment_order_id 保持一致；wallet schema 可独立迁移）
     pending_recharge_order_id = Column(Integer, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class CustomerDailyActivity(Base):
+    """One de-duplicated Mini App open per customer and store-local day."""
+    __tablename__ = "customer_daily_activity"
+
+    customer_id = Column(Integer, ForeignKey("customers.id", ondelete="CASCADE"), primary_key=True)
+    activity_date = Column(Date, primary_key=True)
+    store_id = Column(Integer, ForeignKey("stores.id"), nullable=True)
+    first_seen_at = Column(DateTime(timezone=True), nullable=False)
+    last_seen_at = Column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (
+        Index("ix_customer_daily_activity_date_store", "activity_date", "store_id"),
+    )
 
 class Staff(Base):
     __tablename__ = "staff"
