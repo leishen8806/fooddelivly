@@ -922,6 +922,13 @@ small {
   line-height: var(--line-caption);
 }
 
+.order-amount-breakdown {
+  grid-column: 1 / -1;
+  color: var(--color-muted);
+  font-size: var(--type-caption);
+  line-height: var(--line-caption);
+}
+
 .language-modal {
   display: grid;
   justify-items: start;

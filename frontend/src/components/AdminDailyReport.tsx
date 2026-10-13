@@ -9,6 +9,9 @@ type ReportPayload = {
   currency: string;
   orders: number;
   orders_total_minor: number;
+  order_sales_total_minor: number;
+  order_sales_subtotal_minor: number;
+  order_sales_discount_minor: number;
   received_total_minor: number;
   received_manual_minor: number;
   received_wallet_minor: number;
@@ -112,7 +115,10 @@ export default function AdminDailyReport({ role }: { role: string | null }) {
 
       <div className="daily-report-metrics">
         <div className="metric"><span>{t('admin.reportOrders')}</span><strong>{data.report.orders}</strong></div>
-        <div className="metric"><span>{t('admin.orderTotal')}</span><strong>{formatAmount(data.report.orders_total_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.orderSales')}</span><strong>{formatAmount(data.report.order_sales_total_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.reportOrderSubtotal')}</span><strong>{formatAmount(data.report.order_sales_subtotal_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.reportCouponDiscount')}</span><strong>-{formatAmount(data.report.order_sales_discount_minor, data.report.currency, i18n.language)}</strong></div>
+        <div className="metric"><span>{t('admin.orderTotalGross')}</span><strong>{formatAmount(data.report.orders_total_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.confirmedReceipts')}</span><strong>{formatAmount(data.report.received_total_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.reportTopUps')} × {data.report.recharges_credited}</span><strong>{formatAmount(data.report.recharges_amount_minor, data.report.currency, i18n.language)}</strong></div>
         <div className="metric"><span>{t('admin.reportBonus')}</span><strong>{formatAmount(data.report.recharges_bonus_minor, data.report.currency, i18n.language)}</strong></div>

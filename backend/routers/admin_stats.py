@@ -107,10 +107,21 @@ async def get_analytics(
 
     totals: dict[str, dict[str, int]] = {}
     for order in orders:
-        bucket = totals.setdefault(order.currency, {"order_total_minor": 0, "order_sales_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0})
+        bucket = totals.setdefault(order.currency, {
+            "order_total_minor": 0, "order_sales_minor": 0,
+            "order_subtotal_minor": 0, "order_discount_minor": 0,
+            "order_sales_subtotal_minor": 0, "order_sales_discount_minor": 0,
+            "in_review_minor": 0, "cancelled_total_minor": 0,
+        })
         bucket["order_total_minor"] += order.total_minor
+        subtotal = int(order.subtotal_minor if order.subtotal_minor is not None else order.total_minor)
+        discount = int(order.coupon_discount_minor or 0)
+        bucket["order_subtotal_minor"] += subtotal
+        bucket["order_discount_minor"] += discount
         if order.order_status != "CANCELLED":
             bucket["order_sales_minor"] += order.total_minor
+            bucket["order_sales_subtotal_minor"] += subtotal
+            bucket["order_sales_discount_minor"] += discount
         if order.payment_status == "PROOF_SUBMITTED":
             bucket["in_review_minor"] += order.external_due_minor if order.external_due_minor is not None else order.total_minor
         if order.order_status == "CANCELLED":
@@ -128,7 +139,10 @@ async def get_analytics(
         bucket["cash_inflow_minor"] = external_amount + recharge_amount
 
     for currency in set(external_by_currency) | set(wallet_by_currency) | set(recharge_by_currency):
-        totals.setdefault(currency, {"order_total_minor": 0, "order_sales_minor": 0, "in_review_minor": 0, "cancelled_total_minor": 0,
+        totals.setdefault(currency, {"order_total_minor": 0, "order_sales_minor": 0,
+                                     "order_subtotal_minor": 0, "order_discount_minor": 0,
+                                     "order_sales_subtotal_minor": 0, "order_sales_discount_minor": 0,
+                                     "in_review_minor": 0, "cancelled_total_minor": 0,
                                      "external_order_receipts_minor": external_by_currency.get(currency, 0),
                                      "wallet_paid_minor": wallet_by_currency.get(currency, 0),
                                      "confirmed_receipts_minor": external_by_currency.get(currency, 0) + wallet_by_currency.get(currency, 0),

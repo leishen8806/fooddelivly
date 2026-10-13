@@ -83,6 +83,10 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
             currency = settings.currency
 
     order_total = sum(o.total_minor for o in orders)
+    sales_orders = [o for o in orders if o.order_status != "CANCELLED"]
+    order_sales_total = sum(o.total_minor for o in sales_orders)
+    order_sales_subtotal = sum(int(o.subtotal_minor if o.subtotal_minor is not None else o.total_minor) for o in sales_orders)
+    order_sales_discount = sum(int(o.coupon_discount_minor or 0) for o in sales_orders)
     by_state: dict[str, int] = {}
     for order in orders:
         by_state[order.order_status] = by_state.get(order.order_status, 0) + 1
@@ -189,6 +193,9 @@ async def build_daily_report(db: AsyncSession, report_date: date, tz: ZoneInfo |
         "currency": currency,
         "orders": len(orders),
         "orders_total_minor": int(order_total),
+        "order_sales_total_minor": int(order_sales_total),
+        "order_sales_subtotal_minor": int(order_sales_subtotal),
+        "order_sales_discount_minor": int(order_sales_discount),
         "orders_by_status": by_state,
         "received_manual_minor": int(manual_received),
         "received_wallet_minor": int(wallet_received),
@@ -223,6 +230,9 @@ def format_daily_report(report: dict, language: str = "en") -> str:
         tr("report.daily.date", language, date=report["date"]),
         "━━━━━━━━━━━━━━",
         orders_line,
+        tr("report.daily.orderSales", language, amount=money(report["order_sales_total_minor"])),
+        tr("report.daily.orderSubtotal", language, amount=money(report["order_sales_subtotal_minor"])),
+        tr("report.daily.couponDiscount", language, amount=money(report["order_sales_discount_minor"])),
         tr("report.daily.orderTotal", language, amount=money(report["orders_total_minor"])),
         tr("report.daily.received", language, amount=money(report["received_total_minor"])),
         "  · " + tr("report.daily.receivedManual", language, amount=money(report["received_manual_minor"])),
