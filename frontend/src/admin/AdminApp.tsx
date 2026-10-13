@@ -12,6 +12,8 @@ import AdminProductsPage from './AdminProductsPage';
 import AdminProductEditPage from './AdminProductEditPage';
 import AdminCategoriesPage from './AdminCategoriesPage';
 import AdminCategoryEditPage from './AdminCategoryEditPage';
+import AdminCouponsPage from './AdminCouponsPage';
+import AdminCouponEditPage from './AdminCouponEditPage';
 
 function AdminGuard({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -54,7 +56,9 @@ export default function AdminApp() {
     <Route path="categories" element={<AdminCategoriesPage />} />
     <Route path="categories/new" element={<AdminCategoryEditPage />} />
     <Route path="categories/:id" element={<AdminCategoryEditPage />} />
-    <Route path="coupons" element={<AdminLegacyPage initialSection="coupons" />} />
+    <Route path="coupons" element={<AdminCouponsPage />} />
+    <Route path="coupons/new" element={<AdminCouponEditPage />} />
+    <Route path="coupons/:id" element={<AdminCouponEditPage />} />
     <Route path="finance" element={<Navigate to="/admin/finance/daily" replace />} />
     <Route path="finance/daily" element={<AdminFinanceDailyPage />} />
     <Route path="finance/stats" element={<AdminFinanceStatsRoute />} />

@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import AdminRecharges from '../components/AdminRecharges';
-import AdminCoupons from '../components/AdminCoupons';
 import ImageUpload from './components/ImageUpload';
 import { useAuthStore } from '../store/authStore';
 import { AdminLayout } from './layout/AdminLayout';
@@ -277,7 +276,6 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
       })}</tbody></table></div>}
       {auditTotal > 0 && <div className="audit-pagination"><span>{t('admin.logRange', { from: auditOffset + 1, to: Math.min(auditOffset + auditLogs.length, auditTotal), total: auditTotal })}</span><div><button disabled={auditOffset === 0 || auditLoading} onClick={() => setAuditOffset((offset) => Math.max(0, offset - 25))}>{t('common.back')}</button><button disabled={auditOffset + 25 >= auditTotal || auditLoading} onClick={() => setAuditOffset((offset) => offset + 25)}>{t('admin.nextPage')}</button></div></div>}
     </section>}
-    {section === 'coupons' && role === 'MANAGER' && <AdminCoupons />}
 
     {section === 'settings' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('nav.settings')}</h2></div><form className="product-form" onSubmit={saveSettings}>
       <label>{t('common.currency')}<input maxLength={3} value={storeSettings.currency} onChange={(event) => setStoreSettings({ ...storeSettings, currency: event.target.value.toUpperCase() })} required /></label>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Literal
 
@@ -10,9 +11,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from coupon_service import claim_url, new_token, share_url, token_hash
 from database import get_db
-from dependencies import get_current_manager
+from dependencies import get_catalog_manager, get_current_manager
 from models import AuditLog, CouponCampaign, CouponClaimLink
 from store_context import staff_store, store_scope_clause
+from telegram_service import tr
 
 
 router = APIRouter(prefix="/api/v1/admin/coupons", tags=["Admin Coupons"])
@@ -65,12 +67,34 @@ class CouponStatusUpdate(BaseModel):
     status: Literal["ACTIVE", "PAUSED"]
 
 
-def _share_text(coupon: CouponCampaign) -> str:
+def _currency_digits(currency: str) -> int:
+    return 0 if str(currency or "").upper() in {"KHR", "JPY", "VND"} else 2
+
+
+def _format_minor(minor: int, currency: str) -> str:
+    """Format integer minor units without float conversion."""
+    digits = _currency_digits(currency)
+    value = max(0, int(minor or 0))
+    if digits == 0:
+        return f"{value:,} {currency}"
+    scale = 10 ** digits
+    whole, fraction = divmod(value, scale)
+    return f"{whole:,}.{fraction:0{digits}d} {currency}"
+
+
+def _share_text(coupon: CouponCampaign, language: str) -> str:
     if coupon.coupon_type == "DISCOUNT":
-        rule = f"{coupon.discount_percent}% OFF"
-    else:
-        rule = f"减 {coupon.fixed_discount_minor / 100:.2f} {coupon.currency}"
-    return f"Tea Cafe · {coupon.name} · {rule}"
+        return tr("coupon.shareTextDiscount", language, name=coupon.name,
+                   percent=int(coupon.discount_percent or 0))
+    return tr("coupon.shareTextFixed", language, name=coupon.name,
+              amount=_format_minor(int(coupon.fixed_discount_minor or 0), coupon.currency))
+
+
+def _share_urls(url: str | None, coupon: CouponCampaign) -> dict[str, str]:
+    if not url:
+        return {}
+    return {language: share_url(url, _share_text(coupon, language))
+            for language in ("zh-CN", "en", "km")}
 
 
 async def _links(db: AsyncSession, coupon_id: int):
@@ -80,9 +104,22 @@ async def _links(db: AsyncSession, coupon_id: int):
     return result.scalars().all()
 
 
+async def _links_for_coupons(db: AsyncSession, coupon_ids: list[int]) -> dict[int, list[CouponClaimLink]]:
+    if not coupon_ids:
+        return {}
+    result = await db.execute(select(CouponClaimLink).where(
+        CouponClaimLink.coupon_id.in_(coupon_ids)
+    ).order_by(CouponClaimLink.created_at.desc(), CouponClaimLink.id.desc()))
+    grouped: dict[int, list[CouponClaimLink]] = defaultdict(list)
+    for link in result.scalars().all():
+        grouped[link.coupon_id].append(link)
+    return grouped
+
+
 def _payload(coupon: CouponCampaign, links: list[CouponClaimLink]) -> dict:
     public = next((link for link in links if link.mode == "PUBLIC"), None)
     public_url = claim_url(public.token_value, "PUBLIC") if public else None
+    share_urls = _share_urls(public_url, coupon)
     return {
         "id": coupon.id,
         "store_id": coupon.store_id,
@@ -103,7 +140,10 @@ def _payload(coupon: CouponCampaign, links: list[CouponClaimLink]) -> dict:
         "status": coupon.status,
         "published_at": coupon.published_at,
         "public_claim_url": public_url,
-        "public_share_url": share_url(public_url, _share_text(coupon)) if public_url else None,
+        # Keep the English URL for backward compatibility. New clients choose
+        # the URL matching the current UI language from this map.
+        "public_share_url": share_urls.get("en"),
+        "public_share_urls": share_urls,
         "private_link_count": sum(1 for link in links if link.mode == "PRIVATE"),
         "private_claimed_count": sum(1 for link in links if link.mode == "PRIVATE" and link.status == "CLAIMED"),
     }
@@ -148,14 +188,12 @@ async def list_coupons(manager: dict = Depends(get_current_manager), db: AsyncSe
     if clause is not None:
         query = query.where(clause)
     coupons = (await db.execute(query)).scalars().all()
-    output = []
-    for coupon in coupons:
-        output.append(_payload(coupon, await _links(db, coupon.id)))
-    return output
+    links_by_coupon = await _links_for_coupons(db, [coupon.id for coupon in coupons])
+    return [_payload(coupon, links_by_coupon.get(coupon.id, [])) for coupon in coupons]
 
 
 @router.post("", status_code=201)
-async def create_coupon(req: CouponCreate, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+async def create_coupon(req: CouponCreate, manager: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     store = await staff_store(db, manager)
     if store is None:
         raise HTTPException(status_code=409, detail="Store not configured")
@@ -187,8 +225,37 @@ async def create_coupon(req: CouponCreate, manager: dict = Depends(get_current_m
     return _payload(coupon, [])
 
 
+@router.patch("/{coupon_id}")
+async def update_coupon(coupon_id: int, req: CouponCreate,
+                        manager: dict = Depends(get_catalog_manager),
+                        db: AsyncSession = Depends(get_db)):
+    coupon = await _get_coupon(db, manager, coupon_id)
+    if coupon.status != "DRAFT":
+        raise HTTPException(status_code=409, detail="Published coupons cannot be edited")
+    store = await staff_store(db, manager)
+    if store is None:
+        raise HTTPException(status_code=409, detail="Store not configured")
+    coupon.name = req.name.strip()
+    coupon.description = req.description.strip() if req.description else None
+    coupon.currency = req.currency or store.currency
+    coupon.coupon_type = req.coupon_type
+    coupon.distribution_mode = req.distribution_mode
+    coupon.min_spend_minor = req.min_spend_minor
+    coupon.discount_percent = req.discount_percent
+    coupon.discount_cap_minor = req.discount_cap_minor
+    coupon.fixed_discount_minor = req.fixed_discount_minor
+    coupon.starts_at = req.starts_at
+    coupon.ends_at = req.ends_at
+    coupon.per_user_claim_limit = req.per_user_claim_limit
+    coupon.total_claim_limit = req.total_claim_limit
+    _audit(db, manager, coupon, "updated", coupon_type=coupon.coupon_type,
+           distribution_mode=coupon.distribution_mode, currency=coupon.currency)
+    await db.commit()
+    return _payload(coupon, await _links(db, coupon.id))
+
+
 @router.post("/{coupon_id}/publish")
-async def publish_coupon(coupon_id: int, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+async def publish_coupon(coupon_id: int, manager: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     coupon = await _get_coupon(db, manager, coupon_id)
     if coupon.status != "DRAFT":
         raise HTTPException(status_code=409, detail="Only draft coupons can be published")
@@ -204,7 +271,7 @@ async def publish_coupon(coupon_id: int, manager: dict = Depends(get_current_man
 
 
 @router.post("/{coupon_id}/status")
-async def update_coupon_status(coupon_id: int, req: CouponStatusUpdate, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+async def update_coupon_status(coupon_id: int, req: CouponStatusUpdate, manager: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     coupon = await _get_coupon(db, manager, coupon_id)
     if coupon.status == "DRAFT":
         raise HTTPException(status_code=409, detail="Publish the coupon before changing its online status")
@@ -216,7 +283,7 @@ async def update_coupon_status(coupon_id: int, req: CouponStatusUpdate, manager:
 
 
 @router.post("/{coupon_id}/private-link")
-async def create_private_link(coupon_id: int, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+async def create_private_link(coupon_id: int, manager: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     coupon = await _get_coupon(db, manager, coupon_id)
     if coupon.distribution_mode != "PRIVATE":
         raise HTTPException(status_code=409, detail="This coupon uses a public link")
@@ -235,11 +302,14 @@ async def create_private_link(coupon_id: int, manager: dict = Depends(get_curren
     await db.flush()
     _audit(db, manager, coupon, "private_link_created", link_id=link.id)
     await db.commit()
+    private_claim_url = claim_url(raw, "PRIVATE")
+    share_urls = _share_urls(private_claim_url, coupon)
     return {
         "id": link.id,
         "status": link.status,
-        "claim_url": claim_url(raw, "PRIVATE"),
-        "share_url": share_url(claim_url(raw, "PRIVATE") or "", _share_text(coupon)),
+        "claim_url": private_claim_url,
+        "share_url": share_urls.get("en"),
+        "share_urls": share_urls,
     }
 
 
