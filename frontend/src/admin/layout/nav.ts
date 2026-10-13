@@ -13,7 +13,8 @@ export type AdminSection =
   | 'finance'
   | 'audit'
   | 'staff'
-  | 'settings';
+  | 'settings'
+  | 'refunds';
 
 export type AdminNavItem = {
   key: AdminSection;
@@ -54,6 +55,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { key: 'financeDaily', path: '/admin/finance/daily', labelKey: 'admin.dailyReport' },
       { key: 'financeStats', path: '/admin/finance/stats', labelKey: 'nav.finance' },
+      { key: 'refunds', path: '/admin/refunds', labelKey: 'admin.refunds.title', roles: ['MANAGER'] },
     ],
   },
   {

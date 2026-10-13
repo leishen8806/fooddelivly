@@ -17,7 +17,7 @@ describe('admin navigation', () => {
 
   it('keeps daily reports and interval finance stats as separate entries', () => {
     const finance = ADMIN_NAV_GROUPS.find((group) => group.key === 'finance');
-    expect(finance?.items.map((item) => item.path)).toEqual(['/admin/finance/daily', '/admin/finance/stats']);
+    expect(finance?.items.map((item) => item.path)).toEqual(['/admin/finance/daily', '/admin/finance/stats', '/admin/refunds']);
   });
 });
 
