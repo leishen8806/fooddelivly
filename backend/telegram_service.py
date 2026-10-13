@@ -61,6 +61,31 @@ def _telegram_contact(customer) -> str:
     return escape(display_name)
 
 
+def _order_status_marker(status: str) -> str:
+    """Telegram 不支持自定义文字颜色，用状态语义对应的颜色圆点标识。"""
+    return {
+        "NEW": "🟠",
+        "ACCEPTED": "🔵",
+        "PREPARING": "🔵",
+        "READY": "🟣",
+        "DELIVERED": "🟦",
+        "COMPLETED": "🟢",
+        "CANCELLED": "🔴",
+    }.get(status, "⚪")
+
+
+def _payment_status_marker(status: str) -> str:
+    """Telegram 不支持自定义文字颜色，用状态语义对应的颜色圆点标识。"""
+    return {
+        "PAID_CONFIRMED": "🟢",
+        "PROOF_SUBMITTED": "🟠",
+        "REJECTED": "🔴",
+        "UNPAID": "🔴",
+        "REFUNDED": "↩️",
+        "PARTIALLY_REFUNDED": "🟡",
+    }.get(status, "⚪")
+
+
 def order_keyboard(order_id: int, order_status: str, payment_status: str, language: str = "en") -> InlineKeyboardMarkup:
     buttons = []
     if order_status == "NEW":
@@ -116,8 +141,8 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
             lines.append(line)
     lines.extend([
         f"{tr('common.total', language)}: {_currency_amount(order.total_minor, order.currency)}",
-        f"{tr('nav.orders', language)}: {status_label}",
-        f"{tr('payment.title', language)}: {tr(payment_key, language)}",
+        f"{_order_status_marker(order.order_status)} <b>{tr('nav.orders', language)}</b>: {status_label}",
+        f"{_payment_status_marker(payment)} <b>{tr('payment.title', language)}</b>: {tr(payment_key, language)}",
     ])
     wallet_paid = int(getattr(order, "wallet_paid_minor", 0) or 0)
     external_due = int(getattr(order, "external_due_minor", 0) or 0)
