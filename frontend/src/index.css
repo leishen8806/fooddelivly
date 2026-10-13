@@ -2880,6 +2880,9 @@ small {
 .admin-table tbody tr[tabindex]:hover, .admin-table tbody tr[tabindex]:focus { background: var(--color-tint); outline: none; }
 .admin-table tr.has-open-issue { box-shadow: inset 3px 0 var(--color-danger); }
 .admin-table-sort { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.admin-link-button { border: 0; padding: 0; background: transparent; color: var(--color-brand); text-decoration: underline; cursor: pointer; font: inherit; }
+.admin-chat-actions { display: inline-flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+.table-action { min-height: 2rem; padding: .25rem .6rem; white-space: nowrap; }
 .status-pill { display: inline-flex; align-items: center; border-radius: var(--radius-pill); padding: .2rem .55rem; font-size: var(--type-caption); font-weight: var(--weight-semibold); white-space: nowrap; }
 .order-new, .payment-unpaid, .payment-rejected { color: #9a5a00; background: #fff2d7; }
 .order-accepted, .order-preparing, .payment-proof_submitted { color: #185d8b; background: #e1f1fb; }

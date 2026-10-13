@@ -603,7 +603,14 @@
     "admin.rejectPayment": "拒绝付款凭证",
     "admin.markDelivered": "已配送",
     "admin.actionFailed": "操作失败",
-    "admin.createdAt": "创建时间"
+    "admin.createdAt": "创建时间",
+    "admin.orderUser": "下单用户",
+    "admin.openChat": "打开聊天",
+    "admin.copyTelegramId": "复制 ID",
+    "admin.payableAmount": "应付金额",
+    "admin.uploadImageConstraint": "仅支持 PNG、JPEG 或 WebP，且不超过 5MB。",
+    "admin.reviewPayment": "去核款",
+    "common.confirm": "确认"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -1209,7 +1216,14 @@
     "admin.rejectPayment": "Reject proof",
     "admin.markDelivered": "Mark delivered",
     "admin.actionFailed": "Action failed",
-    "admin.createdAt": "Created"
+    "admin.createdAt": "Created",
+    "admin.orderUser": "Order user",
+    "admin.openChat": "Open chat",
+    "admin.copyTelegramId": "Copy ID",
+    "admin.payableAmount": "Amount due",
+    "admin.uploadImageConstraint": "PNG, JPEG, or WebP only, up to 5 MB.",
+    "admin.reviewPayment": "Review payment",
+    "common.confirm": "Confirm"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1815,6 +1829,13 @@
     "admin.rejectPayment": "បដិសេធបង្កាន់ដៃ",
     "admin.markDelivered": "បានដឹកជញ្ជូន",
     "admin.actionFailed": "ប្រតិបត្តិការបរាជ័យ",
-    "admin.createdAt": "ពេលបង្កើត"
+    "admin.createdAt": "ពេលបង្កើត",
+    "admin.orderUser": "អ្នកប្រើបញ្ជាទិញ",
+    "admin.openChat": "បើកការជជែក",
+    "admin.copyTelegramId": "ចម្លង ID",
+    "admin.payableAmount": "ចំនួនត្រូវបង់",
+    "admin.uploadImageConstraint": "គាំទ្រ​តែ PNG, JPEG ឬ WebP មិនលើស 5MB។",
+    "admin.reviewPayment": "ពិនិត្យការបង់ប្រាក់",
+    "common.confirm": "បញ្ជាក់"
   }
 }

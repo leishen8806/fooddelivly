@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 from database import get_db
 from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer, OrderIssue, OrderRefund, Product, ProductOptionGroup, Store
+from customer_links import telegram_chat_url
 from dependencies import get_current_manager, get_current_staff
 from store_context import can_access_store, store_for_order, store_scope_clause, load_overrides, effective_product
 from sale_window import is_on_sale, windows_from_json
@@ -37,16 +38,6 @@ def _snapshot_text(value) -> str:
                 return str(value[key])
         return next((str(v) for v in value.values() if v), "")
     return str(value or "")
-
-
-def _chat_url(customer: Customer | None) -> str | None:
-    if not customer:
-        return None
-    if customer.username:
-        return f"https://t.me/{customer.username.lstrip('@')}"
-    if customer.telegram_user_id:
-        return f"tg://user?id={customer.telegram_user_id}"
-    return None
 
 
 async def _staff_timezone(db: AsyncSession, staff_info: dict) -> str:
@@ -131,7 +122,7 @@ def _base_order_payload(order: Order, customer: Customer | None) -> dict:
         "removed_minor": order.removed_minor or 0,
         "created_at": order.created_at,
         "customer": None if customer is None else {"id": customer.id, "display_name": customer.display_name, "username": customer.username,
-            "telegram_user_id": customer.telegram_user_id, "telegram_chat_url": _chat_url(customer)},
+            "telegram_user_id": customer.telegram_user_id, "telegram_chat_url": telegram_chat_url(customer.username, customer.telegram_user_id)},
     }
 
 

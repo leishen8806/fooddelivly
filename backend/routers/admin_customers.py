@@ -1,5 +1,3 @@
-import re
-
 from fastapi import APIRouter, Depends
 from sqlalchemy import case, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +7,7 @@ from database import get_db
 from dependencies import get_current_manager
 from models import Customer, Order
 from store_context import store_scope_clause
+from customer_links import telegram_chat_url
 
 router = APIRouter(prefix="/api/v1/admin/customers", tags=["Admin Customers"])
 
@@ -34,11 +33,7 @@ async def list_customers(
     customers = []
     for customer, order_count, completed_order_count in rows:
         username = (customer.username or "").lstrip("@")
-        chat_url = (
-            f"https://t.me/{username}"
-            if re.fullmatch(r"[A-Za-z0-9_]{5,32}", username)
-            else f"tg://user?id={customer.telegram_user_id}"
-        )
+        chat_url = telegram_chat_url(username, customer.telegram_user_id)
         customers.append({
             "id": customer.id,
             "telegram_user_id": customer.telegram_user_id,

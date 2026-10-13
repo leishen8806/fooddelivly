@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { MemoryRouter } from 'react-router-dom';
 import { I18nextProvider } from 'react-i18next';
 import { DataTable } from './components/DataTable';
-import AdminOrdersPage, { formatMinor, parseDateRange } from './AdminOrdersPage';
+import AdminOrdersPage, { AdminOrderDetail, formatMinor, parseDateRange } from './AdminOrdersPage';
 
 vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined });
 vi.stubGlobal('document', { documentElement: { lang: '' } });
@@ -30,5 +30,13 @@ describe('B1 order workbench helpers', () => {
     expect(html).not.toContain('<form');
     expect(html).toContain('type="date"');
     expect(html).toContain('admin-status-tabs');
+    for (const label of ['Created', 'Order user', 'Open chat', 'Room', 'Subtotal', 'Coupon discount', 'Amount due', 'Received', 'Payment', 'Order status', 'Actions']) expect(html).toContain(label);
+  });
+
+  it('keeps the detail cancellation and manager upload entry points', () => {
+    const html = renderToStaticMarkup(<MemoryRouter initialEntries={['/admin/orders/ORD-1']}><I18nextProvider i18n={i18n}><AdminOrderDetail code="ORD-1" roleOverride="MANAGER" initialOrder={{ id: 1, public_code: 'ORD-1', room_number: '101', order_status: 'NEW', payment_status: 'UNPAID', payment_method: 'ABA', currency: 'USD', total_minor: 200, subtotal_minor: 200, delivery_fee_minor: 0, service_fee_minor: 0, wallet_paid_minor: 0, external_due_minor: 200, paid_confirmed_minor: 0, removed_minor: 0, received_minor: 0, refund_pending_minor: 0, coupon_discount_minor: 0, items_preview: ['Tea'], item_count: 1, open_issue_count: 0, created_at: '2026-01-01T00:00:00Z', items: [], events: [], issues: [], refunds: [] }} /></I18nextProvider></MemoryRouter>);
+    expect(html).toContain('Cancel order');
+    expect(html).toContain('Upload payment proof');
+    expect(html).toContain('accept="image/png,image/jpeg,image/webp"');
   });
 });
