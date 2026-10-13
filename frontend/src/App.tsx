@@ -243,7 +243,9 @@ function CustomerPage() {
           void loadCustomerCoupons();
         })
         .catch((requestError: any) => {
-          if (active) setCouponClaimNotice({ kind: 'error', text: requestError?.response?.data?.detail || t('coupon.claimFailed') });
+          const detail = requestError?.response?.data?.detail;
+          const message = detail === 'Coupon has been fully claimed' ? t('coupon.fullyClaimed') : t('coupon.claimFailed');
+          if (active) setCouponClaimNotice({ kind: 'error', text: message });
         });
     });
     return () => { active = false; };

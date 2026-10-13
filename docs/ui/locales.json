@@ -493,7 +493,8 @@
     "coupon.status.draft": "草稿",
     "coupon.status.active": "已上线",
     "coupon.status.paused": "已下架",
-    "coupon.alreadyClaimed": "优惠券已在您的账户中"
+    "coupon.alreadyClaimed": "优惠券已在您的账户中",
+    "coupon.fullyClaimed": "该优惠券已领完"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -989,7 +990,8 @@
     "coupon.status.draft": "Draft",
     "coupon.status.active": "Online",
     "coupon.status.paused": "Offline",
-    "coupon.alreadyClaimed": "This coupon is already in your account"
+    "coupon.alreadyClaimed": "This coupon is already in your account",
+    "coupon.fullyClaimed": "This coupon has been fully claimed"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1485,6 +1487,7 @@
     "coupon.status.draft": "ព្រាង",
     "coupon.status.active": "កំពុងប្រើ",
     "coupon.status.paused": "ផ្អាក",
-    "coupon.alreadyClaimed": "គូប៉ុងនេះមាននៅក្នុងគណនីរបស់អ្នករួចហើយ"
+    "coupon.alreadyClaimed": "គូប៉ុងនេះមាននៅក្នុងគណនីរបស់អ្នករួចហើយ",
+    "coupon.fullyClaimed": "គូប៉ុងនេះត្រូវបានទទួលអស់ហើយ"
   }
 }
