@@ -1,22 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import type { ChangeEvent, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import AdminRecharges from '../components/AdminRecharges';
-import { type OptionGroup } from '../components/ProductOptionsPicker';
-import AdminProductRules from '../components/AdminProductRules';
 import AdminCoupons from '../components/AdminCoupons';
+import ImageUpload from './components/ImageUpload';
 import { useAuthStore } from '../store/authStore';
 import { AdminLayout } from './layout/AdminLayout';
 import { adminPathForSection, type AdminSection } from './layout/nav';
 
-type SaleWindow = { start: string; end: string; overnight: boolean };
-type Product = { id: number; category_id: number; category_ids?: number[]; name: Record<string, string>; description?: Record<string, string>; price_minor: number; currency: string; image_key?: string; available: boolean; sweetness_enabled: boolean; sale_windows?: SaleWindow[]; has_sale_window?: boolean; on_sale_now?: boolean; orderable?: boolean; next_sale_start?: string | null; option_groups?: OptionGroup[] };
 type OrderItemOptions = { sweetness?: number; price_delta_minor?: number; selections?: Array<{ group_id: number; group_name?: Record<string, string>; option_id: number; option_name?: Record<string, string>; price_delta_minor: number }> };
 type OrderRefund = { id: number; amount_minor: number; method: string; status: string; requires_approval?: boolean };
 type Order = { id: number; public_code: string; room_number: string; order_status: string; payment_status: string; payment_method?: string; currency: string; total_minor: number; subtotal_minor?: number; coupon_name_snapshot?: string | null; coupon_discount_minor?: number; delivery_fee_minor?: number; service_fee_minor?: number; wallet_paid_minor?: number; external_due_minor?: number; refunds?: OrderRefund[]; items?: Array<{ id?: number; name: Record<string, string> | string; quantity: number; line_total_minor: number; options?: OrderItemOptions }> };
-type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
 type StoreSettings = { currency: string; timezone: string; aba_qr_asset_key: string | null; payment_link: string | null; telegram_staff_group_id: string | null; staff_group_language: string; open_hours: string | null; is_accepting_orders: boolean; business_hours: Array<{ start: string; end: string }>; min_order_minor: number; delivery_fee_minor: number; service_fee_minor: number; unpaid_order_timeout_minutes: number; unpaid_order_reminder_minutes: number; shortage_customer_response_timeout_minutes: number; shortage_refund_review_minor: number };
 type Staff = { id: number; login_name: string; role: string; active: boolean; telegram_user_id: string | null };
 type Customer = { id: number; telegram_user_id: string; display_name: string | null; username: string | null; telegram_chat_url: string; order_count: number; completed_order_count: number; created_at: string };
@@ -70,67 +66,18 @@ const apiDetail = (error: unknown) => {
   return typeof detail === 'string' ? detail : undefined;
 };
 
-function ImageUpload({ label: fieldLabel, value, onChange }: { label: string; value: string | null; onChange: (url: string | null) => void }) {
-  const { t } = useTranslation();
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState('');
-  const selectImage = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setError('');
-    if (file.size > 5 * 1024 * 1024) { setError(t('admin.uploadTooLarge')); event.target.value = ''; return; }
-    const form = new FormData(); form.append('file', file); setUploading(true);
-    try { const response = await api.post('/api/v1/admin/uploads', form); onChange(response.data.url); }
-    catch { setError(t('admin.uploadFailed')); }
-    finally { setUploading(false); event.target.value = ''; }
-  };
-  return <div className="image-upload"><span className="image-upload-label">{fieldLabel}</span><div className="image-upload-row">{value && <img className="image-upload-preview" src={value} alt={fieldLabel} />}<input ref={inputRef} className="image-upload-input" type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => void selectImage(event)} /><button type="button" disabled={uploading} onClick={() => inputRef.current?.click()}>{uploading ? t('admin.uploadingImage') : t('admin.chooseImage')}</button>{value && <button type="button" disabled={uploading} onClick={() => onChange(null)}>{t('admin.removeImage')}</button>}</div><small>{t('admin.imageUploadHint')}</small>{error && <span className="error" role="alert">{error}</span>}</div>;
-}
-
 export default function AdminLegacyPage({ initialSection = 'overview' }: { initialSection?: AdminSection }) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { isAdminAuthenticated, logoutAdmin, role, storeId, adminStoreResolved } = useAuthStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState<AdminStats | null>(null);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [section, setSection] = useState<AdminSection>(initialSection);
   const selectSection = (next: AdminSection) => { setSection(next); navigate(adminPathForSection(next)); };
   const [orderFilter, setOrderFilter] = useState('ALL');
   const [error, setError] = useState('');
   const [from] = useState(() => new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10));
   const [to] = useState(() => new Date().toISOString().slice(0, 10));
-  const emptyProduct = { nameEn: '', nameZh: '', nameKm: '', descriptionEn: '', descriptionZh: '', descriptionKm: '', price: '', categoryIds: [] as number[], imageUrl: '', currency: '', sweetnessEnabled: false };
-  const [newProduct, setNewProduct] = useState(emptyProduct);
-  const [editingProductId, setEditingProductId] = useState<number | null>(null);
-  const [rulesProductId, setRulesProductId] = useState<number | null>(null);
-
-  // 管理端编辑器需要「可变的表单结构」，这里把接口返回的规格转成表单行
-  const toRulesWindows = (product: Product) =>
-    (product.sale_windows ?? []).map((window) => ({ start: window.start, end: window.end }));
-  const toRulesGroups = (product: Product) =>
-    (product.option_groups ?? []).map((group) => ({
-      nameEn: group.name?.en ?? group.name_text,
-      nameZh: group.name?.['zh-CN'] ?? '',
-      nameKm: group.name?.km ?? '',
-      kind: (group.kind === 'ADDON' ? 'ADDON' : 'SPEC') as 'SPEC' | 'ADDON',
-      required: group.required,
-      multiSelect: group.multi_select,
-      maxSelect: group.max_select ? String(group.max_select) : '',
-      active: group.active !== false,
-      options: group.options.map((option) => ({
-        nameEn: option.name?.en ?? option.name_text,
-        nameZh: option.name?.['zh-CN'] ?? '',
-        nameKm: option.name?.km ?? '',
-        price: String(option.price_delta_minor / 100),
-        isDefault: option.is_default,
-        active: option.active !== false,
-      })),
-    }));
-  const [newCategory, setNewCategory] = useState({ en: '', zh: '', km: '' });
-  const [editingCategoryId, setEditingCategoryId] = useState<number | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
   const [feeInputs, setFeeInputs] = useState({ minOrder: '', delivery: '', service: '' });
   const [storeSettings, setStoreSettings] = useState<StoreSettings>({ currency: 'USD', timezone: 'Asia/Phnom_Penh', aba_qr_asset_key: null, payment_link: null, telegram_staff_group_id: null, staff_group_language: 'en', open_hours: null, is_accepting_orders: true, business_hours: [], min_order_minor: 0, delivery_fee_minor: 0, service_fee_minor: 0, unpaid_order_timeout_minutes: 0, unpaid_order_reminder_minutes: 0, shortage_customer_response_timeout_minutes: 0, shortage_refund_review_minor: 0 });
@@ -149,16 +96,13 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
 
   const fetchData = useCallback(async () => {
     setError('');
-    const [orderResult, statsResult, productResult, categoryResult, settingsResult, staffResult, customerResult] = await Promise.allSettled([
+    const [orderResult, statsResult, settingsResult, staffResult, customerResult] = await Promise.allSettled([
       api.get('/api/v1/admin/orders'), api.get('/api/v1/admin/analytics/', { params: { from, to } }),
-      api.get('/api/v1/admin/products'), api.get('/api/v1/admin/categories'),
       api.get('/api/v1/admin/settings/'), api.get('/api/v1/admin/staff'),
       role === 'MANAGER' ? api.get('/api/v1/admin/customers') : Promise.resolve({ data: [] }),
     ]);
     if (orderResult.status === 'fulfilled') setOrders(orderResult.value.data); else setError(t('error.network'));
     if (statsResult.status === 'fulfilled') setStats(statsResult.value.data);
-    if (productResult.status === 'fulfilled') setProducts(productResult.value.data);
-    if (categoryResult.status === 'fulfilled') setCategories(categoryResult.value.data);
     if (settingsResult.status === 'fulfilled') {
       const loaded = settingsResult.value.data as StoreSettings;
       setStoreSettings(loaded);
@@ -232,62 +176,6 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
     } catch (requestError: unknown) {
       setError(apiDetail(requestError) || t('error.generic'));
     } finally { setBusyId(null); }
-  };
-  const saveProduct = async (event: FormEvent) => {
-    event.preventDefault();
-    if (newProduct.categoryIds.length === 0) {
-      setError(t('admin.categoryRequired'));
-      return;
-    }
-    try {
-      const currency = newProduct.currency || storeSettings.currency || 'USD';
-      const payload = {
-        category_id: newProduct.categoryIds[0],
-        category_ids: newProduct.categoryIds,
-        name: { en: newProduct.nameEn, 'zh-CN': newProduct.nameZh, km: newProduct.nameKm },
-        description: newProduct.descriptionEn || newProduct.descriptionZh || newProduct.descriptionKm
-          ? { en: newProduct.descriptionEn || undefined, 'zh-CN': newProduct.descriptionZh || undefined, km: newProduct.descriptionKm || undefined }
-          : null,
-        price_minor: toMinor(Number(newProduct.price), currency), currency,
-        image_key: newProduct.imageUrl || null,
-        sweetness_enabled: newProduct.sweetnessEnabled,
-      };
-      if (editingProductId) await api.patch(`/api/v1/admin/products/${editingProductId}`, payload);
-      else await api.post('/api/v1/admin/products', payload);
-      setNewProduct(emptyProduct); setEditingProductId(null); await fetchData();
-    } catch { setError(t('error.generic')); }
-  };
-  const createCategory = async (event: FormEvent) => {
-    event.preventDefault();
-    try {
-      const payload = { name: { en: newCategory.en, 'zh-CN': newCategory.zh, km: newCategory.km }, sort_order: categories.length };
-      if (editingCategoryId) await api.patch(`/api/v1/admin/categories/${editingCategoryId}`, payload);
-      else await api.post('/api/v1/admin/categories', payload);
-      setNewCategory({ en: '', zh: '', km: '' }); setEditingCategoryId(null); await fetchData();
-    }
-    catch { setError(t('error.generic')); }
-  };
-  const startCategoryEdit = (category: Category) => {
-    setEditingCategoryId(category.id);
-    setNewCategory({ en: category.name.en || '', zh: category.name['zh-CN'] || '', km: category.name.km || '' });
-  };
-  const toggleCategory = async (category: Category) => {
-    try { await api.patch(`/api/v1/admin/categories/${category.id}`, { active: !category.active }); await fetchData(); }
-    catch { setError(t('error.generic')); }
-  };
-  const startProductEdit = (product: Product) => {
-    setEditingProductId(product.id);
-    setNewProduct({
-      nameEn: product.name.en || '', nameZh: product.name['zh-CN'] || '', nameKm: product.name.km || '',
-      descriptionEn: product.description?.en || '', descriptionZh: product.description?.['zh-CN'] || '', descriptionKm: product.description?.km || '',
-      price: String(product.price_minor / (10 ** (new Intl.NumberFormat('en', { style: 'currency', currency: product.currency }).resolvedOptions().maximumFractionDigits ?? 2))),
-      categoryIds: product.category_ids?.length ? product.category_ids : [product.category_id], imageUrl: product.image_key || '', currency: product.currency,
-      sweetnessEnabled: product.sweetness_enabled,
-    });
-  };
-  const toggleProduct = async (product: Product) => {
-    try { await api.patch(`/api/v1/admin/products/${product.id}`, { available: !product.available }); await fetchData(); }
-    catch { setError(t('error.generic')); }
   };
   const saveSettings = async (event: FormEvent) => {
     event.preventDefault();
@@ -388,12 +276,6 @@ export default function AdminLegacyPage({ initialSection = 'overview' }: { initi
         return <tr key={entry.id}><td>{timeLabel}</td><td>{actionLabel}{entry.details.reason && <small>{entry.details.reason}</small>}</td><td>{orderLabel}</td><td>{entry.operator_name}<small>{entry.operator_telegram_id ? `${t('admin.telegramId')}: ${entry.operator_telegram_id}` : ''}</small></td><td>{t(`audit.source.${entry.source}`, { defaultValue: entry.source })}{entry.source === 'telegram_group' && entry.details.group_id && <small>{entry.details.group_id}</small>}</td><td><span>{entry.details.from_state || '—'}</span>{entry.details.to_state && <small>→ {entry.details.to_state}</small>}</td></tr>;
       })}</tbody></table></div>}
       {auditTotal > 0 && <div className="audit-pagination"><span>{t('admin.logRange', { from: auditOffset + 1, to: Math.min(auditOffset + auditLogs.length, auditTotal), total: auditTotal })}</span><div><button disabled={auditOffset === 0 || auditLoading} onClick={() => setAuditOffset((offset) => Math.max(0, offset - 25))}>{t('common.back')}</button><button disabled={auditOffset + 25 >= auditTotal || auditLoading} onClick={() => setAuditOffset((offset) => offset + 25)}>{t('admin.nextPage')}</button></div></div>}
-    </section>}
-    {section === 'products' && role === 'MANAGER' && <section className="panel"><div className="panel-heading"><h2>{t('nav.products')}</h2></div>
-      <form className="product-form" onSubmit={createCategory}><label>{t('admin.newCategory')} (EN)<input value={newCategory.en} onChange={(event) => setNewCategory({ ...newCategory, en: event.target.value })} required /></label><label>{t('admin.newCategory')} (中文)<input value={newCategory.zh} onChange={(event) => setNewCategory({ ...newCategory, zh: event.target.value })} required /></label><label>{t('admin.newCategory')} (ខ្មែរ)<input value={newCategory.km} onChange={(event) => setNewCategory({ ...newCategory, km: event.target.value })} required /></label><button type="submit">{editingCategoryId ? t('common.save') : t('common.add')}</button>{editingCategoryId && <button type="button" onClick={() => { setEditingCategoryId(null); setNewCategory({ en: '', zh: '', km: '' }); }}>{t('common.cancel')}</button>}</form>
-      <div className="order-list">{categories.map((category) => <article className="order-row" key={category.id}><strong>{label(category.name, i18n.language)}</strong><span>{category.active ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startCategoryEdit(category)}>{t('common.edit')}</button><button onClick={() => void toggleCategory(category)}>{category.active ? t('admin.deactivate') : t('admin.activate')}</button></article>)}</div>
-      <form className="product-form" onSubmit={saveProduct}><label>{t('admin.category')}<select multiple size={Math.min(6, Math.max(3, categories.length))} value={newProduct.categoryIds.map(String)} onChange={(event) => setNewProduct({ ...newProduct, categoryIds: Array.from(event.target.selectedOptions, (option) => Number(option.value)) })} required>{categories.map((category) => <option key={category.id} value={category.id}>{label(category.name, i18n.language)}</option>)}</select><small>{t('admin.categoryMultiHint')}</small></label><label>{t('admin.productName')} (EN)<input value={newProduct.nameEn} onChange={(event) => setNewProduct({ ...newProduct, nameEn: event.target.value })} required /></label><label>{t('admin.productName')} (中文)<input value={newProduct.nameZh} onChange={(event) => setNewProduct({ ...newProduct, nameZh: event.target.value })} required /></label><label>{t('admin.productName')} (ខ្មែរ)<input value={newProduct.nameKm} onChange={(event) => setNewProduct({ ...newProduct, nameKm: event.target.value })} required /></label><label>{t('admin.description')} (EN)<input value={newProduct.descriptionEn} onChange={(event) => setNewProduct({ ...newProduct, descriptionEn: event.target.value })} /></label><label>{t('admin.description')} (中文)<input value={newProduct.descriptionZh} onChange={(event) => setNewProduct({ ...newProduct, descriptionZh: event.target.value })} /></label><label>{t('admin.description')} (ខ្មែរ)<input value={newProduct.descriptionKm} onChange={(event) => setNewProduct({ ...newProduct, descriptionKm: event.target.value })} /></label><ImageUpload label={t('admin.imageUrl')} value={newProduct.imageUrl || null} onChange={(imageUrl) => setNewProduct((current) => ({ ...current, imageUrl: imageUrl || '' }))} /><label>{t('admin.price')}<input type="number" min="0.01" step="0.01" value={newProduct.price} onChange={(event) => setNewProduct({ ...newProduct, price: event.target.value })} required /></label><label>{t('common.currency')}<input value={newProduct.currency || storeSettings.currency} readOnly /></label><label className="product-sweetness-toggle"><input type="checkbox" checked={newProduct.sweetnessEnabled} onChange={(event) => setNewProduct({ ...newProduct, sweetnessEnabled: event.target.checked })} /><span><strong>{t('admin.enableSweetness')}</strong><small>{t('admin.enableSweetnessHint')}</small></span></label><button className="primary" type="submit" disabled={!categories.length}>{editingProductId ? t('common.save') : t('admin.createProduct')}</button>{editingProductId && <button type="button" onClick={() => { setEditingProductId(null); setNewProduct(emptyProduct); }}>{t('common.cancel')}</button>}</form>
-      <div className="order-list">{products.map((product) => <article className="order-row" key={product.id}><strong>{label(product.name, i18n.language)}</strong><small>{(product.category_ids?.length ? product.category_ids : [product.category_id]).map((categoryId) => label(categories.find((category) => category.id === categoryId)?.name, i18n.language)).join(' · ')}</small><span>{amount(product.price_minor, product.currency, i18n.language)}</span><span>{product.sweetness_enabled ? t('admin.sweetnessOn') : t('admin.sweetnessOff')}</span><span>{product.available ? t('common.available') : t('common.soldOut')}</span><button onClick={() => startProductEdit(product)}>{t('common.edit')}</button><button onClick={() => void toggleProduct(product)}>{product.available ? t('common.soldOut') : t('common.available')}</button><button onClick={() => setRulesProductId((current) => current === product.id ? null : product.id)}>{t('admin.saleWindowsAndOptions')}</button>{rulesProductId === product.id && <AdminProductRules productId={product.id} productName={label(product.name, i18n.language)} currency={product.currency} initialWindows={toRulesWindows(product)} initialGroups={toRulesGroups(product)} onSaved={async () => { const response = await api.get('/api/v1/admin/products'); setProducts(response.data); }} />}</article>)}</div>
     </section>}
     {section === 'coupons' && role === 'MANAGER' && <AdminCoupons />}
 

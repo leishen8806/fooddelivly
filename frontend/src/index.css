@@ -166,6 +166,23 @@ body {
 
 .admin-table tr:last-child td { border-bottom: 0; }
 .admin-table-empty { padding: var(--space-8); color: var(--color-muted); text-align: center; }
+.catalog-page { display: grid; gap: var(--space-5); }
+.catalog-toolbar { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: end; }
+.catalog-toolbar label { display: grid; gap: .35rem; min-width: 10rem; }
+.catalog-toolbar .catalog-check { display: flex; align-items: center; gap: .5rem; min-height: 2.75rem; }
+.catalog-toolbar .catalog-check input { width: auto; }
+.catalog-thumb, .catalog-thumb-placeholder { width: 3.25rem; height: 3.25rem; border-radius: var(--radius-control); object-fit: cover; display: inline-grid; place-items: center; background: var(--color-tint); color: var(--color-brand); font-weight: var(--weight-semibold); }
+.catalog-name-cell { display: grid; gap: .2rem; min-width: 9rem; }
+.catalog-name-cell > small:not(.translation-missing) { color: var(--color-muted); }
+.translation-missing { color: var(--color-danger); font-weight: var(--weight-semibold); }
+.catalog-chips, .catalog-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
+.catalog-chip { border: 1px solid var(--color-border); border-radius: 999px; padding: .15rem .45rem; font-size: var(--type-small); white-space: nowrap; }
+.catalog-edit-page { display: grid; gap: var(--space-5); }
+.catalog-form { display: grid; gap: var(--space-5); }
+.catalog-form fieldset { display: grid; gap: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-5); }
+.catalog-form fieldset:disabled { opacity: .78; }
+.catalog-form-actions { display: flex; justify-content: flex-end; gap: var(--space-3); position: sticky; bottom: var(--space-3); z-index: 2; padding: var(--space-3); background: color-mix(in srgb, var(--color-surface) 92%, transparent); border: 1px solid var(--color-border); border-radius: var(--radius-card); }
+.catalog-rule-sections { display: grid; gap: var(--space-3); border-top: 1px solid var(--color-border); padding-top: var(--space-5); }
 
 .admin-status-badge {
   display: inline-flex;

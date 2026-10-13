@@ -250,8 +250,21 @@ def _product_response_payload(product: Product, category_ids: List[int]) -> dict
 
 @router.get("/admin/categories")
 async def admin_get_categories(manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Category).order_by(Category.sort_order, Category.id))
-    return result.scalars().all()
+    result = await db.execute(
+        select(Category)
+        .options(selectinload(Category.products))
+        .order_by(Category.sort_order, Category.id)
+    )
+    return [
+        {
+            "id": category.id,
+            "name": category.name,
+            "sort_order": category.sort_order,
+            "active": bool(category.active),
+            "product_count": len(category.products or []),
+        }
+        for category in result.scalars().all()
+    ]
 
 @router.post("/admin/categories")
 async def admin_create_category(category: CategoryCreate, manager_info: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):

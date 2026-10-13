@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Navigate, Route, Routes, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import AdminDailyReport from '../components/AdminDailyReport';
@@ -7,8 +7,11 @@ import { useAuthStore } from '../store/authStore';
 import AdminLegacyPage from './AdminLegacyPage';
 import AdminFinanceStatsPage from './AdminFinanceStatsPage';
 import AdminOrdersPage from './AdminOrdersPage';
-import { AdminLayout } from './layout/AdminLayout';
-import { adminPathForSection, type AdminSection } from './layout/nav';
+import { AdminSectionPage } from './layout/AdminSectionPage';
+import AdminProductsPage from './AdminProductsPage';
+import AdminProductEditPage from './AdminProductEditPage';
+import AdminCategoriesPage from './AdminCategoriesPage';
+import AdminCategoryEditPage from './AdminCategoryEditPage';
 
 function AdminGuard({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -18,7 +21,7 @@ function AdminGuard({ children }: { children: ReactNode }) {
   useEffect(() => {
     let active = true;
     api.get('/api/v1/auth/admin/me').then((response) => {
-      if (active) setAdminAuth(String(response.data.staff_id), response.data.role, response.data.store_id ?? null);
+      if (active) setAdminAuth(String(response.data.staff_id), response.data.role, response.data.store_id ?? null, response.data.catalog_write_allowed ?? false);
     }).catch(() => { if (active) logoutAdmin(); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [logoutAdmin, setAdminAuth]);
@@ -26,13 +29,6 @@ function AdminGuard({ children }: { children: ReactNode }) {
   if (loading) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
   if (!isAdminAuthenticated) return <Navigate to="/admin/login" replace />;
   return children;
-}
-
-function AdminSectionPage({ activeSection, children }: { activeSection: AdminSection; children: ReactNode }) {
-  const navigate = useNavigate();
-  const { role, storeId, logoutAdmin } = useAuthStore();
-  const signOut = async () => { try { await api.post('/api/v1/auth/admin/logout'); } finally { logoutAdmin(); navigate('/admin/login'); } };
-  return <AdminLayout role={role || 'STAFF'} activeSection={activeSection} onNavigate={(section) => navigate(adminPathForSection(section))} onSignOut={signOut} isHq={role === 'MANAGER' && storeId === null}>{children}</AdminLayout>;
 }
 
 function AdminFinanceDailyPage() {
@@ -52,7 +48,12 @@ export default function AdminApp() {
     <Route path="orders/:code" element={<AdminOrdersPage />} />
     <Route path="recharges" element={<AdminLegacyPage initialSection="recharges" />} />
     <Route path="customers" element={<AdminLegacyPage initialSection="customers" />} />
-    <Route path="products" element={<AdminLegacyPage initialSection="products" />} />
+    <Route path="products" element={<AdminProductsPage />} />
+    <Route path="products/new" element={<AdminProductEditPage />} />
+    <Route path="products/:id" element={<AdminProductEditPage />} />
+    <Route path="categories" element={<AdminCategoriesPage />} />
+    <Route path="categories/new" element={<AdminCategoryEditPage />} />
+    <Route path="categories/:id" element={<AdminCategoryEditPage />} />
     <Route path="coupons" element={<AdminLegacyPage initialSection="coupons" />} />
     <Route path="finance" element={<Navigate to="/admin/finance/daily" replace />} />
     <Route path="finance/daily" element={<AdminFinanceDailyPage />} />

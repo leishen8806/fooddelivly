@@ -651,7 +651,7 @@ function AdminLogin() {
     event.preventDefault(); setBusy(true); setError('');
     try {
       const response = await api.post('/api/v1/auth/admin/login', { login_name: login, password });
-      setAdminAuth(String(response.data.staff_id), response.data.role, response.data.store_id ?? null);
+      setAdminAuth(String(response.data.staff_id), response.data.role, response.data.store_id ?? null, response.data.catalog_write_allowed ?? false);
       navigate('/admin');
     } catch { setError(t('auth.loginFailed')); } finally { setBusy(false); }
   };

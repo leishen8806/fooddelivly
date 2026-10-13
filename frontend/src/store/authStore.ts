@@ -8,8 +8,9 @@ interface AuthState {
   role: string | null;
   storeId: number | null;
   adminStoreResolved: boolean;
+  catalogWriteAllowed: boolean;
   setCustomerAuth: (id: string) => void;
-  setAdminAuth: (id: string, role: string, storeId?: number | null) => void;
+  setAdminAuth: (id: string, role: string, storeId?: number | null, catalogWriteAllowed?: boolean) => void;
   logoutCustomer: () => void;
   logoutAdmin: () => void;
 }
@@ -22,8 +23,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   role: null,
   storeId: null,
   adminStoreResolved: false,
+  catalogWriteAllowed: false,
   setCustomerAuth: (id) => set({ isCustomerAuthenticated: true, customerId: id }),
-  setAdminAuth: (id, role, storeId = null) => set({ isAdminAuthenticated: true, staffId: id, role, storeId, adminStoreResolved: true }),
+  setAdminAuth: (id, role, storeId = null, catalogWriteAllowed = false) => set({ isAdminAuthenticated: true, staffId: id, role, storeId, catalogWriteAllowed, adminStoreResolved: true }),
   logoutCustomer: () => set({ isCustomerAuthenticated: false, customerId: null }),
-  logoutAdmin: () => set({ isAdminAuthenticated: false, staffId: null, role: null, storeId: null, adminStoreResolved: false }),
+  logoutAdmin: () => set({ isAdminAuthenticated: false, staffId: null, role: null, storeId: null, catalogWriteAllowed: false, adminStoreResolved: false }),
 }));

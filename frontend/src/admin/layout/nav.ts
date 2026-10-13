@@ -6,6 +6,7 @@ export type AdminSection =
   | 'recharges'
   | 'customers'
   | 'products'
+  | 'categories'
   | 'coupons'
   | 'financeDaily'
   | 'financeStats'
@@ -43,6 +44,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     labelKey: 'admin.nav.catalog',
     items: [
       { key: 'products', path: '/admin/products', labelKey: 'nav.products', roles: ['MANAGER'] },
+      { key: 'categories', path: '/admin/categories', labelKey: 'admin.categories', roles: ['MANAGER'] },
       { key: 'coupons', path: '/admin/coupons', labelKey: 'nav.coupons', roles: ['MANAGER'] },
     ],
   },

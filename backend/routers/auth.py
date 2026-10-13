@@ -7,8 +7,9 @@ import logging
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from database import get_db
-from models import Customer, Staff
+from models import Customer, Staff, Store
 from auth_utils import validate_telegram_init_data, verify_password, create_access_token
 from dependencies import get_current_customer, get_current_staff
 from customer_activity import record_customer_activity_best_effort
@@ -155,8 +156,13 @@ async def admin_login(req: AdminLoginRequest, response: Response, db: AsyncSessi
     return {"message": "Login successful", "staff_id": staff.id, "role": staff.role}
 
 @router.get("/admin/me")
-async def admin_me(staff_info: dict = Depends(get_current_staff)):
-    return staff_info
+async def admin_me(staff_info: dict = Depends(get_current_staff), db: AsyncSession = Depends(get_db)):
+    active_store_count = await db.scalar(select(func.count(Store.id)).filter(Store.status == "ACTIVE")) or 0
+    catalog_write_allowed = (
+        staff_info.get("role") == "MANAGER"
+        and (staff_info.get("store_id") is None or active_store_count <= 1)
+    )
+    return {**staff_info, "catalog_write_allowed": catalog_write_allowed}
 
 @router.post("/admin/logout")
 async def admin_logout(response: Response):
