@@ -603,7 +603,8 @@ async def list_order_refunds(
     rows = [(row, code, currency) for row, code, currency in result.all() if can_access_store(manager_info, row.store_id)]
     return [{"id": row.id, "order_id": row.order_id, "public_code": code, "currency": currency, "amount_minor": row.amount_minor,
              "method": row.method, "status": row.status, "requires_approval": bool(row.requires_approval), "reference": row.reference,
-             "note": row.note, "created_at": row.created_at, "done_at": row.done_at} for row in rows]
+             "note": row.note, "created_at": row.created_at, "done_at": row.done_at}
+            for row, code, currency in rows]
 
 
 @router.post("/refunds/{refund_id}/complete")
