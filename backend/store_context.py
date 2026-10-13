@@ -155,6 +155,27 @@ def store_scope_clause(model, staff_info):
     return (model.store_id == scope) | (model.store_id.is_(None))
 
 
+def strict_store_clause(model, staff_info):
+    """严格按门店过滤：门店账号只看 `store_id == 自己门店` 的行，**不含** NULL。
+
+    用于员工、审计日志这类 NULL 有特殊含义的表：员工表的 NULL = 总部账号，
+    审计表的 NULL = 总部级操作（目录、全局设置）。这些对门店账号必须不可见，
+    不能套用 `store_scope_clause` 里「NULL = 迁移前历史数据，全员可见」的宽松规则。
+    """
+    scope = visible_store_id(staff_info)
+    if scope is None:
+        return None
+    return model.store_id == scope
+
+
+def can_manage_store_row(staff_info, row_store_id: int | None) -> bool:
+    """严格版 `can_access_store`：NULL 行（总部）只有总部账号能操作。"""
+    scope = visible_store_id(staff_info)
+    if scope is None:
+        return True
+    return row_store_id is not None and int(row_store_id) == int(scope)
+
+
 async def staff_store(db: AsyncSession, staff_info) -> Store | None:
     """调用者所属门店。
 

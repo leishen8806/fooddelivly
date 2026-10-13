@@ -9,7 +9,7 @@ from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from database import get_db
 from models import Category, Product, ProductOption, ProductOptionGroup, ProductSaleWindow, StoreSettings, AuditLog, product_categories
-from dependencies import get_current_staff, get_current_manager
+from dependencies import get_current_staff, get_current_manager, get_catalog_manager
 from product_options import serialize_groups
 from store_context import effective_product, load_overrides, resolve_store, staff_store
 from sale_window import describe, is_on_sale, next_open_at
@@ -254,7 +254,7 @@ async def admin_get_categories(manager_info: dict = Depends(get_current_manager)
     return result.scalars().all()
 
 @router.post("/admin/categories")
-async def admin_create_category(category: CategoryCreate, manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+async def admin_create_category(category: CategoryCreate, manager_info: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     row = Category(name=category.name.model_dump(by_alias=True, exclude_none=True), sort_order=category.sort_order, active=category.active)
     db.add(row)
     await db.flush()
@@ -265,7 +265,7 @@ async def admin_create_category(category: CategoryCreate, manager_info: dict = D
 
 @router.patch("/admin/categories/{category_id}")
 async def admin_update_category(category_id: int, changes: CategoryUpdate,
-                                manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+                                manager_info: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Category).filter(Category.id == category_id).with_for_update())
     category = result.scalars().first()
     if not category:
@@ -284,7 +284,7 @@ async def admin_update_category(category_id: int, changes: CategoryUpdate,
 @router.post("/admin/products", response_model=ProductResponse)
 async def admin_create_product(
     product: ProductCreate, 
-    manager_info: dict = Depends(get_current_manager), 
+    manager_info: dict = Depends(get_catalog_manager), 
     db: AsyncSession = Depends(get_db)
 ):
     category_ids = _normalize_category_ids(product.category_ids, product.category_id)
@@ -313,7 +313,7 @@ async def admin_create_product(
 
 @router.patch("/admin/products/{product_id}", response_model=ProductResponse)
 async def admin_update_product(product_id: int, changes: ProductUpdate,
-                               manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+                               manager_info: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Product).filter(Product.id == product_id).with_for_update())
     product = result.scalars().first()
     if not product:
@@ -342,7 +342,7 @@ async def admin_update_product(product_id: int, changes: ProductUpdate,
     return _product_response_payload(product, category_ids)
 
 @router.delete("/admin/products/{product_id}")
-async def admin_archive_product(product_id: int, manager_info: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+async def admin_archive_product(product_id: int, manager_info: dict = Depends(get_catalog_manager), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Product).filter(Product.id == product_id).with_for_update())
     product = result.scalars().first()
     if not product:
@@ -406,7 +406,7 @@ async def _locked_product(db: AsyncSession, product_id: int) -> Product:
 
 @router.put("/admin/products/{product_id}/sale-windows")
 async def admin_set_sale_windows(product_id: int, payload: SaleWindowsIn,
-                                 manager_info: dict = Depends(get_current_manager),
+                                 manager_info: dict = Depends(get_catalog_manager),
                                  db: AsyncSession = Depends(get_db)):
     """整体替换售卖时间段。传空数组 = 恢复全天可售。"""
     product = await _locked_product(db, product_id)
@@ -437,7 +437,7 @@ async def admin_set_sale_windows(product_id: int, payload: SaleWindowsIn,
 
 @router.put("/admin/products/{product_id}/option-groups")
 async def admin_set_option_groups(product_id: int, payload: OptionGroupsIn,
-                                  manager_info: dict = Depends(get_current_manager),
+                                  manager_info: dict = Depends(get_catalog_manager),
                                   db: AsyncSession = Depends(get_db)):
     """整体替换规格 / 附加分组。
 

@@ -9,7 +9,7 @@ from sqlalchemy.future import select
 from auth_utils import get_password_hash
 from database import get_db
 from dependencies import get_current_manager
-from store_context import can_access_store, store_scope_clause
+from store_context import can_manage_store_row, strict_store_clause
 from models import AuditLog, Staff
 
 router = APIRouter(prefix="/api/v1/admin/staff", tags=["Admin Staff"])
@@ -74,9 +74,9 @@ def _staff_row(staff: Staff) -> dict:
 
 @router.get("")
 async def list_staff(manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
-    # 门店隔离：门店经理只看本店员工；总部账号看全部
+    # 门店隔离：门店经理只看本店员工（不含 store_id 为空的总部账号）；总部账号看全部
     query = select(Staff).order_by(Staff.login_name)
-    clause = store_scope_clause(Staff, manager)
+    clause = strict_store_clause(Staff, manager)
     if clause is not None:
         query = query.filter(clause)
     result = await db.execute(query)
@@ -101,7 +101,7 @@ async def create_staff(req: StaffCreate, manager: dict = Depends(get_current_man
     try:
         await db.flush()
         db.add(AuditLog(actor_staff_id=manager["staff_id"], entity_type="staff", entity_id=str(staff.id),
-                        action="created", details={"login_name": staff.login_name, "role": staff.role,
+                        action="created", store_id=staff.store_id, details={"login_name": staff.login_name, "role": staff.role,
                                                    "telegram_user_id": staff.telegram_user_id, "active": True,
                                                    "store_id": staff.store_id}))
         await db.commit()
@@ -116,7 +116,7 @@ async def create_staff(req: StaffCreate, manager: dict = Depends(get_current_man
 async def update_staff(staff_id: int, req: StaffUpdate, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Staff).filter(Staff.id == staff_id).with_for_update())
     staff = result.scalars().first()
-    if not staff or not can_access_store(manager, staff.store_id):
+    if not staff or not can_manage_store_row(manager, staff.store_id):
         raise HTTPException(status_code=404, detail="Staff account not found")
     changes = req.model_dump(exclude_unset=True)
     # 门店经理不能把员工调去别店，也不能把自己的账号升成总部（提权）
@@ -132,7 +132,7 @@ async def update_staff(staff_id: int, req: StaffUpdate, manager: dict = Depends(
     for key, value in safe_changes.items():
         setattr(staff, key, value)
     db.add(AuditLog(actor_staff_id=manager["staff_id"], entity_type="staff", entity_id=str(staff.id),
-                    action="updated", details=safe_changes))
+                    action="updated", store_id=staff.store_id, details=safe_changes))
     try:
         await db.commit()
         await db.refresh(staff)

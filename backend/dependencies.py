@@ -5,7 +5,8 @@ from jose import jwt
 import os
 from typing import Dict, Any
 from database import get_db
-from models import Staff
+from sqlalchemy import func
+from models import Staff, Store
 
 def get_token_from_cookie(request: Request, cookie_name: str) -> str:
     token = request.cookies.get(cookie_name)
@@ -63,3 +64,24 @@ async def get_current_manager(staff_info: dict = Depends(get_current_staff)) -> 
     if staff_info.get("role") != "MANAGER":
         raise HTTPException(status_code=403, detail="Manager access required")
     return staff_info
+
+
+async def get_catalog_manager(
+    manager: Dict[str, Any] = Depends(get_current_manager),
+    db: AsyncSession = Depends(get_db),
+) -> Dict[str, Any]:
+    """菜品/分类/规格的写权限。
+
+    目录目前是**全店共用**的（菜单不按 store_id 过滤，门店只能用覆盖表调价/上下架），
+    所以改目录会影响所有门店：只允许总部账号。唯一例外是整个系统只有一家活跃门店时
+    （单店部署），该店经理就是事实上的总部，否则老板会被锁在目录之外。
+    开出第二家店之后立即收紧，不需要改配置。
+    """
+    from store_context import visible_store_id
+
+    if visible_store_id(manager) is None:
+        return manager
+    active = await db.scalar(select(func.count(Store.id)).filter(Store.status == "ACTIVE")) or 0
+    if active <= 1:
+        return manager
+    raise HTTPException(status_code=403, detail="Headquarters access required to change the shared catalog")

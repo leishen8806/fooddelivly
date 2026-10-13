@@ -157,7 +157,7 @@ async def upload_payment_proof(
         from_state=f"{order.order_status}/{old_payment_status}",
         to_state=f"{order.order_status}/{order.payment_status}",
     ))
-    db.add(AuditLog(
+    db.add(AuditLog(store_id=order.store_id, 
         actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
         action="payment_proof_uploaded",
         details={
@@ -247,7 +247,7 @@ async def change_order_status(order_id: int, req: OrderStatusRequest,
     event_name = f"ORDER_{req.status}" + (f": {reason}" if reason else "")
     db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff_id, event=event_name,
                       from_state=old_state, to_state=f"{order.order_status}/{order.payment_status}"))
-    db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id), action="status_changed",
+    db.add(AuditLog(store_id=order.store_id, actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id), action="status_changed",
                     details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
                              "operator_telegram_id": staff_info.get("telegram_user_id"), "public_code": order.public_code,
                              "room_number": order.room_number, "from_state": old_state,
@@ -340,7 +340,7 @@ async def refund_wallet_order(order_id: int, req: RefundRequest,
     db.add(OrderEvent(order_id=order.id, actor_type="STAFF", actor_id=staff_id,
                       event=f"ORDER_REFUNDED: {reason}", from_state=old_state,
                       to_state=f"{order.order_status}/{order.payment_status}"))
-    db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
+    db.add(AuditLog(store_id=order.store_id, actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
                     action="wallet_refund",
                     details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
                              "operator_telegram_id": staff_info.get("telegram_user_id"),
@@ -421,7 +421,7 @@ async def review_payment(
         from_state=f"{old_order_status}/{old_payment_status}",
         to_state=f"{order.order_status}/{order.payment_status}",
     ))
-    db.add(AuditLog(actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
+    db.add(AuditLog(store_id=order.store_id, actor_staff_id=staff_id, entity_type="order", entity_id=str(order.id),
                     action=f"payment_{req.decision.lower()}",
                     details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
                              "operator_telegram_id": staff_info.get("telegram_user_id"), "public_code": order.public_code,

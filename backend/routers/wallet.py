@@ -416,6 +416,7 @@ async def admin_approve_recharge(
         raise _http(exc)
     done, required = await wallet.approval_progress(db, order_id)
     db.add(AuditLog(
+        store_id=row.get("store_id"),
         actor_staff_id=staff_id, entity_type="wallet_recharge", entity_id=str(order_id),
         action="recharge_approved" if done >= required else "recharge_approval_recorded",
         details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
@@ -445,6 +446,7 @@ async def admin_reject_recharge(
     except wallet.WalletError as exc:
         raise _http(exc)
     db.add(AuditLog(
+        store_id=row.get("store_id"),
         actor_staff_id=staff_id, entity_type="wallet_recharge", entity_id=str(order_id),
         action="recharge_rejected",
         details={"source": "admin_console", "operator_name": staff_info.get("login_name"),
@@ -526,6 +528,8 @@ async def admin_adjust_wallet(
     db: AsyncSession = Depends(get_db),
 ):
     """手动调账。仅 MANAGER（数据库函数的 can_adjust 会再校验一次）。"""
+    if staff_info.get("role") != "MANAGER":
+        raise HTTPException(status_code=403, detail="Manager access required")
     if payload.delta_minor == 0:
         raise HTTPException(status_code=422, detail="delta_minor must not be zero")
     # 门店隔离：不能给别家店的客户调账（真钱操作）
@@ -546,6 +550,7 @@ async def admin_adjust_wallet(
     except wallet.WalletError as exc:
         raise _http(exc)
     db.add(AuditLog(
+        store_id=customer.store_id,
         actor_staff_id=staff_id, entity_type="wallet", entity_id=str(customer_id),
         action="wallet_adjusted",
         details={"source": "admin_console", "operator_name": staff_info.get("login_name"),

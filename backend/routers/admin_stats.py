@@ -111,6 +111,7 @@ async def get_analytics(
             "order_total_minor": 0, "order_sales_minor": 0,
             "order_subtotal_minor": 0, "order_discount_minor": 0,
             "order_sales_subtotal_minor": 0, "order_sales_discount_minor": 0,
+            "order_sales_delivery_fee_minor": 0, "order_sales_service_fee_minor": 0,
             "in_review_minor": 0, "cancelled_total_minor": 0,
         })
         bucket["order_total_minor"] += order.total_minor
@@ -122,6 +123,8 @@ async def get_analytics(
             bucket["order_sales_minor"] += order.total_minor
             bucket["order_sales_subtotal_minor"] += subtotal
             bucket["order_sales_discount_minor"] += discount
+            bucket["order_sales_delivery_fee_minor"] += int(order.delivery_fee_minor or 0)
+            bucket["order_sales_service_fee_minor"] += int(order.service_fee_minor or 0)
         if order.payment_status == "PROOF_SUBMITTED":
             bucket["in_review_minor"] += order.external_due_minor if order.external_due_minor is not None else order.total_minor
         if order.order_status == "CANCELLED":
@@ -142,6 +145,7 @@ async def get_analytics(
         totals.setdefault(currency, {"order_total_minor": 0, "order_sales_minor": 0,
                                      "order_subtotal_minor": 0, "order_discount_minor": 0,
                                      "order_sales_subtotal_minor": 0, "order_sales_discount_minor": 0,
+            "order_sales_delivery_fee_minor": 0, "order_sales_service_fee_minor": 0,
                                      "in_review_minor": 0, "cancelled_total_minor": 0,
                                      "external_order_receipts_minor": external_by_currency.get(currency, 0),
                                      "wallet_paid_minor": wallet_by_currency.get(currency, 0),

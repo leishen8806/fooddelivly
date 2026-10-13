@@ -234,6 +234,39 @@ def main() -> None:
     r = branch_staff.post(f"/api/v1/admin/orders/{main_order_id}/status", json={"status": "ACCEPTED"})
     check("二号店 STAFF 改主店订单 -> 404", r.status_code == 404, f"{r.status_code}")
 
+    # ⑥ 总部账号（store_id 为空）不能被门店经理看见或改动——否则重置总部密码 = 提权
+    for label, mgr in (("二号店", branch_manager), ("主店", main_manager)):
+        ids = {x["id"] for x in mgr.get("/api/v1/admin/staff").json()}
+        check(f"{label}员工列表看不到总部账号", 9003 not in ids, str(sorted(ids))[:60])
+        r = mgr.patch("/api/v1/admin/staff/9003", json={"password": "xs-takeover-12345"})
+        check(f"{label}重置总部账号密码 -> 404", r.status_code == 404, f"{r.status_code} {r.text[:60]}")
+    hq_ids = {x["id"] for x in hq_manager.get("/api/v1/admin/staff").json()}
+    check("总部看得到各店员工和自己", {1, 9001, 9003} <= hq_ids, str(sorted(hq_ids))[:60])
+
+    # ⑦ 审计日志：订单操作按订单所属门店归属；目录（总部级）操作门店看不到
+    branch_audit = branch_manager.get("/api/v1/admin/audit-logs?limit=100").json()["items"]
+    check("二号店审计里没有主店订单的操作",
+          not [i for i in branch_audit if i["entity_type"] == "order" and i["entity_id"] == str(main_order_id)])
+    check("二号店审计里没有商品/分类（总部级）操作",
+          not [i for i in branch_audit if i["entity_type"] in {"product", "category"}])
+    main_audit = main_manager.get("/api/v1/admin/audit-logs?limit=100").json()["items"]
+    check("主店审计里有自己订单的操作",
+          any(i["entity_type"] == "order" and i["entity_id"] == str(main_order_id) for i in main_audit))
+    check("主店审计里没有二号店订单的操作",
+          not [i for i in main_audit if i["entity_type"] == "order" and i["entity_id"] == str(branch_order_id)])
+
+    # ⑧ 共享目录：已有两家以上活跃门店时，门店经理不能改菜品/分类
+    r = branch_manager.post("/api/v1/admin/categories", json={"name": {"en": "XS", "zh-CN": "XS", "km": "XS"}})
+    check("二号店新建分类 -> 403", r.status_code == 403, f"{r.status_code} {r.text[:60]}")
+    r = main_manager.patch(f"/api/v1/admin/products/{PRODUCT_ID}", json={"price_minor": 1})
+    check("主店经理改共享菜品价格 -> 403", r.status_code == 403, f"{r.status_code} {r.text[:60]}")
+    r = branch_manager.put(f"/api/v1/admin/products/{PRODUCT_ID}/sale-windows", json={"windows": []})
+    check("二号店改共享菜品售卖时间 -> 403", r.status_code == 403, f"{r.status_code} {r.text[:60]}")
+    r = hq_manager.patch(f"/api/v1/admin/products/{PRODUCT_ID}", json={"available": True})
+    check("总部可以改共享目录", r.status_code == 200, f"{r.status_code} {r.text[:60]}")
+    check("门店经理仍能读取目录（只读）",
+          branch_manager.get("/api/v1/admin/categories").status_code == 200)
+
     fails = [x for x in RESULTS if not x[1]]
     print("\n" + "=" * 60)
     print(f"跨店越权用例: {len(RESULTS)}, 失败: {len(fails)}")

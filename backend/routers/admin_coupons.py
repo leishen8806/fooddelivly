@@ -11,11 +11,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from coupon_service import claim_url, new_token, share_url, token_hash
 from database import get_db
 from dependencies import get_current_manager
-from models import CouponCampaign, CouponClaimLink
+from models import AuditLog, CouponCampaign, CouponClaimLink
 from store_context import staff_store, store_scope_clause
 
 
 router = APIRouter(prefix="/api/v1/admin/coupons", tags=["Admin Coupons"])
+
+
+def _audit(db: AsyncSession, manager: dict, coupon: CouponCampaign, action: str, **details) -> None:
+    db.add(AuditLog(
+        store_id=coupon.store_id, actor_staff_id=manager["staff_id"], entity_type="coupon",
+        entity_id=str(coupon.id), action=action,
+        details={"source": "admin_console", "operator_name": manager.get("login_name"),
+                 "operator_telegram_id": manager.get("telegram_user_id"),
+                 "name": coupon.name, **details}))
 
 
 class CouponCreate(BaseModel):
@@ -170,6 +179,9 @@ async def create_coupon(req: CouponCreate, manager: dict = Depends(get_current_m
         status="DRAFT",
     )
     db.add(coupon)
+    await db.flush()
+    _audit(db, manager, coupon, "created", coupon_type=coupon.coupon_type,
+           distribution_mode=coupon.distribution_mode, currency=coupon.currency)
     await db.commit()
     await db.refresh(coupon)
     return _payload(coupon, [])
@@ -186,6 +198,7 @@ async def publish_coupon(coupon_id: int, manager: dict = Depends(get_current_man
     coupon.published_at = datetime.now(timezone.utc)
     if coupon.distribution_mode == "PUBLIC":
         await _ensure_public_link(db, coupon, manager)
+    _audit(db, manager, coupon, "published")
     await db.commit()
     return _payload(coupon, await _links(db, coupon.id))
 
@@ -195,7 +208,9 @@ async def update_coupon_status(coupon_id: int, req: CouponStatusUpdate, manager:
     coupon = await _get_coupon(db, manager, coupon_id)
     if coupon.status == "DRAFT":
         raise HTTPException(status_code=409, detail="Publish the coupon before changing its online status")
+    old_status = coupon.status
     coupon.status = req.status
+    _audit(db, manager, coupon, "status_changed", from_status=old_status, to_status=req.status)
     await db.commit()
     return _payload(coupon, await _links(db, coupon.id))
 
@@ -217,6 +232,8 @@ async def create_private_link(coupon_id: int, manager: dict = Depends(get_curren
         created_by=manager["staff_id"],
     )
     db.add(link)
+    await db.flush()
+    _audit(db, manager, coupon, "private_link_created", link_id=link.id)
     await db.commit()
     return {
         "id": link.id,

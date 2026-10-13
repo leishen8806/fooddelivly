@@ -40,9 +40,10 @@ async def require_report_sender(request: Request, db: AsyncSession = Depends(get
     return staff
 
 
-def _parse_date(value: Optional[str]) -> date:
+def _parse_date(value: Optional[str], tz=None) -> date:
+    """缺省 = 门店时区的今天（tz 为空时才退回服务器时区）。"""
     if not value:
-        return datetime.now().date()
+        return datetime.now(tz).date() if tz is not None else datetime.now().date()
     try:
         return date.fromisoformat(value)
     except ValueError:
@@ -56,9 +57,10 @@ async def preview_daily_report(
     db: AsyncSession = Depends(get_db),
 ):
     """预览某天的报表（默认今天）。任何在职员工都能看，不会发送。"""
-    report_date = _parse_date(date_str)
     # 门店隔离：报表按调用者门店统计（门店经理只应看到本店数据）
     store = await staff_store(db, staff_info)
+    report_date = _parse_date(
+        date_str, await daily_report.store_timezone(db, store.id if store else None))
     chat_id = str(store.telegram_staff_group_id) if store and store.telegram_staff_group_id else None
     report = await daily_report.build_daily_report(
         db, report_date, store_id=store.id if store else None)

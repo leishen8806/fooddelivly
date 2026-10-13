@@ -322,6 +322,7 @@ async def _handle_callback(cb: dict, db: AsyncSession) -> None:
                       event="PAYMENT_CONFIRMED" if action == "confirmpay" else f"ORDER_{order.order_status}",
                       from_state=old_state, to_state=new_state))
     db.add(AuditLog(
+        store_id=order.store_id,
         actor_staff_id=staff.id,
         entity_type="order",
         entity_id=str(order.id),
@@ -584,6 +585,7 @@ async def _handle_wallet_review(db: AsyncSession, action: str, order_id: int, st
         return
 
     db.add(AuditLog(
+        store_id=updated.get("store_id"),
         actor_staff_id=staff_id, entity_type="wallet_recharge", entity_id=str(order_id),
         action="recharge_approved" if action == "walletok" else "recharge_rejected",
         details={
