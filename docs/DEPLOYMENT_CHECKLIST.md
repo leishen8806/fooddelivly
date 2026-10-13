@@ -19,7 +19,7 @@
 ## 1. 发布前（T-1 天）
 
 - [ ] 确认目标提交：`git log --oneline origin/main | head` 与要上线的 commit 一致；CI/本地测试已跑（见 §9）。
-- [ ] 确认 VPS 当前运行版本与迁移版本：`docker compose exec backend alembic current`（期望为 `k0123456789d`，若不是先弄清原因再继续）。**迁移链共 8 个：`l → m → n → o → p → q`，加上 k 之前已有的。**
+- [ ] 确认 VPS 当前运行版本与迁移版本：`docker compose exec backend alembic current`（期望为 `k0123456789d`，若不是先弄清原因再继续）。**本次新增 6 个迁移：`l → m → n → o → p → q`（依次接在 `k0123456789d` 之后）。**
 - [ ] 检查磁盘：`df -h`；数据库卷与上传卷（`postgres_data`、`uploaded_images`）所在分区剩余空间 > 当前数据库大小的 3 倍。
 - [ ] 检查 `.env` 无新增必填项：本次**没有新增必填环境变量**。保持 `COOKIE_SECURE=true`、`APP_ENV=production`、`ALLOWED_ORIGINS` 与线上域名一致。
 - [ ] 选择低峰窗口（避开营业高峰和 22:35 日报投递），通知店员：发布期间群里按钮可能短暂无响应。
@@ -133,6 +133,8 @@ SELECT count(*) FROM stores WHERE status = 'ACTIVE';
 git checkout <上一个稳定提交> && docker compose build backend frontend && docker compose up -d
 ```
 > 旧代码启动时会执行 `alembic upgrade head`，因库已在更新版本，Alembic 会报「找不到版本」而无法启动。回滚代码前需临时把 Dockerfile 的启动命令去掉 `alembic upgrade head`（或用 `alembic stamp` 谨慎处理），**这一步务必在演练环境先试过**。
+
+> 迁移 `p`（日活表）、`q`（员工两列）均可 `alembic downgrade` 回退，但回退会丢失日活数据与「必须改密」标记；`m`/`n`/`o` 的回退同样只删表/删列。**回滚代码前先备份。**
 
 只有在数据损坏等极端情况才恢复数据库：
 ```bash
