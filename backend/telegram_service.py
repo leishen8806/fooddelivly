@@ -139,8 +139,24 @@ def order_text(order, payment_status: str | None = None, language: str = "en", i
             if picked:
                 line += " · " + " + ".join(picked)
             lines.append(line)
+    # 金额区按「小计 → 优惠券 → 费用 → 应付总额」展示，群组店员可以直接核对实收金额。
+    subtotal = int(getattr(order, "subtotal_minor", 0) or 0)
+    coupon_discount = int(getattr(order, "coupon_discount_minor", 0) or 0)
+    coupon_name = str(getattr(order, "coupon_name_snapshot", "") or "").strip()
+    if subtotal and (coupon_discount > 0 or subtotal != int(order.total_minor or 0)):
+        lines.append(f"{tr('common.subtotal', language)}: {_currency_amount(subtotal, order.currency)}")
+    if coupon_name:
+        lines.append(f"🎟️ {tr('bot.coupon', language)}: {escape(coupon_name)}")
+    if coupon_discount > 0:
+        lines.append(f"{tr('coupon.couponDiscount', language)}: -{_currency_amount(coupon_discount, order.currency)}")
+    delivery_fee = int(getattr(order, "delivery_fee_minor", 0) or 0)
+    service_fee = int(getattr(order, "service_fee_minor", 0) or 0)
+    if delivery_fee > 0:
+        lines.append(f"{tr('bot.deliveryFee', language)}: {_currency_amount(delivery_fee, order.currency)}")
+    if service_fee > 0:
+        lines.append(f"{tr('bot.serviceFee', language)}: {_currency_amount(service_fee, order.currency)}")
     lines.extend([
-        f"{tr('common.total', language)}: {_currency_amount(order.total_minor, order.currency)}",
+        f"<b>{tr('common.total', language)}: {_currency_amount(order.total_minor, order.currency)}</b>",
         f"{_order_status_marker(order.order_status)} <b>{tr('nav.orders', language)}</b>: {status_label}",
         f"{_payment_status_marker(payment)} <b>{tr('payment.title', language)}</b>: {tr(payment_key, language)}",
     ])
