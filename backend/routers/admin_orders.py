@@ -919,6 +919,7 @@ async def order_detail(
     payload.update({
         "paid_confirmed_minor": order.paid_confirmed_minor or 0, "adjusted_total_minor": order.adjusted_total_minor,
         "removed_minor": order.removed_minor or 0, "received_minor": _received_minor(order, done),
+        "refunded_minor": done,
         "refund_pending_minor": pending,
         "items": [{"id": item.id, "product_id": item.product_id, "name": item.product_name_snapshot, "quantity": item.quantity,
                    "unit_price_minor": item.unit_price_minor, "line_total_minor": item.line_total_minor, "options_json": item.options_json or {}} for item in order.items],
