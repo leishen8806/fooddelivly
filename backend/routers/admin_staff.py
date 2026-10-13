@@ -1,4 +1,5 @@
 import re
+import secrets
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
@@ -69,7 +70,9 @@ class StaffUpdate(BaseModel):
 def _staff_row(staff: Staff) -> dict:
     return {"id": staff.id, "login_name": staff.login_name, "role": staff.role,
             "active": staff.active, "telegram_user_id": staff.telegram_user_id,
-            "store_id": staff.store_id}          # None = 总部账号（可跨店）
+            "store_id": staff.store_id,
+            "last_login_at": staff.last_login_at,
+            "must_change_password": bool(staff.must_change_password)}
 
 
 @router.get("")
@@ -140,3 +143,21 @@ async def update_staff(staff_id: int, req: StaffUpdate, manager: dict = Depends(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Telegram user ID is already assigned")
     return _staff_row(staff)
+
+
+@router.post("/{staff_id}/reset-password")
+async def reset_password(staff_id: int, manager: dict = Depends(get_current_manager), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(Staff).filter(Staff.id == staff_id).with_for_update())
+    staff = result.scalars().first()
+    if not staff or not can_manage_store_row(manager, staff.store_id):
+        raise HTTPException(status_code=404, detail="Staff account not found")
+    if staff_id == manager["staff_id"]:
+        raise HTTPException(status_code=409, detail="Use the change password page for your own account")
+    temporary_password = "Tc!" + secrets.token_urlsafe(12)[:16]
+    staff.password_hash = get_password_hash(temporary_password)
+    staff.must_change_password = True
+    db.add(AuditLog(actor_staff_id=manager["staff_id"], entity_type="staff", entity_id=str(staff.id),
+                    action="password_reset", store_id=staff.store_id,
+                    details={"login_name": staff.login_name, "must_change_password": True}))
+    await db.commit()
+    return {"staff_id": staff.id, "temporary_password": temporary_password}

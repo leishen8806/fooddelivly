@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import api from '../api';
 import AdminDailyReport from '../components/AdminDailyReport';
@@ -14,22 +14,31 @@ import AdminCategoriesPage from './AdminCategoriesPage';
 import AdminCategoryEditPage from './AdminCategoryEditPage';
 import AdminCouponsPage from './AdminCouponsPage';
 import AdminCouponEditPage from './AdminCouponEditPage';
+import AdminStaffPage from './AdminStaffPage';
+import AdminStaffEditPage from './AdminStaffEditPage';
+import AdminSettingsPage from './AdminSettingsPage';
+import AdminSettingsEditPage from './AdminSettingsEditPage';
+import AdminForcePasswordPage from './AdminForcePasswordPage';
+import AdminOverviewPage from './AdminOverviewPage';
+import AdminRefundsPage from './AdminRefundsPage';
 
 function AdminGuard({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const { isAdminAuthenticated, setAdminAuth, logoutAdmin } = useAuthStore();
+  const { isAdminAuthenticated, setAdminAuth, logoutAdmin, mustChangePassword } = useAuthStore();
+  const location = useLocation();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
     api.get('/api/v1/auth/admin/me').then((response) => {
-      if (active) setAdminAuth(String(response.data.staff_id), response.data.role, response.data.store_id ?? null, response.data.catalog_write_allowed ?? false);
+      if (active) setAdminAuth(String(response.data.staff_id), response.data.role, response.data.store_id ?? null, response.data.catalog_write_allowed ?? false, response.data.must_change_password ?? false);
     }).catch(() => { if (active) logoutAdmin(); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [logoutAdmin, setAdminAuth]);
 
   if (loading) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
   if (!isAdminAuthenticated) return <Navigate to="/admin/login" replace />;
+  if (mustChangePassword && location.pathname !== '/admin/force-password') return <Navigate to="/admin/force-password" replace />;
   return children;
 }
 
@@ -45,7 +54,7 @@ function AdminFinanceStatsRoute() {
 export default function AdminApp() {
   return <AdminGuard><Routes>
     <Route index element={<Navigate to="/admin/overview" replace />} />
-    <Route path="overview" element={<AdminLegacyPage initialSection="overview" />} />
+    <Route path="overview" element={<AdminOverviewPage />} />
     <Route path="orders" element={<AdminOrdersPage />} />
     <Route path="orders/:code" element={<AdminOrdersPage />} />
     <Route path="recharges" element={<AdminLegacyPage initialSection="recharges" />} />
@@ -62,9 +71,14 @@ export default function AdminApp() {
     <Route path="finance" element={<Navigate to="/admin/finance/daily" replace />} />
     <Route path="finance/daily" element={<AdminFinanceDailyPage />} />
     <Route path="finance/stats" element={<AdminFinanceStatsRoute />} />
+    <Route path="refunds" element={<AdminRefundsPage />} />
     <Route path="audit" element={<AdminLegacyPage initialSection="audit" />} />
-    <Route path="staff" element={<AdminLegacyPage initialSection="staff" />} />
-    <Route path="settings" element={<AdminLegacyPage initialSection="settings" />} />
+    <Route path="staff" element={<AdminStaffPage />} />
+    <Route path="staff/new" element={<AdminStaffEditPage />} />
+    <Route path="staff/:id" element={<AdminStaffEditPage />} />
+    <Route path="settings" element={<AdminSettingsPage />} />
+    <Route path="settings/:section" element={<AdminSettingsEditPage />} />
+    <Route path="force-password" element={<AdminForcePasswordPage />} />
     <Route path="*" element={<Navigate to="/admin/overview" replace />} />
   </Routes></AdminGuard>;
 }

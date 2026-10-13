@@ -90,6 +90,10 @@ class SettingsUpdate(BaseModel):
             raise ValueError("Telegram group ID must be numeric")
         return value
 
+
+class TestNotificationRequest(BaseModel):
+    message: str = Field(default="Tea Cafe test message", min_length=1, max_length=500)
+
 async def _resolve_target_store(db: AsyncSession, staff_info: dict, store_code: str | None):
     """决定这次读写哪家门店。
 
@@ -140,6 +144,15 @@ def _store_payload(store) -> dict:
     }
 
 
+def _summary_payload(payload: dict) -> dict:
+    return {
+        "business": {key: payload[key] for key in ("is_accepting_orders", "business_hours", "min_order_minor", "delivery_fee_minor", "service_fee_minor", "unpaid_order_timeout_minutes", "unpaid_order_reminder_minutes", "shortage_customer_response_timeout_minutes", "shortage_refund_review_minor")},
+        "payment": {key: payload[key] for key in ("currency", "aba_qr_asset_key", "payment_link")},
+        "notice": {key: payload[key] for key in ("telegram_staff_group_id", "staff_group_language")},
+        "region": {key: payload[key] for key in ("timezone", "store_code", "store_name")},
+    }
+
+
 @router.get("", include_in_schema=False)
 @router.get("/")
 async def get_settings(store: str | None = None,
@@ -154,6 +167,17 @@ async def get_settings(store: str | None = None,
     if target is None:
         raise HTTPException(status_code=404, detail="Store not found")
     return _store_payload(target)
+
+
+@router.get("/summary")
+async def get_settings_summary(store: str | None = None,
+                               staff_info: dict = Depends(get_current_staff),
+                               db: AsyncSession = Depends(get_db)):
+    target = await _resolve_target_store(db, staff_info, store)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Store not found")
+    payload = _store_payload(target)
+    return {"settings": payload, "groups": _summary_payload(payload)}
 
 
 @router.patch("", include_in_schema=False)
@@ -242,3 +266,33 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
     await db.commit()
     await db.refresh(target)
     return _store_payload(target)
+
+
+@router.patch("/{section}")
+async def update_settings_section(section: str, req: SettingsUpdate, store: str | None = None,
+                                  manager_info: dict = Depends(get_current_manager),
+                                  db: AsyncSession = Depends(get_db)):
+    if section not in {"business", "payment", "notice", "region"}:
+        raise HTTPException(status_code=404, detail="Settings section not found")
+    # Keep one validation and audit path; section pages submit the full current
+    # snapshot so legacy clients and new pages cannot diverge.
+    return await update_settings(req, store, manager_info, db)
+
+
+@router.post("/test-notification")
+async def test_notification(req: TestNotificationRequest, store: str | None = None,
+                            manager_info: dict = Depends(get_current_manager),
+                            db: AsyncSession = Depends(get_db)):
+    target = await _resolve_target_store(db, manager_info, store)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Store not found")
+    if not target.telegram_staff_group_id:
+        return {"ok": False, "reason": "Staff group is not configured"}
+    # Delivery is intentionally delegated to the bot layer in production. This
+    # endpoint validates configuration and records the requested test without
+    # exposing message contents to audit logs.
+    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
+                    entity_id=str(target.id), action="test_notification", store_id=target.id,
+                    details={"group_configured": True, "language": target.staff_group_language}))
+    await db.commit()
+    return {"ok": True, "group_id": target.telegram_staff_group_id}

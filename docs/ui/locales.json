@@ -666,7 +666,49 @@
     "admin.refundedAmount": "已退金额",
     "admin.pendingShort": "待退 {{amount}}",
     "common.confirm": "确认",
-    "common.reason": "原因"
+    "common.reason": "原因",
+    "admin.staff.account": "账号",
+    "admin.staff.store": "归属门店",
+    "admin.staff.lastLogin": "最近登录",
+    "admin.staff.resetPassword": "重置密码",
+    "admin.staff.temporaryPassword": "临时密码（仅显示一次）",
+    "admin.staff.forceChange": "首次登录必须修改密码",
+    "admin.staff.new": "新增员工",
+    "admin.staff.edit": "编辑员工",
+    "admin.staff.passwordHint": "至少 12 个字符",
+    "admin.staff.passwordChanged": "密码已更新",
+    "admin.staff.selfChange": "修改我的密码",
+    "admin.settings.business": "营业设置",
+    "admin.settings.payment": "收款设置",
+    "admin.settings.notice": "通知设置",
+    "admin.settings.region": "区域设置",
+    "admin.settings.editSection": "编辑设置",
+    "admin.settings.testNotification": "发送测试消息",
+    "admin.settings.testNotificationSuccess": "测试消息已发送",
+    "admin.settings.testNotificationFailed": "测试消息发送失败：{{reason}}",
+    "admin.settings.currencyConfirm": "修改币种会影响后续订单，确定继续吗？",
+    "admin.settings.forcePasswordTitle": "请先修改临时密码",
+    "admin.settings.forcePassword": "新密码",
+    "admin.settings.saveSection": "保存此组设置",
+    "admin.settings.overview": "设置概览"
+    ,"admin.dashboard.orders": "订单趋势"
+    ,"admin.dashboard.status": "订单状态"
+    ,"admin.dashboard.payment": "支付方式"
+    ,"admin.dashboard.hourly": "时段分布"
+    ,"admin.dashboard.topProducts": "热销商品"
+    ,"admin.dashboard.users": "用户趋势"
+    ,"admin.dashboard.totalUsers": "总用户数"
+    ,"admin.dashboard.newUsers": "今日新增用户"
+    ,"admin.dashboard.activeUsers": "今日活跃用户"
+    ,"admin.dashboard.pendingRefunds": "待处理退款"
+    ,"admin.dashboard.days": "统计天数"
+    ,"admin.refunds.title": "待处理退款"
+    ,"admin.refunds.all": "全部"
+    ,"admin.refunds.pending": "待处理"
+    ,"admin.refunds.done": "已完成"
+    ,"admin.refunds.reference": "转账参考号"
+    ,"admin.refunds.complete": "标记已转账"
+    ,"admin.refunds.approve": "批准钱包退款"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -1335,7 +1377,49 @@
     "admin.refundedAmount": "Refunded",
     "admin.pendingShort": "Pending {{amount}}",
     "common.confirm": "Confirm",
-    "common.reason": "Reason"
+    "common.reason": "Reason",
+    "admin.staff.account": "Account",
+    "admin.staff.store": "Store",
+    "admin.staff.lastLogin": "Last login",
+    "admin.staff.resetPassword": "Reset password",
+    "admin.staff.temporaryPassword": "Temporary password (shown once)",
+    "admin.staff.forceChange": "Must change on first login",
+    "admin.staff.new": "New staff",
+    "admin.staff.edit": "Edit staff",
+    "admin.staff.passwordHint": "At least 12 characters",
+    "admin.staff.passwordChanged": "Password updated",
+    "admin.staff.selfChange": "Change my password",
+    "admin.settings.business": "Business settings",
+    "admin.settings.payment": "Payment settings",
+    "admin.settings.notice": "Notification settings",
+    "admin.settings.region": "Region settings",
+    "admin.settings.editSection": "Edit settings",
+    "admin.settings.testNotification": "Send test message",
+    "admin.settings.testNotificationSuccess": "Test message sent",
+    "admin.settings.testNotificationFailed": "Test message failed: {{reason}}",
+    "admin.settings.currencyConfirm": "Changing currency affects future orders. Continue?",
+    "admin.settings.forcePasswordTitle": "Change your temporary password",
+    "admin.settings.forcePassword": "New password",
+    "admin.settings.saveSection": "Save this section",
+    "admin.settings.overview": "Settings overview"
+    ,"admin.dashboard.orders": "Order trend"
+    ,"admin.dashboard.status": "Order status"
+    ,"admin.dashboard.payment": "Payment methods"
+    ,"admin.dashboard.hourly": "Orders by hour"
+    ,"admin.dashboard.topProducts": "Top products"
+    ,"admin.dashboard.users": "User trend"
+    ,"admin.dashboard.totalUsers": "Total users"
+    ,"admin.dashboard.newUsers": "New users today"
+    ,"admin.dashboard.activeUsers": "Active users today"
+    ,"admin.dashboard.pendingRefunds": "Pending refunds"
+    ,"admin.dashboard.days": "Days"
+    ,"admin.refunds.title": "Refunds"
+    ,"admin.refunds.all": "All"
+    ,"admin.refunds.pending": "Pending"
+    ,"admin.refunds.done": "Completed"
+    ,"admin.refunds.reference": "Transfer reference"
+    ,"admin.refunds.complete": "Mark transferred"
+    ,"admin.refunds.approve": "Approve wallet refund"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -2004,6 +2088,48 @@
     "admin.refundedAmount": "ប្រាក់ដែលបានសង",
     "admin.pendingShort": "រង់ចាំសង {{amount}}",
     "common.confirm": "បញ្ជាក់",
-    "common.reason": "មូលហេតុ"
+    "common.reason": "មូលហេតុ",
+    "admin.staff.account": "គណនី",
+    "admin.staff.store": "ហាង",
+    "admin.staff.lastLogin": "ចូលប្រើចុងក្រោយ",
+    "admin.staff.resetPassword": "កំណត់ពាក្យសម្ងាត់ឡើងវិញ",
+    "admin.staff.temporaryPassword": "ពាក្យសម្ងាត់បណ្តោះអាសន្ន (បង្ហាញតែម្តង)",
+    "admin.staff.forceChange": "ត្រូវប្តូរនៅពេលចូលលើកដំបូង",
+    "admin.staff.new": "បុគ្គលិកថ្មី",
+    "admin.staff.edit": "កែបុគ្គលិក",
+    "admin.staff.passwordHint": "យ៉ាងហោចណាស់ ១២ តួអក្សរ",
+    "admin.staff.passwordChanged": "បានធ្វើបច្ចុប្បន្នភាពពាក្យសម្ងាត់",
+    "admin.staff.selfChange": "ប្តូរពាក្យសម្ងាត់របស់ខ្ញុំ",
+    "admin.settings.business": "ការកំណត់អាជីវកម្ម",
+    "admin.settings.payment": "ការកំណត់ការទូទាត់",
+    "admin.settings.notice": "ការកំណត់ការជូនដំណឹង",
+    "admin.settings.region": "ការកំណត់តំបន់",
+    "admin.settings.editSection": "កែការកំណត់",
+    "admin.settings.testNotification": "ផ្ញើសារសាកល្បង",
+    "admin.settings.testNotificationSuccess": "បានផ្ញើសារសាកល្បង",
+    "admin.settings.testNotificationFailed": "ផ្ញើសារសាកល្បងបរាជ័យ៖ {{reason}}",
+    "admin.settings.currencyConfirm": "ការផ្លាស់ប្តូររូបិយប័ណ្ណប៉ះពាល់ដល់ការបញ្ជាទិញបន្ទាប់។ បន្តទេ?",
+    "admin.settings.forcePasswordTitle": "សូមប្តូរពាក្យសម្ងាត់បណ្តោះអាសន្ន",
+    "admin.settings.forcePassword": "ពាក្យសម្ងាត់ថ្មី",
+    "admin.settings.saveSection": "រក្សាទុកក្រុមនេះ",
+    "admin.settings.overview": "ទិដ្ឋភាពទូទៅការកំណត់"
+    ,"admin.dashboard.orders": "និន្នាការការបញ្ជាទិញ"
+    ,"admin.dashboard.status": "ស្ថានភាពការបញ្ជាទិញ"
+    ,"admin.dashboard.payment": "វិធីទូទាត់"
+    ,"admin.dashboard.hourly": "ការបញ្ជាទិញតាមម៉ោង"
+    ,"admin.dashboard.topProducts": "ទំនិញលក់ដាច់"
+    ,"admin.dashboard.users": "និន្នាការអ្នកប្រើប្រាស់"
+    ,"admin.dashboard.totalUsers": "អ្នកប្រើប្រាស់សរុប"
+    ,"admin.dashboard.newUsers": "អ្នកប្រើប្រាស់ថ្មីថ្ងៃនេះ"
+    ,"admin.dashboard.activeUsers": "អ្នកប្រើប្រាស់សកម្មថ្ងៃនេះ"
+    ,"admin.dashboard.pendingRefunds": "ការសងប្រាក់រង់ចាំ"
+    ,"admin.dashboard.days": "ចំនួនថ្ងៃ"
+    ,"admin.refunds.title": "ការសងប្រាក់"
+    ,"admin.refunds.all": "ទាំងអស់"
+    ,"admin.refunds.pending": "រង់ចាំ"
+    ,"admin.refunds.done": "បានបញ្ចប់"
+    ,"admin.refunds.reference": "លេខយោងផ្ទេរ"
+    ,"admin.refunds.complete": "សម្គាល់ថាបានផ្ទេរ"
+    ,"admin.refunds.approve": "អនុម័តសងប្រាក់កាបូប"
   }
 }

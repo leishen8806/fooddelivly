@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from typing import Literal
+from datetime import datetime, timezone
+import secrets
 import os
 import json
 import logging
@@ -23,6 +25,9 @@ class TelegramLoginRequest(BaseModel):
 
 class AdminLoginRequest(BaseModel):
     login_name: str
+    password: str
+
+class PasswordChangeRequest(BaseModel):
     password: str
 
 class LanguagePreferenceRequest(BaseModel):
@@ -148,12 +153,15 @@ async def admin_login(req: AdminLoginRequest, response: Response, db: AsyncSessi
     if not staff or not password_ok or not staff.active:
         raise HTTPException(status_code=401, detail="Invalid credentials or account disabled")
     
+    staff.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
     token = create_access_token({"sub": str(staff.id), "type": "staff", "role": staff.role})
     
     response.set_cookie(key="admin_session_token", value=token, **_cookie_options())
     response.headers["Cache-Control"] = "no-store"
     
-    return {"message": "Login successful", "staff_id": staff.id, "role": staff.role}
+    return {"message": "Login successful", "staff_id": staff.id, "role": staff.role,
+            "must_change_password": bool(staff.must_change_password)}
 
 @router.get("/admin/me")
 async def admin_me(staff_info: dict = Depends(get_current_staff), db: AsyncSession = Depends(get_db)):
@@ -163,6 +171,22 @@ async def admin_me(staff_info: dict = Depends(get_current_staff), db: AsyncSessi
         and (staff_info.get("store_id") is None or active_store_count <= 1)
     )
     return {**staff_info, "catalog_write_allowed": catalog_write_allowed}
+
+@router.post("/admin/change-password")
+async def admin_change_password(req: PasswordChangeRequest,
+                                staff_info: dict = Depends(get_current_staff),
+                                db: AsyncSession = Depends(get_db)):
+    if len(req.password) < 12 or len(req.password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Password must be 12 to 72 bytes")
+    from auth_utils import get_password_hash
+    result = await db.execute(select(Staff).filter(Staff.id == staff_info["staff_id"]).with_for_update())
+    staff = result.scalars().first()
+    if staff is None:
+        raise HTTPException(status_code=401, detail="Staff account not found")
+    staff.password_hash = get_password_hash(req.password)
+    staff.must_change_password = False
+    await db.commit()
+    return {"message": "Password updated"}
 
 @router.post("/admin/logout")
 async def admin_logout(response: Response):
