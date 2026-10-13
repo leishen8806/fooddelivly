@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import api from '../api';
 import { useAuthStore } from '../store/authStore';
 import AdminLegacyPage from './AdminLegacyPage';
+import AdminOrdersPage from './AdminOrdersPage';
 
 function AdminGuard({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
@@ -27,7 +28,8 @@ export default function AdminApp() {
   return <AdminGuard><Routes>
     <Route index element={<Navigate to="overview" replace />} />
     <Route path="overview" element={<AdminLegacyPage initialSection="overview" />} />
-    <Route path="orders" element={<AdminLegacyPage initialSection="orders" />} />
+    <Route path="orders" element={<AdminOrdersPage />} />
+    <Route path="orders/:code" element={<AdminOrdersPage />} />
     <Route path="recharges" element={<AdminLegacyPage initialSection="recharges" />} />
     <Route path="customers" element={<AdminLegacyPage initialSection="customers" />} />
     <Route path="products" element={<AdminLegacyPage initialSection="products" />} />

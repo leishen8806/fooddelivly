@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, File, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func
+from sqlalchemy import case, desc, func, or_
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
-from datetime import datetime
+from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from pydantic import BaseModel
 from database import get_db
-from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer, OrderIssue, OrderRefund, Product, ProductOptionGroup
+from models import AuditLog, Order, PaymentProof, PaymentReview, OrderEvent, Customer, OrderIssue, OrderRefund, Product, ProductOptionGroup, Store
 from dependencies import get_current_manager, get_current_staff
 from store_context import can_access_store, store_for_order, store_scope_clause, load_overrides, effective_product
 from sale_window import is_on_sale, windows_from_json
@@ -21,6 +21,118 @@ from uuid import uuid4
 router = APIRouter(prefix="/api/v1/admin/orders", tags=["Admin Orders"])
 refund_router = APIRouter(prefix="/api/v1/admin/order-refunds", tags=["Admin Order Refunds"])
 PAYMENT_PROOF_DIR = UPLOAD_DIR / "payment-proofs"
+
+_ORDER_SORTS = {"created_at": Order.created_at, "total_minor": Order.total_minor}
+_PAYMENT_STATUSES = {"UNPAID", "PROOF_SUBMITTED", "PAID_CONFIRMED", "PARTIALLY_REFUNDED", "REFUNDED", "REJECTED"}
+
+
+def _like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _snapshot_text(value) -> str:
+    if isinstance(value, dict):
+        for key in ("en", "en-US", "zh-CN", "zh", "km"):
+            if value.get(key):
+                return str(value[key])
+        return next((str(v) for v in value.values() if v), "")
+    return str(value or "")
+
+
+def _chat_url(customer: Customer | None) -> str | None:
+    if not customer:
+        return None
+    if customer.username:
+        return f"https://t.me/{customer.username.lstrip('@')}"
+    if customer.telegram_user_id:
+        return f"tg://user?id={customer.telegram_user_id}"
+    return None
+
+
+async def _staff_timezone(db: AsyncSession, staff_info: dict) -> str:
+    store = None
+    if staff_info.get("store_id") is not None:
+        store = (await db.execute(select(Store).filter(Store.id == staff_info["store_id"]))).scalars().first()
+    if store is None:
+        store = (await db.execute(select(Store).order_by(Store.id).limit(1))).scalars().first()
+    return (store.timezone if store and store.timezone else "Asia/Phnom_Penh")
+
+
+async def _order_filters(
+    db: AsyncSession,
+    staff_info: dict,
+    q: str | None,
+    from_date: str | None,
+    to_date: str | None,
+    statuses: list[str] | None,
+    payment_status: str | None,
+    payment_method: str | None,
+) -> list:
+    filters: list = []
+    scope = store_scope_clause(Order, staff_info)
+    if scope is not None:
+        filters.append(scope)
+    if q:
+        raw = q.strip()
+        clean = raw[1:] if raw.startswith("@") else raw
+        code_pattern = f"%{_like(raw)}%"
+        user_pattern = f"%{_like(clean)}%"
+        filters.append(or_(
+            Order.public_code.ilike(code_pattern, escape="\\"),
+            Customer.display_name.ilike(user_pattern, escape="\\"),
+            Customer.username.ilike(user_pattern, escape="\\"),
+            Customer.telegram_user_id.ilike(user_pattern, escape="\\"),
+        ))
+    if statuses:
+        unknown = set(statuses) - {"NEW", "ACCEPTED", "PREPARING", "READY", "DELIVERED", "COMPLETED", "CANCELLED"}
+        if unknown:
+            raise HTTPException(status_code=422, detail="Unsupported order status")
+        filters.append(Order.order_status.in_(statuses))
+    if payment_status:
+        if payment_status not in _PAYMENT_STATUSES:
+            raise HTTPException(status_code=422, detail="Unsupported payment status")
+        filters.append(Order.payment_status == payment_status)
+    if payment_method:
+        filters.append(Order.payment_method == payment_method)
+    if from_date or to_date:
+        tz_name = await _staff_timezone(db, staff_info)
+        try:
+            start = date.fromisoformat(from_date) if from_date else None
+            end = date.fromisoformat(to_date) if to_date else None
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Dates must use YYYY-MM-DD") from exc
+        if start and end and start > end:
+            raise HTTPException(status_code=422, detail="The start date must not be after the end date")
+        tz = ZoneInfo(tz_name)
+        if start:
+            filters.append(Order.created_at >= datetime.combine(start, time.min, tzinfo=tz).astimezone(timezone.utc))
+        if end:
+            next_day = end + timedelta(days=1)
+            filters.append(Order.created_at < datetime.combine(next_day, time.min, tzinfo=tz).astimezone(timezone.utc))
+    return filters
+
+
+def _received_minor(order: Order, refund_done: int) -> int:
+    if order.payment_status in {"UNPAID", "PROOF_SUBMITTED", "REJECTED", "REFUNDED"}:
+        return 0
+    return max(int(order.paid_confirmed_minor or 0) - int(refund_done or 0), 0)
+
+
+def _base_order_payload(order: Order, customer: Customer | None) -> dict:
+    return {
+        "id": order.id, "public_code": order.public_code, "room_number": order.room_number,
+        "order_status": order.order_status, "payment_status": order.payment_status,
+        "payment_method": order.payment_method, "currency": order.currency,
+        "total_minor": order.total_minor, "subtotal_minor": order.subtotal_minor if order.subtotal_minor is not None else order.total_minor,
+        "coupon_name_snapshot": order.coupon_name_snapshot, "coupon_discount_minor": order.coupon_discount_minor or 0,
+        "delivery_fee_minor": order.delivery_fee_minor or 0, "service_fee_minor": order.service_fee_minor or 0,
+        "wallet_paid_minor": order.wallet_paid_minor or 0, "external_due_minor": order.external_due_minor if order.external_due_minor is not None else order.total_minor,
+        "paid_confirmed_minor": order.paid_confirmed_minor or 0, "adjusted_total_minor": order.adjusted_total_minor,
+        "removed_minor": order.removed_minor or 0,
+        "created_at": order.created_at,
+        "customer": None if customer is None else {"id": customer.id, "display_name": customer.display_name, "username": customer.username,
+            "telegram_user_id": customer.telegram_user_id, "telegram_chat_url": _chat_url(customer)},
+    }
 
 
 def _image_content_type(body: bytes) -> str | None:
@@ -77,6 +189,77 @@ async def list_orders(
                    "options": item.options_json or {},
                    "line_total_minor": item.line_total_minor} for item in order.items],
     } for order in orders]
+
+
+@router.get("/search")
+async def search_orders(
+    q: str | None = Query(None),
+    from_date: str | None = Query(None, alias="from"),
+    to_date: str | None = Query(None, alias="to"),
+    status: list[str] | None = Query(None),
+    payment_status: str | None = Query(None),
+    payment_method: str | None = Query(None),
+    limit: int = Query(25, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    sort: str = Query("-created_at"),
+    staff_info: dict = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    sort_name = sort.removeprefix("-")
+    if sort_name not in _ORDER_SORTS:
+        raise HTTPException(status_code=422, detail="Unsupported order sort")
+    filters = await _order_filters(db, staff_info, q, from_date, to_date, status, payment_status, payment_method)
+    count_query = select(func.count(Order.id)).select_from(Order).outerjoin(Customer, Customer.id == Order.customer_id).where(*filters)
+    total = int((await db.execute(count_query)).scalar_one())
+    sort_expr = _ORDER_SORTS[sort_name]
+    query = select(Order, Customer).outerjoin(Customer, Customer.id == Order.customer_id).options(selectinload(Order.items)).where(*filters)
+    query = query.order_by(desc(sort_expr) if sort.startswith("-") else sort_expr.asc()).offset(offset).limit(limit)
+    rows = (await db.execute(query)).unique().all()
+    ids = [order.id for order, _ in rows]
+    open_issues: dict[int, int] = {}
+    refund_done: dict[int, int] = {}
+    refund_pending: dict[int, int] = {}
+    if ids:
+        issue_rows = await db.execute(select(OrderIssue.order_id, func.count(OrderIssue.id)).where(OrderIssue.order_id.in_(ids), OrderIssue.status == "OPEN").group_by(OrderIssue.order_id))
+        open_issues = {int(order_id): int(count) for order_id, count in issue_rows.all()}
+        done_sum = func.coalesce(func.sum(case((OrderRefund.status == "DONE", OrderRefund.amount_minor), else_=0)), 0)
+        pending_sum = func.coalesce(func.sum(case((OrderRefund.status == "PENDING", OrderRefund.amount_minor), else_=0)), 0)
+        refund_rows = await db.execute(select(OrderRefund.order_id, done_sum, pending_sum).where(OrderRefund.order_id.in_(ids)).group_by(OrderRefund.order_id))
+        for order_id, done, pending in refund_rows.all():
+            refund_done[int(order_id)] = int(done or 0)
+            refund_pending[int(order_id)] = int(pending or 0)
+    items = []
+    for order, customer in rows:
+        payload = _base_order_payload(order, customer)
+        names = [_snapshot_text(item.product_name_snapshot) for item in (order.items or [])]
+        payload.update({
+            "received_minor": _received_minor(order, refund_done.get(order.id, 0)),
+            "refund_pending_minor": refund_pending.get(order.id, 0),
+            "items_preview": names[:2], "item_count": sum(int(item.quantity or 0) for item in (order.items or [])),
+            "open_issue_count": open_issues.get(order.id, 0),
+        })
+        items.append(payload)
+    return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+
+@router.get("/counts")
+async def order_counts(
+    q: str | None = Query(None),
+    from_date: str | None = Query(None, alias="from"),
+    to_date: str | None = Query(None, alias="to"),
+    payment_status: str | None = Query(None),
+    payment_method: str | None = Query(None),
+    staff_info: dict = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    filters = await _order_filters(db, staff_info, q, from_date, to_date, None, payment_status, payment_method)
+    rows = await db.execute(select(Order.order_status, func.count(Order.id)).select_from(Order).outerjoin(Customer, Customer.id == Order.customer_id).where(*filters).group_by(Order.order_status))
+    counts = {status: 0 for status in ("NEW", "ACCEPTED", "PREPARING", "READY", "DELIVERED", "COMPLETED", "CANCELLED")}
+    counts.update({str(status): int(value) for status, value in rows.all()})
+    proof_filters = [*filters, Order.payment_status == "PROOF_SUBMITTED"]
+    proof_count = int((await db.execute(select(func.count(Order.id)).select_from(Order).outerjoin(Customer, Customer.id == Order.customer_id).where(*proof_filters))).scalar_one())
+    return {"counts": counts, "pending_payment": proof_count}
+
 
 @router.get("/{order_id}/payment-proof")
 async def get_payment_proof(order_id: int, staff_info: dict = Depends(get_current_staff), db: AsyncSession = Depends(get_db)):
@@ -719,3 +902,43 @@ async def review_payment(
             pass
 
     return {"message": "Review submitted successfully", "payment_status": order.payment_status}
+
+@router.get("/{order_code}")
+async def order_detail(
+    order_code: str,
+    staff_info: dict = Depends(get_current_staff),
+    db: AsyncSession = Depends(get_db),
+):
+    scope = store_scope_clause(Order, staff_info)
+    filters = [Order.public_code == order_code]
+    if scope is not None:
+        filters.append(scope)
+    result = await db.execute(select(Order, Customer).outerjoin(Customer, Customer.id == Order.customer_id).options(selectinload(Order.items)).where(*filters))
+    row = result.unique().first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Order not found")
+    order, customer = row
+    proof = (await db.execute(select(PaymentProof).where(PaymentProof.order_id == order.id).order_by(PaymentProof.submitted_at.desc()))).scalars().first()
+    events = (await db.execute(select(OrderEvent).where(OrderEvent.order_id == order.id).order_by(OrderEvent.created_at.asc()))).scalars().all()
+    issues = (await db.execute(select(OrderIssue).where(OrderIssue.order_id == order.id).order_by(OrderIssue.created_at.asc()))).scalars().all()
+    refunds = (await db.execute(select(OrderRefund).where(OrderRefund.order_id == order.id).order_by(OrderRefund.created_at.asc()))).scalars().all()
+    done = sum(int(refund.amount_minor or 0) for refund in refunds if refund.status == "DONE")
+    pending = sum(int(refund.amount_minor or 0) for refund in refunds if refund.status == "PENDING")
+    payload = _base_order_payload(order, customer)
+    payload.update({
+        "paid_confirmed_minor": order.paid_confirmed_minor or 0, "adjusted_total_minor": order.adjusted_total_minor,
+        "removed_minor": order.removed_minor or 0, "received_minor": _received_minor(order, done),
+        "refund_pending_minor": pending,
+        "items": [{"id": item.id, "product_id": item.product_id, "name": item.product_name_snapshot, "quantity": item.quantity,
+                   "unit_price_minor": item.unit_price_minor, "line_total_minor": item.line_total_minor, "options_json": item.options_json or {}} for item in order.items],
+        "proof": None if proof is None else {"id": proof.id, "review_status": proof.review_status, "submitted_at": proof.submitted_at,
+            "url": f"/api/v1/admin/orders/{order.id}/payment-proof"},
+        "events": [{"id": event.id, "actor_type": event.actor_type, "actor_id": event.actor_id, "event": event.event,
+                    "from_state": event.from_state, "to_state": event.to_state, "created_at": event.created_at} for event in events],
+        "issues": [{"id": issue.id, "order_item_id": issue.order_item_id, "issue_type": issue.issue_type, "status": issue.status,
+                    "resolution": issue.resolution, "note": issue.note, "created_at": issue.created_at, "resolved_at": issue.resolved_at} for issue in issues],
+        "refunds": [{"id": refund.id, "issue_id": refund.issue_id, "amount_minor": refund.amount_minor, "method": refund.method,
+                     "status": refund.status, "requires_approval": bool(refund.requires_approval), "reference": refund.reference,
+                     "created_at": refund.created_at, "done_at": refund.done_at} for refund in refunds],
+    })
+    return payload
