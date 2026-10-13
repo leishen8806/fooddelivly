@@ -151,13 +151,21 @@ function CustomerPage() {
   const languageSelectRef = useRef<HTMLSelectElement>(null);
   const cartSubtotal = useMemo(() => cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0), [cart]);
   const selectedCoupon = customerCoupons.find((coupon) => coupon.id === selectedCouponId && coupon.status === 'AVAILABLE');
-  const couponDiscount = useMemo(() => {
-    if (!selectedCoupon || !cart.length || selectedCoupon.currency !== cart[0].product.currency || cartSubtotal < selectedCoupon.min_spend_minor) return 0;
+  const couponDiscountInfo = useMemo(() => {
+    if (!selectedCoupon || !cart.length || selectedCoupon.currency !== cart[0].product.currency || cartSubtotal < selectedCoupon.min_spend_minor) {
+      return { amount: 0, capped: false, cap: null as number | null };
+    }
     const raw = selectedCoupon.coupon_type === 'DISCOUNT'
       ? Math.round(cartSubtotal * (selectedCoupon.discount_percent || 0) / 100)
       : (selectedCoupon.fixed_discount_minor || 0);
-    return Math.min(Math.max(raw, 0), cartSubtotal, selectedCoupon.discount_cap_minor ?? Number.MAX_SAFE_INTEGER);
+    const cap = selectedCoupon.discount_cap_minor ?? null;
+    return {
+      amount: Math.min(Math.max(raw, 0), cartSubtotal, cap ?? Number.MAX_SAFE_INTEGER),
+      capped: cap !== null && raw > cap,
+      cap,
+    };
   }, [cartSubtotal, cart, selectedCoupon]);
+  const couponDiscount = couponDiscountInfo.amount;
   const total = Math.max(cartSubtotal - couponDiscount, 0);
   const walletApplied = Math.min(walletTotal, total);
   const abaDue = Math.max(total - walletApplied, 0);
@@ -561,7 +569,7 @@ function CustomerPage() {
           </div>
           <small className="payment-method-hint">{t('payment.walletFirstHint')}</small>
         </fieldset>
-        {couponDiscount > 0 && <div className="payment-breakdown-line coupon-discount"><span>{t('coupon.couponDiscount')}</span><strong>-{amount(couponDiscount, cart[0].product.currency, i18n.language)}</strong></div>}
+        {couponDiscount > 0 && <div className="payment-breakdown-line coupon-discount"><span>{t('coupon.couponDiscount')}{couponDiscountInfo.capped && couponDiscountInfo.cap !== null && <small className="coupon-cap-hint">{t('coupon.discountCapHint', { amount: amount(couponDiscountInfo.cap, cart[0].product.currency, i18n.language) })}</small>}</span><strong>-{amount(couponDiscount, cart[0].product.currency, i18n.language)}</strong></div>}
         <div className="total-row"><span>{t('common.total')}</span><strong>{amount(total, cart[0].product.currency, i18n.language)}</strong></div><button className="primary" type="submit">{t('checkout.placeOrder')}</button>
         {status && <p className="status" role="status">{status}</p>}
       </form>}
