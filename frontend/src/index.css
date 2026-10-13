@@ -2701,4 +2701,4 @@ small {
 .coupon-card > span { font-size: 12px; color: var(--muted, #6f7f82); }
 .coupon-card button { border: 0; border-radius: 999px; padding: 7px 11px; background: var(--accent, #4da9c8); color: #fff; cursor: pointer; }
 .coupon-discount strong { color: #16825d; }
-.coupon-cap-hint { margin-left: 6px; color: var(--color-muted); font-size: 0.9em; }
+.coupon-cap-hint { margin-left: 6px; color: var(--color-danger); font-size: 0.9em; }
