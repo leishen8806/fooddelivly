@@ -185,6 +185,14 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
     setOrder(response.data);
   };
 
+  const refreshAfterActionFailure = async () => {
+    try {
+      await refreshOrder();
+    } catch {
+      // Keep the original action error visible when the recovery request also fails.
+    }
+  };
+
   useEffect(() => {
     api.get(`/api/v1/admin/orders/${encodeURIComponent(code)}`)
       .then((response) => setOrder(response.data))
@@ -200,6 +208,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       setDialog(null);
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     }
   };
 
@@ -211,6 +220,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       await refreshOrder();
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     }
   };
 
@@ -223,6 +233,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       setDialog(null);
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     }
   };
 
@@ -235,6 +246,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       setDialog(null);
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     }
   };
 
@@ -247,6 +259,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       setDialog(null);
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     }
   };
 
@@ -257,6 +270,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       await refreshOrder();
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     }
   };
 
@@ -277,6 +291,7 @@ export function AdminOrderDetail({ code, initialOrder, roleOverride }: { code: s
       await refreshOrder();
     } catch (requestError) {
       setActionError(localizeBackendError(requestError, t));
+      await refreshAfterActionFailure();
     } finally {
       setProofUploading(false);
     }

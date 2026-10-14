@@ -21,10 +21,11 @@ import AdminSettingsEditPage from './AdminSettingsEditPage';
 import AdminForcePasswordPage from './AdminForcePasswordPage';
 import AdminOverviewPage from './AdminOverviewPage';
 import AdminRefundsPage from './AdminRefundsPage';
+import { isAdminPathVisible } from './layout/nav';
 
 function AdminGuard({ children }: { children: ReactNode }) {
   const { t } = useTranslation();
-  const { isAdminAuthenticated, setAdminAuth, logoutAdmin, mustChangePassword } = useAuthStore();
+  const { isAdminAuthenticated, setAdminAuth, logoutAdmin, mustChangePassword, role, storeId } = useAuthStore();
   const location = useLocation();
   const [loading, setLoading] = useState(true);
 
@@ -39,6 +40,9 @@ function AdminGuard({ children }: { children: ReactNode }) {
   if (loading) return <main className="auth-shell"><p>{t('common.loading')}</p></main>;
   if (!isAdminAuthenticated) return <Navigate to="/admin/login" replace />;
   if (mustChangePassword && location.pathname !== '/admin/force-password') return <Navigate to="/admin/force-password" replace />;
+  if (location.pathname !== '/admin/force-password' && !isAdminPathVisible(location.pathname, role || 'STAFF', role === 'MANAGER' && storeId === null)) {
+    return <Navigate to="/admin/overview?access=denied" replace />;
+  }
   return children;
 }
 

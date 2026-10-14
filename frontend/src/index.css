@@ -177,11 +177,13 @@ body {
 .translation-missing { color: var(--color-danger); font-weight: var(--weight-semibold); }
 .catalog-chips, .catalog-actions { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; }
 .catalog-chip { border: 1px solid var(--color-border); border-radius: 999px; padding: .15rem .45rem; font-size: var(--type-small); white-space: nowrap; }
-.catalog-edit-page { display: grid; gap: var(--space-5); }
+.catalog-edit-page { display: grid; gap: var(--space-5); min-width: 0; max-width: 100%; }
+.catalog-edit-page > * { min-width: 0; max-width: 100%; }
 .catalog-form { display: grid; gap: var(--space-5); }
-.catalog-form fieldset { display: grid; gap: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-5); }
+.catalog-form fieldset { display: grid; gap: var(--space-4); min-width: 0; max-width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-card); padding: var(--space-5); }
 .catalog-form fieldset:disabled { opacity: .78; }
-.catalog-form-actions { display: flex; justify-content: flex-end; gap: var(--space-3); position: sticky; bottom: var(--space-3); z-index: 2; padding: var(--space-3); background: color-mix(in srgb, var(--color-surface) 92%, transparent); border: 1px solid var(--color-border); border-radius: var(--radius-card); }
+.catalog-form-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-3); position: sticky; bottom: var(--space-3); z-index: 2; min-width: 0; max-width: 100%; padding: var(--space-3); background: color-mix(in srgb, var(--color-surface) 92%, transparent); border: 1px solid var(--color-border); border-radius: var(--radius-card); }
+.catalog-form-actions .primary { width: auto; flex: 1 1 12rem; }
 .catalog-rule-sections { display: grid; gap: var(--space-3); border-top: 1px solid var(--color-border); padding-top: var(--space-5); }
 
 .admin-status-badge {
@@ -254,7 +256,7 @@ body {
 .admin-empty-state p { margin: 0; }
 .admin-language-switch select,
 .admin-store-switcher select { min-height: var(--control-height); width: auto; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.sr-only { position: absolute; width: 1px !important; max-width: 1px; height: 1px; min-width: 0; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; table-layout: fixed; }
 
 button,
 input,

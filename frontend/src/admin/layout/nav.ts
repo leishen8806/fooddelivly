@@ -73,9 +73,22 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
 export const adminPathForSection = (section: AdminSection) =>
   ADMIN_NAV_GROUPS.flatMap((group) => group.items).find((item) => item.key === section)?.path || `/admin/${section}`;
 
+/** Resolve a nested admin URL to the navigation item that owns it. */
+export const adminNavItemForPath = (pathname: string): AdminNavItem | undefined => {
+  const normalized = pathname.replace(/\/+$/, '') || '/admin';
+  return ADMIN_NAV_GROUPS.flatMap((group) => group.items)
+    .sort((left, right) => right.path.length - left.path.length)
+    .find((item) => normalized === item.path || normalized.startsWith(`${item.path}/`));
+};
+
 export const isNavItemVisible = (item: AdminNavItem, role: AdminRole, isHq = false) => {
   if (item.roles && !item.roles.includes(role)) return false;
   if (item.hqOnly && !isHq) return false;
   return true;
+};
+
+export const isAdminPathVisible = (pathname: string, role: AdminRole, isHq = false) => {
+  const item = adminNavItemForPath(pathname);
+  return !item || isNavItemVisible(item, role, isHq);
 };
 

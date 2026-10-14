@@ -118,9 +118,9 @@ async def _resolve_target_store(db: AsyncSession, staff_info: dict, store_code: 
     return await default_store(db)
 
 
-def _store_payload(store) -> dict:
+def _store_payload(store, *, include_sensitive: bool = True) -> dict:
     """统一的门店配置结构（管理端设置页用的就是它）。"""
-    return {
+    payload = {
         "store_id": store.id,
         "store_code": store.code,
         "store_name": store.name,
@@ -144,15 +144,26 @@ def _store_payload(store) -> dict:
         "commission_fixed_minor": store.commission_fixed_minor or 0,
         "settlement_cycle": store.settlement_cycle,
     }
+    if not include_sensitive:
+        # STAFF may inspect operating status and non-sensitive regional values,
+        # but must not receive payment endpoints, QR asset keys, or staff-group IDs.
+        payload.pop("aba_qr_asset_key", None)
+        payload.pop("payment_link", None)
+        payload.pop("telegram_staff_group_id", None)
+    return payload
 
 
-def _summary_payload(payload: dict) -> dict:
-    return {
+def _summary_payload(payload: dict, *, include_sensitive: bool = True) -> dict:
+    result = {
         "business": {key: payload[key] for key in ("is_accepting_orders", "business_hours", "min_order_minor", "delivery_fee_minor", "service_fee_minor", "unpaid_order_timeout_minutes", "unpaid_order_reminder_minutes", "shortage_customer_response_timeout_minutes", "shortage_refund_review_minor")},
-        "payment": {key: payload[key] for key in ("currency", "aba_qr_asset_key", "payment_link")},
-        "notice": {key: payload[key] for key in ("telegram_staff_group_id", "staff_group_language")},
+        "payment": {"currency": payload["currency"]},
+        "notice": {"staff_group_language": payload["staff_group_language"]},
         "region": {key: payload[key] for key in ("timezone", "store_code", "store_name")},
     }
+    if include_sensitive:
+        result["payment"].update({key: payload[key] for key in ("aba_qr_asset_key", "payment_link")})
+        result["notice"]["telegram_staff_group_id"] = payload["telegram_staff_group_id"]
+    return result
 
 
 @router.get("", include_in_schema=False)
@@ -168,7 +179,8 @@ async def get_settings(store: str | None = None,
     target = await _resolve_target_store(db, staff_info, store)
     if target is None:
         raise HTTPException(status_code=404, detail="Store not found")
-    return _store_payload(target)
+    include_sensitive = staff_info.get("role") == "MANAGER"
+    return _store_payload(target, include_sensitive=include_sensitive)
 
 
 @router.get("/summary")
@@ -178,8 +190,9 @@ async def get_settings_summary(store: str | None = None,
     target = await _resolve_target_store(db, staff_info, store)
     if target is None:
         raise HTTPException(status_code=404, detail="Store not found")
-    payload = _store_payload(target)
-    return {"settings": payload, "groups": _summary_payload(payload)}
+    include_sensitive = staff_info.get("role") == "MANAGER"
+    payload = _store_payload(target, include_sensitive=include_sensitive)
+    return {"settings": payload, "groups": _summary_payload(payload, include_sensitive=include_sensitive)}
 
 
 @router.patch("", include_in_schema=False)

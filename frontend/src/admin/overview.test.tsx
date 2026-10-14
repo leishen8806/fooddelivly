@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { I18nextProvider } from 'react-i18next';
-import { OrderStatusChart, OrderTrendChart, PaymentMethodChart, TopProductsChart } from './AdminOverviewPage';
+import { HourlyChart, OrderStatusChart, OrderTrendChart, PaymentMethodChart, TopProductsChart } from './AdminOverviewPage';
 
 vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined });
 vi.stubGlobal('document', { documentElement: { lang: '' } });
@@ -43,5 +43,13 @@ describe('dashboard charts', () => {
     expect(html).toContain('Sales');
     expect(html).toContain('1.05 USD');
     expect(render(<TopProductsChart values={[]} label="Top products" quantityLabel="Quantity" emptyLabel="No data" />)).toContain('No data');
+  });
+
+  it('provides a table alternative for hourly distribution', () => {
+    const html = render(<HourlyChart values={[3, 1]} label="Orders by hour" hourLabel="Hour" valueLabel="Value" />);
+    expect((html.match(/<rect /g) || []).length).toBe(2);
+    expect(html).toContain('00:00');
+    expect(html).toContain('01:00');
+    expect(html).toContain('<th>Value</th>');
   });
 });
