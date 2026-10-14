@@ -23,9 +23,9 @@ type Picked = Record<number, number[]>;
 type CartSelection = { group_id: number; option_id: number };
 type CartLine = { product: Product; quantity: number; sweetness: number | null; selections: CartSelection[]; unitPrice: number };
 type Category = { id: number; name: Record<string, string>; products?: Product[]; sort_order?: number; active?: boolean };
-type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; wallet_paid_minor?: number; external_due_minor?: number; created_at: string };
+export type CustomerOrder = { public_code: string; room_number: string; order_status: string; payment_status: string; currency: string; total_minor: number; wallet_paid_minor?: number; external_due_minor?: number; open_issue_count?: number; created_at: string };
 type OrderIssue = { id: number; issue_type: string; status: string; note?: string | null; replacement_name?: string | null; replacement_unit_price_minor?: number | null; order_item_id?: number | null };
-type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; subtotal_minor?: number; coupon_name?: string | null; coupon_discount_minor?: number; delivery_fee_minor?: number; service_fee_minor?: number; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null; issues?: OrderIssue[] };
+export type CustomerOrderDetails = CustomerOrder & { payment_link?: string | null; payment_qr_url?: string | null; bot_deeplink?: string | null; subtotal_minor?: number; coupon_name?: string | null; coupon_discount_minor?: number; delivery_fee_minor?: number; service_fee_minor?: number; paid_confirmed_minor?: number; refunded_done_minor?: number; refund_pending_minor?: number; items: Array<{ name: Record<string, string> | string; quantity: number; unit_price_minor: number; line_total_minor: number; options?: { sweetness?: number } }>; proof_status: string | null; issues?: OrderIssue[] };
 type CustomerCoupon = { id: number; coupon_id: number; name: string; description?: string | null; currency: string; coupon_type: 'DISCOUNT' | 'FIXED'; min_spend_minor: number; discount_percent?: number | null; discount_cap_minor?: number | null; fixed_discount_minor?: number | null; starts_at: string; ends_at: string; status: 'AVAILABLE' | 'USED' | 'EXPIRED' | 'REVOKED' };
 type LanguageCode = 'zh-CN' | 'en' | 'km';
 type CustomerProfile = { customer_id: number; display_name: string | null; username: string | null; language: LanguageCode; preferred_language: LanguageCode | null };
@@ -38,6 +38,50 @@ const amount = (minor: number, currency: string, locale = 'en') => {
     return `${minor} ${currency}`;
   }
 };
+
+const CONFIRMED_PAYMENT_STATUSES = new Set(['PAID_CONFIRMED', 'PARTIALLY_REFUNDED', 'REFUNDED']);
+
+export const isConfirmedCustomerPayment = (paymentStatus: string) => CONFIRMED_PAYMENT_STATUSES.has(paymentStatus);
+
+export function CustomerOrderPaymentSummary({ order }: { order: CustomerOrderDetails }) {
+  const { t, i18n } = useTranslation();
+  const confirmed = isConfirmedCustomerPayment(order.payment_status);
+  const paid = Math.max(order.paid_confirmed_minor ?? 0, 0);
+  const refunded = Math.max(order.refunded_done_minor ?? 0, 0);
+  const pending = Math.max(order.refund_pending_minor ?? 0, 0);
+  return <>
+    <p className="order-modal-total">{t('payment.orderTotal')}: <strong>{amount(Math.max(order.total_minor, 0), order.currency, i18n.language)}</strong></p>
+    {confirmed ? <>
+      <p className="payment-breakdown-line">{t('payment.paid')}: <strong>{amount(paid, order.currency, i18n.language)}</strong></p>
+      <p className="payment-breakdown-line">{t('payment.refunded')}: <strong>{amount(refunded, order.currency, i18n.language)}</strong></p>
+      <p className="payment-breakdown-line refund-pending-line">{t('payment.refundPending')}: <strong>{amount(pending, order.currency, i18n.language)}</strong>{pending > 0 && <small>{t('payment.refundPendingNote')}</small>}</p>
+    </> : <>
+      {(order.wallet_paid_minor ?? 0) > 0 && <p className="payment-breakdown-line">{t('payment.walletApplied')}: <strong>{amount(order.wallet_paid_minor ?? 0, order.currency, i18n.language)}</strong></p>}
+      {(order.coupon_discount_minor ?? 0) > 0 && <p className="payment-breakdown-line coupon-discount">{t('coupon.couponDiscount')}: <strong>-{amount(order.coupon_discount_minor ?? 0, order.currency, i18n.language)}</strong></p>}
+      {(order.external_due_minor ?? order.total_minor) > 0 && <p className="payment-breakdown-line">{t('payment.abaDue')}: <strong>{amount(order.external_due_minor ?? order.total_minor, order.currency, i18n.language)}</strong></p>}
+    </>}
+  </>;
+}
+
+export function CustomerOrderShortageBlock({ order, onResolve }: { order: CustomerOrderDetails; onResolve: (issue: OrderIssue, resolution: 'REMOVE_ITEM' | 'REPLACE_ITEM') => void }) {
+  const { t } = useTranslation();
+  const issues = (order.issues ?? []).filter((issue) => issue.status === 'OPEN');
+  if (!issues.length) return null;
+  const paid = isConfirmedCustomerPayment(order.payment_status);
+  return <section className="order-issues"><strong>{t('order.shortageChoose')}</strong><p>{t('order.shortageCancelHint')}</p>{issues.map((issue) => <div className="order-issue" key={issue.id}><p>{issue.note || t('order.shortagePending')}</p><div className="actions"><button type="button" onClick={() => onResolve(issue, 'REMOVE_ITEM')}>{t('order.shortageRemove')}</button>{!paid && issue.replacement_name && <button type="button" onClick={() => onResolve(issue, 'REPLACE_ITEM')}>{t('order.shortageReplace')}: {issue.replacement_name}</button>}</div></div>)}</section>;
+}
+
+export function CustomerOrderPaymentProofAction({ order, onOpen }: { order: CustomerOrderDetails; onOpen: (url: string) => void }) {
+  const { t } = useTranslation();
+  const blocked = (order.issues ?? []).some((issue) => issue.status === 'OPEN');
+  if (!order.bot_deeplink) return <p>{t('payment.botNotConfigured')}</p>;
+  return <><button type="button" className="primary payment-link" disabled={blocked} onClick={() => onOpen(order.bot_deeplink!)}>{t('payment.sendProof')}</button>{blocked && <p className="notice" role="status">{t('order.shortageProofBlocked')}</p>}</>;
+}
+
+export function CustomerOrderIssueBadge({ count }: { count: number }) {
+  const { t } = useTranslation();
+  return count > 0 ? <span className="customer-order-issue-badge" aria-label={t('order.pendingShortageBadge')}>⚠ {t('order.pendingShortageBadge')}</span> : null;
+}
 function LanguageSwitch() {
   const { i18n, t } = useTranslation();
   return <select aria-label={t('common.language')} value={i18n.language} onChange={(event) => {
@@ -461,8 +505,15 @@ function CustomerPage() {
 
   const cancelCustomerOrder = async () => {
     if (!orderDetails || !window.confirm(t('order.cancelConfirm'))) return;
+    const openIssues = (orderDetails.issues ?? []).filter((issue) => issue.status === 'OPEN');
     try {
-      await api.post(`/api/v1/orders/${orderDetails.public_code}/cancel`);
+      if (openIssues.length > 0) {
+        // Paid shortage cancellations use the existing issue-resolution rule;
+        // unpaid new orders use the regular customer cancellation endpoint.
+        await api.post(`/api/v1/orders/${orderDetails.public_code}/issues/${openIssues[0].id}/resolve`, { resolution: 'CANCEL_ORDER' });
+      } else {
+        await api.post(`/api/v1/orders/${orderDetails.public_code}/cancel`);
+      }
       await openCustomerOrder(orderDetails.public_code);
       void loadCustomerOrders();
     } catch (requestError: any) {
@@ -574,6 +625,7 @@ function CustomerPage() {
       {!ordersLoading && !ordersError && customerOrders.length === 0 && <p className="state empty-menu">{t('order.empty')}</p>}
       <div className="customer-orders">{customerOrders.map((customerOrder) => <button type="button" className="customer-order-card" key={customerOrder.public_code} onClick={() => void openCustomerOrder(customerOrder.public_code)}>
         <div className="customer-order-heading"><strong>{t('payment.order')} {customerOrder.public_code}</strong><span className={orderStatusClass(customerOrder.order_status)}>{t(`order.status.${customerOrder.order_status.toLowerCase()}`)}</span></div>
+        <CustomerOrderIssueBadge count={customerOrder.open_issue_count ?? 0} />
         <div className="customer-order-meta"><span>{t('order.room')}: {customerOrder.room_number}</span><time dateTime={customerOrder.created_at}>{new Date(customerOrder.created_at).toLocaleString(i18n.language, { dateStyle: 'medium', timeStyle: 'short' })}</time></div>
         <div className="customer-order-total"><span>{paymentLabel(customerOrder.payment_status)}</span><strong>{amount(customerOrder.total_minor, customerOrder.currency, i18n.language)}</strong></div>
       </button>)}</div>
@@ -617,20 +669,17 @@ function CustomerPage() {
       <div className="customer-order-heading"><strong className={orderStatusClass(orderDetails.order_status)}>{t(`order.status.${orderDetails.order_status.toLowerCase()}`)}</strong><span className={`customer-payment-status payment-status-${orderDetails.payment_status.toLowerCase()}`}>{paymentLabel(orderDetails.payment_status)}</span></div>
       <p>{t('order.room')}: <strong>{orderDetails.room_number}</strong></p>
       <div className="customer-order-items">{orderDetails.items.map((item, index) => <div key={`${orderDetails.public_code}:${index}`}><span>{typeof item.name === 'string' ? item.name : label(item.name, i18n.language)} × {item.quantity}{item.options?.sweetness !== undefined && <small>{t('menu.sweetness')}: {item.options.sweetness}%</small>}</span><strong>{amount(item.line_total_minor, orderDetails.currency, i18n.language)}</strong></div>)}</div>
-      <p className="order-modal-total">{t('payment.orderTotal')}: <strong>{amount(orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>
-      {(orderDetails.wallet_paid_minor ?? 0) > 0 && <p className="payment-breakdown-line">{t('payment.walletApplied')}: <strong>{amount(orderDetails.wallet_paid_minor ?? 0, orderDetails.currency, i18n.language)}</strong></p>}
-      {(orderDetails.coupon_discount_minor ?? 0) > 0 && <p className="payment-breakdown-line coupon-discount">{t('coupon.couponDiscount')}: <strong>-{amount(orderDetails.coupon_discount_minor ?? 0, orderDetails.currency, i18n.language)}</strong></p>}
-      {(orderDetails.external_due_minor ?? orderDetails.total_minor) > 0 && <p className="payment-breakdown-line">{t('payment.abaDue')}: <strong>{amount(orderDetails.external_due_minor ?? orderDetails.total_minor, orderDetails.currency, i18n.language)}</strong></p>}
-      {(orderDetails.issues ?? []).length > 0 && <section className="order-issues"><strong>{t('order.shortageChoose')}</strong>{orderDetails.issues?.map((issue) => <div className="order-issue" key={issue.id}><p>{issue.note || t('order.shortagePending')}</p><div className="actions"><button type="button" onClick={() => void resolveCustomerIssue(issue, 'REMOVE_ITEM')}>{t('order.shortageRemove')}</button>{issue.replacement_name && <button type="button" onClick={() => void resolveCustomerIssue(issue, 'REPLACE_ITEM')}>{t('order.shortageReplace')}: {issue.replacement_name}</button>}<button type="button" onClick={() => void resolveCustomerIssue(issue, 'CANCEL_ORDER')}>{t('order.shortageCancel')}</button></div></div>)}</section>}
+      <CustomerOrderPaymentSummary order={orderDetails} />
+      <CustomerOrderShortageBlock order={orderDetails} onResolve={(issue, resolution) => void resolveCustomerIssue(issue, resolution)} />
       {!['PAID_CONFIRMED', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(orderDetails.payment_status) && <>
         {orderDetails.payment_qr_url && <img className="payment-qr" src={orderDetails.payment_qr_url} alt={t('payment.aba')} />}
         {orderDetails.payment_link && <a className="primary payment-link" href={orderDetails.payment_link} target="_blank" rel="noreferrer">{t('payment.openLink')}</a>}
         {!orderDetails.payment_qr_url && !orderDetails.payment_link && <p className="error">{t('payment.notConfigured')}</p>}
         <p>{t('payment.instruction')}</p>
-        {orderDetails.bot_deeplink ? <button type="button" className="primary payment-link" onClick={() => openTelegramLink(orderDetails.bot_deeplink!)}>{t('payment.sendProof')}</button> : <p>{t('payment.botNotConfigured')}</p>}
+        <CustomerOrderPaymentProofAction order={orderDetails} onOpen={openTelegramLink} />
       </>}
       {orderDetails.payment_status === 'REJECTED' && <p className="error">{t('payment.resubmit')}</p>}
-      {orderDetails.order_status === 'NEW' && ['UNPAID', 'REJECTED'].includes(orderDetails.payment_status) && <button type="button" className="danger-button" onClick={() => void cancelCustomerOrder()}>{t('order.cancel')}</button>}
+      {((orderDetails.order_status === 'NEW' && ['UNPAID', 'REJECTED'].includes(orderDetails.payment_status)) || ((orderDetails.issues ?? []).some((issue) => issue.status === 'OPEN') && ['NEW', 'ACCEPTED', 'PREPARING'].includes(orderDetails.order_status))) && <button type="button" className="danger-button" onClick={() => void cancelCustomerOrder()}>{t('order.cancel')}</button>}
       <button type="button" onClick={() => void refreshStatus()}>{t('payment.refreshStatus')}</button>
     </section></div>}
 

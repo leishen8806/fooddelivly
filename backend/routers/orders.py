@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from typing import List, Optional, Literal
 import os
@@ -80,6 +81,22 @@ def order_handoff(order: Order, settings: StoreSettings | None) -> dict:
     if order.payment_method == "WALLET" and order.payment_status == "PAID_CONFIRMED":
         return {"payment_link": None, "payment_qr_url": None, "bot_deeplink": None}
     return payment_handoff(order.public_code, settings)
+
+
+_CONFIRMED_PAYMENT_STATUSES = {"PAID_CONFIRMED", "PARTIALLY_REFUNDED", "REFUNDED"}
+
+
+def _paid_confirmed_minor(order: Order) -> int:
+    """Return the confirmed receipt snapshot, with a safe legacy fallback."""
+    recorded = max(int(order.paid_confirmed_minor or 0), 0)
+    if recorded or order.payment_status not in _CONFIRMED_PAYMENT_STATUSES:
+        return recorded
+    # Orders created before paid_confirmed_minor was introduced still have the
+    # wallet and confirmed external due amounts available as a conservative
+    # receipt estimate.  Never expose a negative amount to the customer.
+    wallet_paid = max(int(order.wallet_paid_minor or 0), 0)
+    external_due = max(int(order.external_due_minor or 0), 0)
+    return wallet_paid + external_due
 
 
 async def _handoff_for(db, order: Order) -> dict:
@@ -384,6 +401,17 @@ async def get_orders(
         .order_by(Order.created_at.desc())
     )
     orders = result.scalars().all()
+    open_issue_counts: dict[int, int] = {}
+    if orders:
+        issue_rows = await db.execute(
+            select(OrderIssue.order_id, func.count(OrderIssue.id))
+            .where(
+                OrderIssue.order_id.in_([order.id for order in orders]),
+                OrderIssue.status == "OPEN",
+            )
+            .group_by(OrderIssue.order_id)
+        )
+        open_issue_counts = {int(order_id): int(count) for order_id, count in issue_rows.all()}
     return [{"public_code": o.public_code, "room_number": o.room_number, "order_status": o.order_status,
              "payment_status": o.payment_status, "payment_method": o.payment_method,
              "currency": o.currency, "total_minor": o.total_minor,
@@ -391,6 +419,7 @@ async def get_orders(
              "coupon_discount_minor": o.coupon_discount_minor or 0,
              "wallet_paid_minor": o.wallet_paid_minor or 0,
              "external_due_minor": o.external_due_minor if o.external_due_minor is not None else o.total_minor,
+             "open_issue_count": open_issue_counts.get(o.id, 0),
              "created_at": o.created_at} for o in orders]
 
 
@@ -442,11 +471,18 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
     refunds_result = await db.execute(select(OrderRefund).filter(
         OrderRefund.order_id == order.id
     ).order_by(OrderRefund.created_at.desc()))
+    refund_rows = refunds_result.scalars().all()
+    refunded_done_minor = sum(max(int(refund.amount_minor or 0), 0) for refund in refund_rows if refund.status == "DONE")
+    refund_pending_minor = sum(max(int(refund.amount_minor or 0), 0) for refund in refund_rows if refund.status == "PENDING")
+    paid_confirmed_minor = _paid_confirmed_minor(order)
     return {
         "public_code": order.public_code, "room_number": order.room_number,
         "order_status": order.order_status, "payment_status": order.payment_status,
         "payment_method": order.payment_method,
         "currency": order.currency, "total_minor": order.total_minor,
+        "paid_confirmed_minor": paid_confirmed_minor,
+        "refunded_done_minor": refunded_done_minor,
+        "refund_pending_minor": refund_pending_minor,
         "coupon_name": order.coupon_name_snapshot,
         "coupon_discount_minor": order.coupon_discount_minor or 0,
         "wallet_paid_minor": order.wallet_paid_minor or 0,
@@ -463,9 +499,6 @@ async def get_order(public_code: str, customer_id: int = Depends(get_current_cus
                     "note": issue.note, "replacement_name": issue.replacement_name_snapshot,
                     "replacement_unit_price_minor": issue.replacement_unit_price_minor,
                     "order_item_id": issue.order_item_id} for issue in issues_result.scalars().all()],
-        "refunds": [{"id": refund.id, "amount_minor": refund.amount_minor, "method": refund.method,
-                     "status": refund.status, "reference": refund.reference}
-                    for refund in refunds_result.scalars().all()],
     }
 
 
