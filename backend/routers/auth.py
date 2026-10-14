@@ -1,16 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from typing import Literal
+from datetime import datetime, timezone
+import secrets
 import os
 import json
 import logging
 import re
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import func
 from database import get_db
-from models import Customer, Staff
+from models import AuditLog, Customer, Staff, Store
 from auth_utils import validate_telegram_init_data, verify_password, create_access_token
 from dependencies import get_current_customer, get_current_staff
+from customer_activity import record_customer_activity_best_effort
+from store_context import default_store, get_store
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Auth"])
 logger = logging.getLogger("teacafe.telegram_auth")
@@ -21,6 +26,10 @@ class TelegramLoginRequest(BaseModel):
 class AdminLoginRequest(BaseModel):
     login_name: str
     password: str
+
+class PasswordChangeRequest(BaseModel):
+    password: str
+    old_password: str | None = None
 
 class LanguagePreferenceRequest(BaseModel):
     language: Literal["zh-CN", "en", "km"]
@@ -95,6 +104,22 @@ async def telegram_login(req: TelegramLoginRequest, response: Response, request:
         customer.language_code = user_data.get("language_code")
         await db.commit()
     
+    # Activity writes are deliberately isolated from the login transaction:
+    # an unavailable activity table must never turn a valid Telegram login into
+    # a 500 response.
+    try:
+        activity_store = await get_store(db, customer.store_id) if customer.store_id else await default_store(db)
+    except Exception:  # noqa: BLE001 - activity is best effort by contract
+        await db.rollback()
+        logger.exception("customer_daily_activity_store_resolution_failed customer_id=%s", customer.id)
+    else:
+        await record_customer_activity_best_effort(
+            db,
+            customer_id=customer.id,
+            store_id=activity_store.id if activity_store else customer.store_id,
+            store_timezone=activity_store.timezone if activity_store else None,
+        )
+
     token = create_access_token({"sub": str(customer.id), "type": "customer"})
     
     response.set_cookie(key="session_token", value=token, **_cookie_options())
@@ -129,16 +154,52 @@ async def admin_login(req: AdminLoginRequest, response: Response, db: AsyncSessi
     if not staff or not password_ok or not staff.active:
         raise HTTPException(status_code=401, detail="Invalid credentials or account disabled")
     
+    staff.last_login_at = datetime.now(timezone.utc)
+    await db.commit()
     token = create_access_token({"sub": str(staff.id), "type": "staff", "role": staff.role})
     
     response.set_cookie(key="admin_session_token", value=token, **_cookie_options())
     response.headers["Cache-Control"] = "no-store"
     
-    return {"message": "Login successful", "staff_id": staff.id, "role": staff.role}
+    return {"message": "Login successful", "staff_id": staff.id, "role": staff.role,
+            "must_change_password": bool(staff.must_change_password)}
 
 @router.get("/admin/me")
-async def admin_me(staff_info: dict = Depends(get_current_staff)):
-    return staff_info
+async def admin_me(staff_info: dict = Depends(get_current_staff), db: AsyncSession = Depends(get_db)):
+    active_store_count = await db.scalar(select(func.count(Store.id)).filter(Store.status == "ACTIVE")) or 0
+    catalog_write_allowed = (
+        staff_info.get("role") == "MANAGER"
+        and (staff_info.get("store_id") is None or active_store_count <= 1)
+    )
+    return {**staff_info, "catalog_write_allowed": catalog_write_allowed}
+
+@router.post("/admin/change-password")
+async def admin_change_password(req: PasswordChangeRequest,
+                                staff_info: dict = Depends(get_current_staff),
+                                db: AsyncSession = Depends(get_db)):
+    if len(req.password) < 12 or len(req.password.encode("utf-8")) > 72:
+        raise HTTPException(status_code=422, detail="Password must be 12 to 72 bytes")
+    from auth_utils import get_password_hash
+    result = await db.execute(select(Staff).filter(Staff.id == staff_info["staff_id"]).with_for_update())
+    staff = result.scalars().first()
+    if staff is None:
+        raise HTTPException(status_code=401, detail="Staff account not found")
+    forced_change = bool(staff.must_change_password)
+    if not forced_change:
+        if not req.old_password or not verify_password(req.old_password, staff.password_hash):
+            raise HTTPException(status_code=403, detail="Current password is required")
+    staff.password_hash = get_password_hash(req.password)
+    staff.must_change_password = False
+    db.add(AuditLog(
+        actor_staff_id=staff.id,
+        entity_type="staff",
+        entity_id=str(staff.id),
+        action="password_changed",
+        store_id=staff.store_id,
+        details={"forced": forced_change},
+    ))
+    await db.commit()
+    return {"message": "Password updated"}
 
 @router.post("/admin/logout")
 async def admin_logout(response: Response):

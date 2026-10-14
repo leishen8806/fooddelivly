@@ -50,6 +50,20 @@ async def get_current_staff(request: Request, db: AsyncSession = Depends(get_db)
     
     if not staff or not staff.active:
         raise HTTPException(status_code=401, detail="Staff account disabled or not found")
+
+    # A temporary password is a hard gate.  The browser may still inspect the
+    # session and call the password-change endpoint, but it must not use any
+    # other admin API until the password has been replaced.
+    allowed_during_forced_change = {
+        "/api/v1/auth/admin/me",
+        "/api/v1/auth/admin/logout",
+        "/api/v1/auth/admin/change-password",
+    }
+    if staff.must_change_password and request.url.path not in allowed_during_forced_change:
+        raise HTTPException(
+            status_code=403,
+            detail="Password change required before using the admin API",
+        )
         
     return {
         "staff_id": staff.id,
@@ -58,6 +72,8 @@ async def get_current_staff(request: Request, db: AsyncSession = Depends(get_db)
         "telegram_user_id": staff.telegram_user_id,
         # 员工归属门店。None = 总部账号（可跨店）；见 store_context.visible_store_id
         "store_id": staff.store_id,
+        "last_login_at": staff.last_login_at,
+        "must_change_password": bool(staff.must_change_password),
     }
 
 async def get_current_manager(staff_info: dict = Depends(get_current_staff)) -> Dict[str, Any]:

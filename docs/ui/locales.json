@@ -103,6 +103,9 @@
     "order.shortageReplace": "更换商品",
     "order.shortageCancel": "取消订单",
     "order.shortagePending": "订单有一项缺货待处理",
+    "order.shortageCancelHint": "也可以在下方取消订单。",
+    "order.shortageProofBlocked": "请先处理缺货商品，再发送付款凭证。",
+    "order.pendingShortageBadge": "待处理缺货",
     "order.reject": "拒绝凭证",
     "order.confirmAction": "请确认订单号和金额后继续。",
     "order.history": "订单记录",
@@ -137,7 +140,7 @@
     "admin.confirmedPaid": "已确认收款",
     "admin.ordersToday": "今日订单",
     "admin.totalDue": "应付总额",
-    "admin.paymentImage": "付款图片",
+    "admin.paymentImage": "付款凭证",
     "admin.openImage": "查看原图",
     "admin.checkActualPayment": "确认前请核对 ABA 实际到账。",
     "admin.teamSettings": "员工与收款设置",
@@ -148,6 +151,7 @@
     "admin.waiter": "服务员",
     "admin.active": "已启用",
     "admin.finance": "财务统计",
+    "admin.attention": "需要处理",
     "admin.last7Days": "最近 7 天",
     "admin.orderVolume": "订单数",
     "admin.orderTotal": "订单总额",
@@ -165,7 +169,7 @@
     "admin.netCashInflowHint": "= ABA 订单收款 + 充值入账 − 已转账的 ABA 退款；钱包退款已体现在钱包扣款净额中",
     "admin.shortageRemoved": "缺货删品减少额",
     "admin.refundReconcileDiff": "退款对账差额",
-    "admin.refundPendingDetail": "{count} 笔待处理",
+    "admin.refundPendingDetail": "{{count}} 笔待处理",
     "admin.orderTotalGross": "下单总额（含取消）",
     "admin.externalOrderReceipts": "ABA订单收款",
     "admin.walletOrderPayments": "钱包扣款",
@@ -216,6 +220,34 @@
     "admin.description": "商品描述",
     "admin.price": "价格",
     "admin.createProduct": "新增商品",
+    "admin.catalog": "菜单目录",
+    "admin.categories": "分类管理",
+    "admin.createCategory": "新增分类",
+    "admin.categoryName": "分类名称",
+    "admin.categoryBasics": "分类信息",
+    "admin.productBasics": "基本信息",
+    "admin.productRules": "规格与售卖时间",
+    "admin.productImage": "图片",
+    "admin.productOptions": "规格/加料",
+    "admin.productStatus": "状态",
+    "admin.sortOrder": "排序",
+    "admin.sweetness": "甜度",
+    "admin.allDay": "全天售卖",
+    "admin.allProducts": "全部商品",
+    "admin.allCategories": "全部分类",
+    "admin.missingTranslation": "缺少翻译",
+    "admin.hasOptions": "带规格/加料",
+    "admin.noProducts": "暂无商品。",
+    "admin.noCategories": "暂无分类。",
+    "admin.searchProducts": "搜索商品名称",
+    "admin.catalogReadonly": "当前门店只能查看目录，目录修改由总部完成。",
+    "admin.productNotFound": "未找到该商品。",
+    "admin.categoryNotFound": "未找到该分类。",
+    "admin.priceRequired": "请输入有效价格。",
+    "admin.newProductTitle": "新增商品",
+    "admin.editProductTitle": "编辑商品",
+    "admin.newCategoryTitle": "新增分类",
+    "admin.editCategoryTitle": "编辑分类",
     "admin.from": "开始日期",
     "admin.to": "结束日期",
     "admin.timezone": "门店时区",
@@ -264,6 +296,17 @@
     "sweetness.100": "正常糖 · 100%",
     "nav.auditLogs": "操作日志",
     "admin.navigation": "后台导航",
+    "admin.nav.operations": "运营管理",
+    "admin.nav.catalog": "菜单与营销",
+    "admin.nav.finance": "财务",
+    "admin.nav.system": "系统管理",
+    "admin.storeSwitcher": "门店切换",
+    "admin.allStores": "全部门店",
+    "admin.localized.language.en": "English",
+    "admin.localized.language.zh": "中文",
+    "admin.localized.language.km": "ខ្មែរ",
+    "admin.localized.missing": "缺少翻译",
+    "admin.localized.englishRequired": "请填写英文翻译。",
     "admin.auditDescription": "后台与 Telegram 群组操作记录",
     "admin.noAuditLogs": "暂时没有操作记录。",
     "admin.logTime": "时间",
@@ -342,6 +385,10 @@
     "payment.method.walletHint": "使用可用钱包余额即时支付",
     "payment.walletFirstHint": "优先使用钱包余额，余额不足时只需通过 ABA 支付差额。",
     "payment.orderTotal": "订单总额",
+    "payment.paid": "已支付",
+    "payment.refunded": "已退款",
+    "payment.refundPending": "待退款",
+    "payment.refundPendingNote": "店员会尽快处理",
     "payment.walletApplied": "钱包已抵扣",
     "payment.abaDue": "ABA 待支付",
     "nav.wallet": "钱包",
@@ -489,6 +536,17 @@
     "nav.operations": "运营管理",
     "nav.coupons": "优惠券管理",
     "coupon.title": "优惠券",
+    "coupon.new": "新增优惠券",
+    "coupon.edit": "编辑优惠券",
+    "coupon.basics": "优惠券规则",
+    "coupon.rule": "规则",
+    "coupon.validity": "有效期",
+    "coupon.claims": "领取数量",
+    "coupon.unlimited": "不限",
+    "coupon.empty": "暂无优惠券",
+    "coupon.shareOpened": "已打开分享链接",
+    "coupon.requiredFields": "请填写完整的优惠券信息",
+    "coupon.notFound": "优惠券不存在",
     "coupon.name": "优惠券名称",
     "coupon.description": "描述",
     "coupon.type": "券类型",
@@ -511,6 +569,8 @@
     "coupon.offline": "下架",
     "coupon.generatePrivateLink": "生成私有链接",
     "coupon.share": "分享",
+    "coupon.shareTextDiscount": "Tea Cafe · {{name}} · {{percent}}% 折扣",
+    "coupon.shareTextFixed": "Tea Cafe · {{name}} · 满额减 {{amount}}",
     "coupon.linkCopied": "链接已复制",
     "coupon.saveFailed": "保存失败",
     "coupon.selectCoupon": "使用优惠券",
@@ -544,7 +604,7 @@
     "order.cancelledAfterShortage": "订单 {{order}} 因缺货已取消。钱包支付部分已退回钱包，如有 ABA 款项请联系店员。",
     "order.expiryReminder": "订单 {{order}} 将在约 {{minutes}} 分钟后因未完成付款而取消，请尽快提交付款凭证。",
     "order.lateProofAfterExpiry": "该订单已因超时取消。如你已经付款，请联系店员核对实际到账。",
-    "order.shortageResolved": "订单 {{order}} 的缺货商品已按顾客选择处理，退款金额 {{amount}} USD。",
+    "order.shortageResolved": "订单 {{order}} 的缺货商品已按顾客选择处理，退款金额 {{amount}}。",
     "order.openShortage": "该订单有未处理的缺货，请等待顾客选择。",
     "payment.lateProofAfterExpiry": "订单已因超时取消。如已付款，请联系店员核对实际到账。",
     "admin.unpaidOrderReminder": "付款超时提醒（分钟）",
@@ -557,7 +617,132 @@
     "order.shortageReminder": "订单 {{order}} 仍有缺货商品待处理，请打开订单选择处理方式。",
     "order.shortageEscalated": "订单 {{order}} 的缺货处理已超时，店员将协助处理。",
     "order.shortageEscalatedGroup": "订单 {{order}} 的缺货处理已超时，请店长介入。",
-    "admin.approveRefund": "批准退款"
+    "admin.approveRefund": "批准退款",
+    "admin.ordersLoadFailed": "订单加载失败",
+    "admin.searchOrders": "搜索订单号、客户或用户名",
+    "admin.fromDate": "开始日期",
+    "admin.toDate": "结束日期",
+    "admin.allPaymentStatuses": "全部支付状态",
+    "admin.allPaymentMethods": "全部支付方式",
+    "admin.wallet": "钱包",
+    "admin.mixedPayment": "混合支付",
+    "admin.pendingPayment": "待核款",
+    "admin.orderNumber": "订单号",
+    "admin.customer": "客户",
+    "admin.roomNumber": "房间号",
+    "admin.orderItems": "商品",
+    "admin.total": "应付金额",
+    "admin.paymentStatus": "支付状态",
+    "admin.orderStatus": "订单状态",
+    "admin.openIssues": "待处理异常 {{count}}",
+    "admin.totalRecords": "共 {{count}} 条",
+    "admin.previousPage": "上一页",
+    "admin.invalidDate": "日期格式无效",
+    "admin.invalidDateRange": "开始日期不能晚于结束日期",
+    "admin.orderDetail": "订单详情",
+    "admin.orderNotFound": "找不到订单",
+    "admin.openTelegram": "打开 Telegram",
+    "admin.pendingRefund": "待退款",
+    "admin.activity": "操作记录",
+    "admin.noActivity": "暂无操作记录",
+    "admin.product": "商品",
+    "admin.quantity": "数量",
+    "admin.actions": "操作",
+    "admin.approvePayment": "确认收款",
+    "admin.rejectPayment": "拒绝付款凭证",
+    "admin.markDelivered": "已配送",
+    "admin.actionFailed": "操作失败",
+    "admin.actionFailedWithReason": "操作失败：{{reason}}",
+    "admin.createdAt": "创建时间",
+    "admin.orderUser": "下单用户",
+    "admin.openChat": "打开聊天",
+    "admin.copyTelegramId": "复制 ID",
+    "admin.payableAmount": "应付金额",
+    "admin.uploadImageConstraint": "仅支持 PNG、JPEG 或 WebP，且不超过 5MB。",
+    "admin.reviewPayment": "去核款",
+    "admin.transitionNotAllowed": "当前订单状态不允许此操作",
+    "admin.reasonRequired": "请填写原因",
+    "admin.noPendingPaymentProof": "订单没有待审核的付款凭证",
+    "admin.paymentReviewNotReady": "订单当前不在待核款状态",
+    "admin.paymentReviewAcceptFirst": "请先接单后再确认收款",
+    "admin.paymentProofNotNeeded": "当前订单不需要付款凭证",
+    "admin.paymentProofPending": "订单已有待审核的付款凭证",
+    "admin.noWalletPayment": "订单没有已确认的钱包付款",
+    "admin.refundApprovalNotReady": "这笔退款不在待店长批准状态",
+    "admin.refundCompletionNotReady": "这笔退款不在待完成状态",
+    "admin.refundedAmount": "已退金额",
+    "admin.pendingShort": "待退 {{amount}}",
+    "common.confirm": "确认",
+    "common.reason": "原因",
+    "admin.staff.account": "账号",
+    "admin.staff.store": "归属门店",
+    "admin.staff.lastLogin": "最近登录",
+    "admin.staff.resetPassword": "重置密码",
+    "admin.staff.temporaryPassword": "临时密码（仅显示一次）",
+    "admin.staff.forceChange": "首次登录必须修改密码",
+    "admin.staff.new": "新增员工",
+    "admin.staff.edit": "编辑员工",
+    "admin.staff.passwordHint": "至少 12 个字符",
+    "admin.staff.passwordChanged": "密码已更新",
+    "admin.staff.selfChange": "修改我的密码",
+    "admin.settings.business": "营业设置",
+    "admin.settings.payment": "收款设置",
+    "admin.settings.notice": "通知设置",
+    "admin.settings.region": "区域设置",
+    "admin.settings.editSection": "编辑设置",
+    "admin.settings.testNotification": "发送测试消息",
+    "admin.settings.testNotificationSuccess": "测试消息已发送",
+    "admin.settings.testNotificationFailed": "测试消息发送失败：{{reason}}",
+    "admin.settings.currencyConfirm": "修改币种会影响后续订单，确定继续吗？",
+    "admin.settings.forcePasswordTitle": "请先修改临时密码",
+    "admin.settings.forcePassword": "新密码",
+    "admin.settings.saveSection": "保存此组设置",
+    "admin.settings.overview": "设置概览"
+    ,"admin.dashboard.orders": "订单趋势"
+    ,"admin.dashboard.todayOrders": "今日订单"
+    ,"admin.dashboard.todaySales": "今日销售额"
+    ,"admin.dashboard.pendingOrders": "待接单"
+    ,"admin.dashboard.status": "订单状态"
+    ,"admin.dashboard.payment": "支付方式"
+    ,"admin.dashboard.hourly": "时段分布"
+    ,"admin.dashboard.hour": "小时"
+    ,"admin.dashboard.topProducts": "热销商品"
+    ,"admin.dashboard.noData": "暂无数据"
+    ,"admin.dashboard.value": "数值"
+    ,"admin.dashboard.percent": "占比"
+    ,"admin.dashboard.date": "日期"
+    ,"admin.dashboard.quantity": "数量"
+    ,"admin.refundMethod": "退款方式"
+    ,"admin.permissionDenied": "你没有权限访问此页面，已返回总览。"
+    ,"admin.dashboard.users": "用户趋势"
+    ,"admin.dashboard.totalUsers": "总用户数"
+    ,"admin.dashboard.newUsers": "今日新增用户"
+    ,"admin.dashboard.activeUsers": "今日活跃用户"
+    ,"admin.dashboard.pendingRefunds": "待处理退款"
+    ,"admin.dashboard.days": "统计天数"
+    ,"admin.refunds.title": "待处理退款"
+    ,"admin.refunds.all": "全部"
+    ,"admin.refunds.pending": "待处理"
+    ,"admin.refunds.done": "已完成"
+    ,"admin.refunds.reference": "转账参考号"
+    ,"admin.refunds.complete": "标记已转账"
+    ,"admin.refunds.approve": "批准钱包退款"
+    ,"admin.refunds.method.aba_manual": "ABA 人工退款"
+    ,"admin.refunds.method.wallet": "钱包退款"
+    ,"admin.refunds.method.mixed": "混合退款"
+    ,"admin.refunds.status.pending": "待处理"
+    ,"admin.refunds.status.done": "已完成"
+    ,"admin.status": "状态"
+    ,"admin.productCount": "商品数量"
+    ,"admin.configured": "已配置"
+    ,"admin.notConfigured": "未配置"
+    ,"admin.startTime": "开始时间"
+    ,"admin.endTime": "结束时间"
+    ,"admin.businessHoursEqualError": "营业时间的开始和结束不能相同"
+    ,"admin.noStaff": "暂无员工"
+    ,"admin.paymentMethod": "支付方式"
+    ,"admin.staff.hq": "总部"
+    ,"common.error": "发生错误"
   },
   "en": {
     "brand": "Tea Cafe",
@@ -663,6 +848,9 @@
     "order.shortageReplace": "Replace item",
     "order.shortageCancel": "Cancel order",
     "order.shortagePending": "This order has an item waiting for your choice",
+    "order.shortageCancelHint": "You can also cancel the order below.",
+    "order.shortageProofBlocked": "Please resolve the unavailable item before sending payment proof.",
+    "order.pendingShortageBadge": "Shortage needs action",
     "order.reject": "Reject proof",
     "order.confirmAction": "Confirm the order number and amount before continuing.",
     "order.history": "Order history",
@@ -697,7 +885,7 @@
     "admin.confirmedPaid": "Confirmed paid",
     "admin.ordersToday": "Orders today",
     "admin.totalDue": "Total due",
-    "admin.paymentImage": "Payment image",
+    "admin.paymentImage": "Payment proof",
     "admin.openImage": "Open full image",
     "admin.checkActualPayment": "Check the actual ABA incoming payment before confirming.",
     "admin.teamSettings": "Team and payment settings",
@@ -708,6 +896,7 @@
     "admin.waiter": "Waiter",
     "admin.active": "Active",
     "admin.finance": "Finance",
+    "admin.attention": "Needs attention",
     "admin.last7Days": "Last 7 days",
     "admin.orderVolume": "Orders",
     "admin.orderTotal": "Order total",
@@ -725,7 +914,7 @@
     "admin.netCashInflowHint": "= ABA order receipts + top-ups − ABA refunds already transferred; wallet refunds are already netted in wallet payments",
     "admin.shortageRemoved": "Removed for shortage",
     "admin.refundReconcileDiff": "Refund reconciliation difference",
-    "admin.refundPendingDetail": "{count} pending",
+    "admin.refundPendingDetail": "{{count}} pending",
     "admin.orderTotalGross": "Gross orders (including cancelled)",
     "admin.externalOrderReceipts": "ABA order receipts",
     "admin.walletOrderPayments": "Wallet used for orders",
@@ -776,6 +965,34 @@
     "admin.description": "Description",
     "admin.price": "Price",
     "admin.createProduct": "Create product",
+    "admin.catalog": "Catalog",
+    "admin.categories": "Categories",
+    "admin.createCategory": "Add category",
+    "admin.categoryName": "Category name",
+    "admin.categoryBasics": "Category details",
+    "admin.productBasics": "Basic information",
+    "admin.productRules": "Options and serving time",
+    "admin.productImage": "Image",
+    "admin.productOptions": "Specs / add-ons",
+    "admin.productStatus": "Status",
+    "admin.sortOrder": "Sort order",
+    "admin.sweetness": "Sweetness",
+    "admin.allDay": "All day",
+    "admin.allProducts": "All products",
+    "admin.allCategories": "All categories",
+    "admin.missingTranslation": "Missing translation",
+    "admin.hasOptions": "Has specs / add-ons",
+    "admin.noProducts": "No products yet.",
+    "admin.noCategories": "No categories yet.",
+    "admin.searchProducts": "Search product names",
+    "admin.catalogReadonly": "This store can view the catalog only. Headquarters manages catalog changes.",
+    "admin.productNotFound": "Product not found.",
+    "admin.categoryNotFound": "Category not found.",
+    "admin.priceRequired": "Enter a valid price.",
+    "admin.newProductTitle": "Add product",
+    "admin.editProductTitle": "Edit product",
+    "admin.newCategoryTitle": "Add category",
+    "admin.editCategoryTitle": "Edit category",
     "admin.from": "From",
     "admin.to": "To",
     "admin.timezone": "Store timezone",
@@ -824,6 +1041,17 @@
     "sweetness.100": "Regular · 100%",
     "nav.auditLogs": "Activity log",
     "admin.navigation": "Admin navigation",
+    "admin.nav.operations": "Operations",
+    "admin.nav.catalog": "Menu and marketing",
+    "admin.nav.finance": "Finance",
+    "admin.nav.system": "System",
+    "admin.storeSwitcher": "Store",
+    "admin.allStores": "All stores",
+    "admin.localized.language.en": "English",
+    "admin.localized.language.zh": "Chinese",
+    "admin.localized.language.km": "Khmer",
+    "admin.localized.missing": "Missing translation",
+    "admin.localized.englishRequired": "English translation is required.",
     "admin.auditDescription": "Admin and Telegram group actions",
     "admin.noAuditLogs": "No activity has been recorded yet.",
     "admin.logTime": "Time",
@@ -902,6 +1130,10 @@
     "payment.method.walletHint": "Pay instantly from your available wallet balance.",
     "payment.walletFirstHint": "Your wallet balance is used first; pay only the remainder through ABA.",
     "payment.orderTotal": "Order total",
+    "payment.paid": "Paid",
+    "payment.refunded": "Refunded",
+    "payment.refundPending": "Refund pending",
+    "payment.refundPendingNote": "Staff will process this shortly.",
     "payment.walletApplied": "Wallet applied",
     "payment.abaDue": "ABA amount due",
     "nav.wallet": "Wallet",
@@ -940,7 +1172,7 @@
     "admin.rechargeProof": "Transfer screenshot",
     "admin.noProofYet": "No screenshot submitted yet",
     "admin.confirmRecharge": "Confirm credit",
-    "admin.receivedAmount": "Received amount",
+    "admin.receivedAmount": "Received",
     "admin.receivedPlaceholder": "Amount actually received",
     "admin.rejectPrompt": "Reason for rejection",
     "admin.rejectRecharge": "Reject",
@@ -1049,6 +1281,17 @@
     "nav.operations": "Operations",
     "nav.coupons": "Coupons",
     "coupon.title": "Coupons",
+    "coupon.new": "New coupon",
+    "coupon.edit": "Edit coupon",
+    "coupon.basics": "Coupon rules",
+    "coupon.rule": "Rule",
+    "coupon.validity": "Validity",
+    "coupon.claims": "Claims",
+    "coupon.unlimited": "Unlimited",
+    "coupon.empty": "No coupons yet",
+    "coupon.shareOpened": "Share link opened",
+    "coupon.requiredFields": "Complete the coupon details first",
+    "coupon.notFound": "Coupon not found",
     "coupon.name": "Coupon name",
     "coupon.description": "Description",
     "coupon.type": "Type",
@@ -1071,6 +1314,8 @@
     "coupon.offline": "Offline",
     "coupon.generatePrivateLink": "Generate private link",
     "coupon.share": "Share",
+    "coupon.shareTextDiscount": "Tea Cafe · {{name}} · {{percent}}% OFF",
+    "coupon.shareTextFixed": "Tea Cafe · {{name}} · {{amount}} OFF",
     "coupon.linkCopied": "Link copied",
     "coupon.saveFailed": "Save failed",
     "coupon.selectCoupon": "Coupon",
@@ -1104,7 +1349,7 @@
     "order.cancelledAfterShortage": "Order {{order}} was cancelled because an item was unavailable. Wallet funds were returned; contact staff about any ABA payment.",
     "order.expiryReminder": "Order {{order}} will be cancelled in about {{minutes}} minutes if payment is not completed. Please send your payment proof soon.",
     "order.lateProofAfterExpiry": "This order was cancelled after the payment window expired. If you already paid, contact staff to verify the transfer.",
-    "order.shortageResolved": "Shortage on order {{order}} was handled as requested. Refund amount: {{amount}} USD.",
+    "order.shortageResolved": "Shortage on order {{order}} was handled as requested. Refund amount: {{amount}}.",
     "order.openShortage": "This order has an unresolved shortage. Wait for the customer's choice.",
     "payment.lateProofAfterExpiry": "This order was cancelled after the payment window expired. If you already paid, contact staff to verify the transfer.",
     "admin.unpaidOrderReminder": "Payment expiry reminder (minutes)",
@@ -1117,7 +1362,132 @@
     "order.shortageReminder": "Order {{order}} still has an unavailable item waiting for your choice. Open the order to continue.",
     "order.shortageEscalated": "The shortage on order {{order}} has timed out. Staff will help resolve it.",
     "order.shortageEscalatedGroup": "Shortage handling for order {{order}} timed out. Manager review is required.",
-    "admin.approveRefund": "Approve refund"
+    "admin.approveRefund": "Approve refund",
+    "admin.ordersLoadFailed": "Failed to load orders",
+    "admin.searchOrders": "Search order code, customer or username",
+    "admin.fromDate": "From date",
+    "admin.toDate": "To date",
+    "admin.allPaymentStatuses": "All payment statuses",
+    "admin.allPaymentMethods": "All payment methods",
+    "admin.wallet": "Wallet",
+    "admin.mixedPayment": "Mixed payment",
+    "admin.pendingPayment": "Needs payment review",
+    "admin.orderNumber": "Order",
+    "admin.customer": "Customer",
+    "admin.roomNumber": "Room",
+    "admin.orderItems": "Items",
+    "admin.total": "Amount due",
+    "admin.paymentStatus": "Payment",
+    "admin.orderStatus": "Order status",
+    "admin.openIssues": "{{count}} open issue(s)",
+    "admin.totalRecords": "{{count}} records",
+    "admin.previousPage": "Previous",
+    "admin.invalidDate": "Invalid date",
+    "admin.invalidDateRange": "Start date must be on or before end date",
+    "admin.orderDetail": "Order detail",
+    "admin.orderNotFound": "Order not found",
+    "admin.openTelegram": "Open Telegram",
+    "admin.pendingRefund": "Pending refund",
+    "admin.activity": "Activity",
+    "admin.noActivity": "No activity yet",
+    "admin.product": "Product",
+    "admin.quantity": "Qty",
+    "admin.actions": "Actions",
+    "admin.approvePayment": "Confirm payment",
+    "admin.rejectPayment": "Reject proof",
+    "admin.markDelivered": "Mark delivered",
+    "admin.actionFailed": "Action failed",
+    "admin.actionFailedWithReason": "Action failed: {{reason}}",
+    "admin.createdAt": "Created",
+    "admin.orderUser": "Order user",
+    "admin.openChat": "Open chat",
+    "admin.copyTelegramId": "Copy ID",
+    "admin.payableAmount": "Amount due",
+    "admin.uploadImageConstraint": "PNG, JPEG, or WebP only, up to 5 MB.",
+    "admin.reviewPayment": "Review payment",
+    "admin.transitionNotAllowed": "This order status does not allow that action",
+    "admin.reasonRequired": "Enter a reason",
+    "admin.noPendingPaymentProof": "This order has no payment proof awaiting review",
+    "admin.paymentReviewNotReady": "This order is not awaiting payment review",
+    "admin.paymentReviewAcceptFirst": "Accept the order before confirming payment",
+    "admin.paymentProofNotNeeded": "This order does not need a payment proof",
+    "admin.paymentProofPending": "This order already has a payment proof awaiting review",
+    "admin.noWalletPayment": "This order has no confirmed wallet payment",
+    "admin.refundApprovalNotReady": "This refund is not awaiting manager approval",
+    "admin.refundCompletionNotReady": "This refund is not awaiting completion",
+    "admin.refundedAmount": "Refunded",
+    "admin.pendingShort": "Pending {{amount}}",
+    "common.confirm": "Confirm",
+    "common.reason": "Reason",
+    "admin.staff.account": "Account",
+    "admin.staff.store": "Store",
+    "admin.staff.lastLogin": "Last login",
+    "admin.staff.resetPassword": "Reset password",
+    "admin.staff.temporaryPassword": "Temporary password (shown once)",
+    "admin.staff.forceChange": "Must change on first login",
+    "admin.staff.new": "New staff",
+    "admin.staff.edit": "Edit staff",
+    "admin.staff.passwordHint": "At least 12 characters",
+    "admin.staff.passwordChanged": "Password updated",
+    "admin.staff.selfChange": "Change my password",
+    "admin.settings.business": "Business settings",
+    "admin.settings.payment": "Payment settings",
+    "admin.settings.notice": "Notification settings",
+    "admin.settings.region": "Region settings",
+    "admin.settings.editSection": "Edit settings",
+    "admin.settings.testNotification": "Send test message",
+    "admin.settings.testNotificationSuccess": "Test message sent",
+    "admin.settings.testNotificationFailed": "Test message failed: {{reason}}",
+    "admin.settings.currencyConfirm": "Changing currency affects future orders. Continue?",
+    "admin.settings.forcePasswordTitle": "Change your temporary password",
+    "admin.settings.forcePassword": "New password",
+    "admin.settings.saveSection": "Save this section",
+    "admin.settings.overview": "Settings overview"
+    ,"admin.dashboard.orders": "Order trend"
+    ,"admin.dashboard.todayOrders": "Orders today"
+    ,"admin.dashboard.todaySales": "Sales today"
+    ,"admin.dashboard.pendingOrders": "Pending orders"
+    ,"admin.dashboard.status": "Order status"
+    ,"admin.dashboard.payment": "Payment methods"
+    ,"admin.dashboard.hourly": "Orders by hour"
+    ,"admin.dashboard.hour": "Hour"
+    ,"admin.dashboard.topProducts": "Top products"
+    ,"admin.dashboard.noData": "No data"
+    ,"admin.dashboard.value": "Value"
+    ,"admin.dashboard.percent": "Percent"
+    ,"admin.dashboard.date": "Date"
+    ,"admin.dashboard.quantity": "Quantity"
+    ,"admin.refundMethod": "Refund method"
+    ,"admin.permissionDenied": "You do not have permission to view this page. You were returned to Overview."
+    ,"admin.dashboard.users": "User trend"
+    ,"admin.dashboard.totalUsers": "Total users"
+    ,"admin.dashboard.newUsers": "New users today"
+    ,"admin.dashboard.activeUsers": "Active users today"
+    ,"admin.dashboard.pendingRefunds": "Pending refunds"
+    ,"admin.dashboard.days": "Days"
+    ,"admin.refunds.title": "Refunds"
+    ,"admin.refunds.all": "All"
+    ,"admin.refunds.pending": "Pending"
+    ,"admin.refunds.done": "Completed"
+    ,"admin.refunds.reference": "Transfer reference"
+    ,"admin.refunds.complete": "Mark transferred"
+    ,"admin.refunds.approve": "Approve wallet refund"
+    ,"admin.refunds.method.aba_manual": "ABA manual refund"
+    ,"admin.refunds.method.wallet": "Wallet refund"
+    ,"admin.refunds.method.mixed": "Mixed refund"
+    ,"admin.refunds.status.pending": "Pending"
+    ,"admin.refunds.status.done": "Completed"
+    ,"admin.status": "Status"
+    ,"admin.productCount": "Product count"
+    ,"admin.configured": "Configured"
+    ,"admin.notConfigured": "Not configured"
+    ,"admin.startTime": "Start time"
+    ,"admin.endTime": "End time"
+    ,"admin.businessHoursEqualError": "Start and end time must be different"
+    ,"admin.noStaff": "No staff accounts"
+    ,"admin.paymentMethod": "Payment method"
+    ,"admin.staff.hq": "Headquarters"
+    ,"common.error": "Something went wrong"
   },
   "km": {
     "brand": "Tea Cafe",
@@ -1223,6 +1593,9 @@
     "order.shortageReplace": "ប្តូរមុខទំនិញ",
     "order.shortageCancel": "បោះបង់ការបញ្ជាទិញ",
     "order.shortagePending": "ការបញ្ជាទិញនេះមានមុខទំនិញត្រូវការជ្រើសរើស",
+    "order.shortageCancelHint": "អ្នកក៏អាចបោះបង់ការបញ្ជាទិញនៅខាងក្រោមបានដែរ។",
+    "order.shortageProofBlocked": "សូមដោះស្រាយមុខទំនិញអស់សិន មុនពេលផ្ញើភស្តុតាងទូទាត់។",
+    "order.pendingShortageBadge": "ខ្វះទំនិញត្រូវដោះស្រាយ",
     "order.reject": "បដិសេធបង្កាន់ដៃ",
     "order.confirmAction": "សូមផ្ទៀងផ្ទាត់លេខការបញ្ជាទិញ និងចំនួនទឹកប្រាក់ មុនបន្ត។",
     "order.history": "ប្រវត្តិការបញ្ជាទិញ",
@@ -1257,7 +1630,7 @@
     "admin.confirmedPaid": "បានបញ្ជាក់ការទូទាត់",
     "admin.ordersToday": "ការបញ្ជាទិញថ្ងៃនេះ",
     "admin.totalDue": "ចំនួនសរុបត្រូវបង់",
-    "admin.paymentImage": "រូបភាពបង្កាន់ដៃ",
+    "admin.paymentImage": "ភស្តុតាងបង់ប្រាក់",
     "admin.openImage": "បើករូបភាពពេញ",
     "admin.checkActualPayment": "សូមពិនិត្យប្រាក់ចូល ABA ជាក់ស្តែងមុនពេលបញ្ជាក់។",
     "admin.teamSettings": "ការកំណត់បុគ្គលិក និងការទូទាត់",
@@ -1268,6 +1641,7 @@
     "admin.waiter": "អ្នកបម្រើ",
     "admin.active": "សកម្ម",
     "admin.finance": "ហិរញ្ញវត្ថុ",
+    "admin.attention": "ត្រូវការយកចិត្តទុកដាក់",
     "admin.last7Days": "៧ ថ្ងៃចុងក្រោយ",
     "admin.orderVolume": "ចំនួនការបញ្ជាទិញ",
     "admin.orderTotal": "សរុបការបញ្ជាទិញ",
@@ -1285,7 +1659,7 @@
     "admin.netCashInflowHint": "= ប្រាក់ទទួល ABA + ការបញ្ចូលប្រាក់ − ការសងប្រាក់ ABA ដែលបានផ្ទេរ; ការសងចូលកាបូបត្រូវបានគណនារួចក្នុងការកាត់កាបូប",
     "admin.shortageRemoved": "ចំនួនកាត់បន្ថយដោយទំនិញអស់ស្តុក",
     "admin.refundReconcileDiff": "ភាពខុសគ្នានៃការផ្ទៀងផ្ទាត់ការសងប្រាក់",
-    "admin.refundPendingDetail": "{count} រង់ចាំ",
+    "admin.refundPendingDetail": "{{count}} រង់ចាំ",
     "admin.orderTotalGross": "សរុបការបញ្ជាទិញ (រួមទាំងបានលុបចោល)",
     "admin.externalOrderReceipts": "ប្រាក់ទទួលពីការបញ្ជាទិញ ABA",
     "admin.walletOrderPayments": "ការកាត់ពីកាបូប",
@@ -1336,6 +1710,34 @@
     "admin.description": "ការពិពណ៌នា",
     "admin.price": "តម្លៃ",
     "admin.createProduct": "បង្កើតផលិតផល",
+    "admin.catalog": "កាតាឡុក",
+    "admin.categories": "ការគ្រប់គ្រងប្រភេទ",
+    "admin.createCategory": "បន្ថែមប្រភេទ",
+    "admin.categoryName": "ឈ្មោះប្រភេទ",
+    "admin.categoryBasics": "ព័ត៌មានប្រភេទ",
+    "admin.productBasics": "ព័ត៌មានមូលដ្ឋាន",
+    "admin.productRules": "ជម្រើស និងពេលលក់",
+    "admin.productImage": "រូបភាព",
+    "admin.productOptions": "ជម្រើស / ការបន្ថែម",
+    "admin.productStatus": "ស្ថានភាព",
+    "admin.sortOrder": "លំដាប់",
+    "admin.sweetness": "កម្រិតផ្អែម",
+    "admin.allDay": "លក់ពេញមួយថ្ងៃ",
+    "admin.allProducts": "ផលិតផលទាំងអស់",
+    "admin.allCategories": "ប្រភេទទាំងអស់",
+    "admin.missingTranslation": "ខ្វះការបកប្រែ",
+    "admin.hasOptions": "មានជម្រើស / ការបន្ថែម",
+    "admin.noProducts": "មិនទាន់មានផលិតផលទេ។",
+    "admin.noCategories": "មិនទាន់មានប្រភេទទេ។",
+    "admin.searchProducts": "ស្វែងរកឈ្មោះផលិតផល",
+    "admin.catalogReadonly": "ហាងនេះអាចមើលកាតាឡុកបានប៉ុណ្ណោះ។ ការកែប្រែត្រូវធ្វើដោយការិយាល័យកណ្ដាល។",
+    "admin.productNotFound": "រកមិនឃើញផលិតផលនេះទេ។",
+    "admin.categoryNotFound": "រកមិនឃើញប្រភេទនេះទេ។",
+    "admin.priceRequired": "សូមបញ្ចូលតម្លៃត្រឹមត្រូវ។",
+    "admin.newProductTitle": "បន្ថែមផលិតផល",
+    "admin.editProductTitle": "កែសម្រួលផលិតផល",
+    "admin.newCategoryTitle": "បន្ថែមប្រភេទ",
+    "admin.editCategoryTitle": "កែសម្រួលប្រភេទ",
     "admin.from": "ចាប់ពី",
     "admin.to": "ដល់",
     "admin.timezone": "តំបន់ពេលវេលារបស់ហាង",
@@ -1384,6 +1786,17 @@
     "sweetness.100": "ផ្អែមធម្មតា · 100%",
     "nav.auditLogs": "កំណត់ត្រាសកម្មភាព",
     "admin.navigation": "ការរុករកអ្នកគ្រប់គ្រង",
+    "admin.nav.operations": "ប្រតិបត្តិការ",
+    "admin.nav.catalog": "ម៉ឺនុយ និងទីផ្សារ",
+    "admin.nav.finance": "ហិរញ្ញវត្ថុ",
+    "admin.nav.system": "ប្រព័ន្ធ",
+    "admin.storeSwitcher": "ហាង",
+    "admin.allStores": "ហាងទាំងអស់",
+    "admin.localized.language.en": "English",
+    "admin.localized.language.zh": "ចិន",
+    "admin.localized.language.km": "ខ្មែរ",
+    "admin.localized.missing": "ខ្វះការបកប្រែ",
+    "admin.localized.englishRequired": "ត្រូវការការបកប្រែជាភាសាអង់គ្លេស។",
     "admin.auditDescription": "ប្រតិបត្តិការក្នុងផ្ទាំងគ្រប់គ្រង និងក្រុម Telegram",
     "admin.noAuditLogs": "មិនទាន់មានកំណត់ត្រាសកម្មភាពទេ។",
     "admin.logTime": "ពេលវេលា",
@@ -1462,6 +1875,10 @@
     "payment.method.walletHint": "បង់ភ្លាមៗដោយប្រើសមតុល្យកាបូបដែលអាចប្រើបាន",
     "payment.walletFirstHint": "ប្រើសមតុល្យកាបូបជាមុន ហើយបង់តែចំនួននៅសល់តាម ABA។",
     "payment.orderTotal": "សរុបការកម្មង់",
+    "payment.paid": "បានបង់ប្រាក់",
+    "payment.refunded": "បានសងប្រាក់",
+    "payment.refundPending": "កំពុងរង់ចាំសងប្រាក់",
+    "payment.refundPendingNote": "បុគ្គលិកនឹងដំណើរការក្នុងពេលឆាប់ៗនេះ។",
     "payment.walletApplied": "បានកាត់ពីកាបូប",
     "payment.abaDue": "ចំនួនត្រូវបង់តាម ABA",
     "nav.wallet": "កាបូប",
@@ -1500,7 +1917,7 @@
     "admin.rechargeProof": "រូបភាពផ្ទេរប្រាក់",
     "admin.noProofYet": "អតិថិជនមិនទាន់ផ្ញើរូបភាពទេ",
     "admin.confirmRecharge": "បញ្ជាក់ការចូលគណនី",
-    "admin.receivedAmount": "ចំនួនទទួលបាន",
+    "admin.receivedAmount": "បានទទួល",
     "admin.receivedPlaceholder": "ចំនួនទឹកប្រាក់ដែលទទួលបានពិត",
     "admin.rejectPrompt": "ហេតុផលបដិសេធ",
     "admin.rejectRecharge": "បដិសេធ",
@@ -1609,6 +2026,17 @@
     "nav.operations": "ការគ្រប់គ្រងប្រតិបត្តិការ",
     "nav.coupons": "គូប៉ុង",
     "coupon.title": "គូប៉ុង",
+    "coupon.new": "បង្កើតគូប៉ុងថ្មី",
+    "coupon.edit": "កែសម្រួលគូប៉ុង",
+    "coupon.basics": "ច្បាប់គូប៉ុង",
+    "coupon.rule": "ច្បាប់",
+    "coupon.validity": "សុពលភាព",
+    "coupon.claims": "ចំនួនទទួល",
+    "coupon.unlimited": "គ្មានកំណត់",
+    "coupon.empty": "មិនទាន់មានគូប៉ុង",
+    "coupon.shareOpened": "បានបើកតំណចែករំលែក",
+    "coupon.requiredFields": "សូមបំពេញព័ត៌មានគូប៉ុងឱ្យពេញលេញ",
+    "coupon.notFound": "រកមិនឃើញគូប៉ុង",
     "coupon.name": "ឈ្មោះគូប៉ុង",
     "coupon.description": "ពិពណ៌នា",
     "coupon.type": "ប្រភេទ",
@@ -1631,6 +2059,8 @@
     "coupon.offline": "ផ្អាក",
     "coupon.generatePrivateLink": "បង្កើតតំណឯកជន",
     "coupon.share": "ចែករំលែក",
+    "coupon.shareTextDiscount": "Tea Cafe · {{name}} · បញ្ចុះ {{percent}}%",
+    "coupon.shareTextFixed": "Tea Cafe · {{name}} · បញ្ចុះ {{amount}}",
     "coupon.linkCopied": "បានចម្លងតំណ",
     "coupon.saveFailed": "រក្សាទុកមិនបាន",
     "coupon.selectCoupon": "ជ្រើសគូប៉ុង",
@@ -1664,7 +2094,7 @@
     "order.cancelledAfterShortage": "ការបញ្ជាទិញ {{order}} ត្រូវបានលុបចោល ព្រោះទំនិញអស់។ ប្រាក់កាបូបត្រូវបានសងវិញ។ សម្រាប់ ABA សូមទាក់ទងបុគ្គលិក។",
     "order.expiryReminder": "ការបញ្ជាទិញ {{order}} នឹងត្រូវលុបចោលក្នុងប្រហែល {{minutes}} នាទី ប្រសិនបើមិនបញ្ចប់ការបង់ប្រាក់។ សូមផ្ញើបង្កាន់ដៃឆាប់ៗ។",
     "order.lateProofAfterExpiry": "ការបញ្ជាទិញនេះត្រូវបានលុបចោលព្រោះផុតពេល។ ប្រសិនបើបានបង់ សូមទាក់ទងបុគ្គលិកដើម្បីពិនិត្យ។",
-    "order.shortageResolved": "បញ្ហាទំនិញអស់ក្នុងការបញ្ជាទិញ {{order}} ត្រូវបានដោះស្រាយ។ ចំនួនប្រាក់សង៖ {{amount}} USD។",
+    "order.shortageResolved": "បញ្ហាទំនិញអស់ក្នុងការបញ្ជាទិញ {{order}} ត្រូវបានដោះស្រាយ។ ចំនួនប្រាក់សង៖ {{amount}}។",
     "order.openShortage": "ការបញ្ជាទិញនេះមានបញ្ហាទំនិញអស់មិនទាន់ដោះស្រាយ។ សូមរង់ចាំការជ្រើសរើសរបស់អតិថិជន។",
     "payment.lateProofAfterExpiry": "ការបញ្ជាទិញនេះត្រូវបានលុបចោលព្រោះផុតពេល។ ប្រសិនបើបានបង់ សូមទាក់ទងបុគ្គលិក។",
     "admin.unpaidOrderReminder": "ការរំលឹកផុតពេលបង់ប្រាក់ (នាទី)",
@@ -1677,6 +2107,131 @@
     "order.shortageReminder": "ការបញ្ជាទិញ {{order}} នៅមានមុខទំនិញអស់ដែលត្រូវជ្រើសរើស។ សូមបើកការបញ្ជាទិញដើម្បីបន្ត។",
     "order.shortageEscalated": "បញ្ហាទំនិញអស់ក្នុងការបញ្ជាទិញ {{order}} ផុតពេល។ បុគ្គលិកនឹងជួយដោះស្រាយ។",
     "order.shortageEscalatedGroup": "ការដោះស្រាយទំនិញអស់សម្រាប់ការបញ្ជាទិញ {{order}} ផុតពេល។ ត្រូវការអ្នកគ្រប់គ្រងពិនិត្យ។",
-    "admin.approveRefund": "អនុម័តប្រាក់សង"
+    "admin.approveRefund": "អនុម័តប្រាក់សង",
+    "admin.ordersLoadFailed": "បរាជ័យក្នុងការផ្ទុកការបញ្ជាទិញ",
+    "admin.searchOrders": "ស្វែងរកលេខបញ្ជាទិញ អតិថិជន ឬឈ្មោះអ្នកប្រើ",
+    "admin.fromDate": "កាលបរិច្ឆេទចាប់ផ្តើម",
+    "admin.toDate": "កាលបរិច្ឆេទបញ្ចប់",
+    "admin.allPaymentStatuses": "ស្ថានភាពបង់ប្រាក់ទាំងអស់",
+    "admin.allPaymentMethods": "វិធីបង់ប្រាក់ទាំងអស់",
+    "admin.wallet": "កាបូប",
+    "admin.mixedPayment": "បង់ចម្រុះ",
+    "admin.pendingPayment": "រង់ចាំពិនិត្យការបង់ប្រាក់",
+    "admin.orderNumber": "លេខបញ្ជាទិញ",
+    "admin.customer": "អតិថិជន",
+    "admin.roomNumber": "បន្ទប់",
+    "admin.orderItems": "មុខទំនិញ",
+    "admin.total": "ចំនួនត្រូវបង់",
+    "admin.paymentStatus": "ការបង់ប្រាក់",
+    "admin.orderStatus": "ស្ថានភាពបញ្ជាទិញ",
+    "admin.openIssues": "មានបញ្ហា {{count}}",
+    "admin.totalRecords": "សរុប {{count}}",
+    "admin.previousPage": "មុន",
+    "admin.invalidDate": "កាលបរិច្ឆេទមិនត្រឹមត្រូវ",
+    "admin.invalidDateRange": "កាលបរិច្ឆេទចាប់ផ្តើមត្រូវមុន ឬស្មើកាលបរិច្ឆេទបញ្ចប់",
+    "admin.orderDetail": "ព័ត៌មានលម្អិតការបញ្ជាទិញ",
+    "admin.orderNotFound": "រកមិនឃើញការបញ្ជាទិញ",
+    "admin.openTelegram": "បើក Telegram",
+    "admin.pendingRefund": "សងប្រាក់កំពុងរង់ចាំ",
+    "admin.activity": "សកម្មភាព",
+    "admin.noActivity": "មិនទាន់មានសកម្មភាព",
+    "admin.product": "ទំនិញ",
+    "admin.quantity": "ចំនួន",
+    "admin.actions": "សកម្មភាព",
+    "admin.approvePayment": "បញ្ជាក់ការបង់ប្រាក់",
+    "admin.rejectPayment": "បដិសេធបង្កាន់ដៃ",
+    "admin.markDelivered": "បានដឹកជញ្ជូន",
+    "admin.actionFailed": "ប្រតិបត្តិការបរាជ័យ",
+    "admin.actionFailedWithReason": "ប្រតិបត្តិការបរាជ័យ៖ {{reason}}",
+    "admin.createdAt": "ពេលបង្កើត",
+    "admin.orderUser": "អ្នកប្រើបញ្ជាទិញ",
+    "admin.openChat": "បើកការជជែក",
+    "admin.copyTelegramId": "ចម្លង ID",
+    "admin.payableAmount": "ចំនួនត្រូវបង់",
+    "admin.uploadImageConstraint": "គាំទ្រ​តែ PNG, JPEG ឬ WebP មិនលើស 5MB។",
+    "admin.reviewPayment": "ពិនិត្យការបង់ប្រាក់",
+    "admin.transitionNotAllowed": "ស្ថានភាពការបញ្ជាទិញបច្ចុប្បន្នមិនអនុញ្ញាតឱ្យធ្វើសកម្មភាពនេះទេ",
+    "admin.reasonRequired": "សូមបញ្ចូលមូលហេតុ",
+    "admin.noPendingPaymentProof": "ការបញ្ជាទិញនេះមិនមានបង្កាន់ដៃរង់ចាំពិនិត្យទេ",
+    "admin.paymentReviewNotReady": "ការបញ្ជាទិញនេះមិនកំពុងរង់ចាំពិនិត្យការបង់ប្រាក់ទេ",
+    "admin.paymentReviewAcceptFirst": "សូមទទួលការបញ្ជាទិញជាមុនសិន មុនបញ្ជាក់ការទូទាត់",
+    "admin.paymentProofNotNeeded": "ការបញ្ជាទិញនេះមិនត្រូវការបង្កាន់ដៃបង់ប្រាក់ទេ",
+    "admin.paymentProofPending": "ការបញ្ជាទិញនេះមានបង្កាន់ដៃរង់ចាំពិនិត្យរួចហើយ",
+    "admin.noWalletPayment": "ការបញ្ជាទិញនេះមិនមានការទូទាត់តាមកាបូបដែលបានបញ្ជាក់ទេ",
+    "admin.refundApprovalNotReady": "ការសងប្រាក់នេះមិនកំពុងរង់ចាំការអនុម័តពីអ្នកគ្រប់គ្រងទេ",
+    "admin.refundCompletionNotReady": "ការសងប្រាក់នេះមិនកំពុងរង់ចាំបញ្ចប់ទេ",
+    "admin.refundedAmount": "ប្រាក់ដែលបានសង",
+    "admin.pendingShort": "រង់ចាំសង {{amount}}",
+    "common.confirm": "បញ្ជាក់",
+    "common.reason": "មូលហេតុ",
+    "admin.staff.account": "គណនី",
+    "admin.staff.store": "ហាង",
+    "admin.staff.lastLogin": "ចូលប្រើចុងក្រោយ",
+    "admin.staff.resetPassword": "កំណត់ពាក្យសម្ងាត់ឡើងវិញ",
+    "admin.staff.temporaryPassword": "ពាក្យសម្ងាត់បណ្តោះអាសន្ន (បង្ហាញតែម្តង)",
+    "admin.staff.forceChange": "ត្រូវប្តូរនៅពេលចូលលើកដំបូង",
+    "admin.staff.new": "បុគ្គលិកថ្មី",
+    "admin.staff.edit": "កែបុគ្គលិក",
+    "admin.staff.passwordHint": "យ៉ាងហោចណាស់ ១២ តួអក្សរ",
+    "admin.staff.passwordChanged": "បានធ្វើបច្ចុប្បន្នភាពពាក្យសម្ងាត់",
+    "admin.staff.selfChange": "ប្តូរពាក្យសម្ងាត់របស់ខ្ញុំ",
+    "admin.settings.business": "ការកំណត់អាជីវកម្ម",
+    "admin.settings.payment": "ការកំណត់ការទូទាត់",
+    "admin.settings.notice": "ការកំណត់ការជូនដំណឹង",
+    "admin.settings.region": "ការកំណត់តំបន់",
+    "admin.settings.editSection": "កែការកំណត់",
+    "admin.settings.testNotification": "ផ្ញើសារសាកល្បង",
+    "admin.settings.testNotificationSuccess": "បានផ្ញើសារសាកល្បង",
+    "admin.settings.testNotificationFailed": "ផ្ញើសារសាកល្បងបរាជ័យ៖ {{reason}}",
+    "admin.settings.currencyConfirm": "ការផ្លាស់ប្តូររូបិយប័ណ្ណប៉ះពាល់ដល់ការបញ្ជាទិញបន្ទាប់។ បន្តទេ?",
+    "admin.settings.forcePasswordTitle": "សូមប្តូរពាក្យសម្ងាត់បណ្តោះអាសន្ន",
+    "admin.settings.forcePassword": "ពាក្យសម្ងាត់ថ្មី",
+    "admin.settings.saveSection": "រក្សាទុកក្រុមនេះ",
+    "admin.settings.overview": "ទិដ្ឋភាពទូទៅការកំណត់"
+    ,"admin.dashboard.orders": "និន្នាការការបញ្ជាទិញ"
+    ,"admin.dashboard.todayOrders": "ការបញ្ជាទិញថ្ងៃនេះ"
+    ,"admin.dashboard.todaySales": "ការលក់ថ្ងៃនេះ"
+    ,"admin.dashboard.pendingOrders": "ការបញ្ជាទិញរង់ចាំ"
+    ,"admin.dashboard.status": "ស្ថានភាពការបញ្ជាទិញ"
+    ,"admin.dashboard.payment": "វិធីទូទាត់"
+    ,"admin.dashboard.hourly": "ការបញ្ជាទិញតាមម៉ោង"
+    ,"admin.dashboard.hour": "ម៉ោង"
+    ,"admin.dashboard.topProducts": "ទំនិញលក់ដាច់"
+    ,"admin.dashboard.noData": "មិនមានទិន្នន័យ"
+    ,"admin.dashboard.value": "តម្លៃ"
+    ,"admin.dashboard.percent": "ភាគរយ"
+    ,"admin.dashboard.date": "កាលបរិច្ឆេទ"
+    ,"admin.dashboard.quantity": "ចំនួន"
+    ,"admin.refundMethod": "វិធីសងប្រាក់"
+    ,"admin.permissionDenied": "អ្នកមិនមានសិទ្ធិមើលទំព័រនេះទេ។ អ្នកត្រូវបានត្រឡប់ទៅទិដ្ឋភាពទូទៅ។"
+    ,"admin.dashboard.users": "និន្នាការអ្នកប្រើប្រាស់"
+    ,"admin.dashboard.totalUsers": "អ្នកប្រើប្រាស់សរុប"
+    ,"admin.dashboard.newUsers": "អ្នកប្រើប្រាស់ថ្មីថ្ងៃនេះ"
+    ,"admin.dashboard.activeUsers": "អ្នកប្រើប្រាស់សកម្មថ្ងៃនេះ"
+    ,"admin.dashboard.pendingRefunds": "ការសងប្រាក់រង់ចាំ"
+    ,"admin.dashboard.days": "ចំនួនថ្ងៃ"
+    ,"admin.refunds.title": "ការសងប្រាក់"
+    ,"admin.refunds.all": "ទាំងអស់"
+    ,"admin.refunds.pending": "រង់ចាំ"
+    ,"admin.refunds.done": "បានបញ្ចប់"
+    ,"admin.refunds.reference": "លេខយោងផ្ទេរ"
+    ,"admin.refunds.complete": "សម្គាល់ថាបានផ្ទេរ"
+    ,"admin.refunds.approve": "អនុម័តសងប្រាក់កាបូប"
+    ,"admin.refunds.method.aba_manual": "សងប្រាក់ ABA ដោយដៃ"
+    ,"admin.refunds.method.wallet": "សងប្រាក់តាមកាបូប"
+    ,"admin.refunds.method.mixed": "សងប្រាក់ចម្រុះ"
+    ,"admin.refunds.status.pending": "រង់ចាំ"
+    ,"admin.refunds.status.done": "បានបញ្ចប់"
+    ,"admin.status": "ស្ថានភាព"
+    ,"admin.productCount": "ចំនួនទំនិញ"
+    ,"admin.configured": "បានកំណត់រួច"
+    ,"admin.notConfigured": "មិនទាន់កំណត់"
+    ,"admin.startTime": "ម៉ោងចាប់ផ្តើម"
+    ,"admin.endTime": "ម៉ោងបញ្ចប់"
+    ,"admin.businessHoursEqualError": "ម៉ោងចាប់ផ្តើម និងម៉ោងបញ្ចប់ត្រូវតែខុសគ្នា"
+    ,"admin.noStaff": "គ្មានគណនីបុគ្គលិក"
+    ,"admin.paymentMethod": "វិធីទូទាត់"
+    ,"admin.staff.hq": "ការិយាល័យកណ្តាល"
+    ,"common.error": "មានបញ្ហាកើតឡើង"
   }
 }

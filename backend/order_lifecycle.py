@@ -172,7 +172,7 @@ async def notify_cancelled(db: AsyncSession, order: Order, reason_key: str) -> N
 async def notify_issue_resolved(db: AsyncSession, order: Order, issue, refund_amount_minor: int = 0) -> None:
     """Refresh group card and tell staff how a shortage was resolved."""
     try:
-        from telegram_service import send_bot_message, tr, update_order_message
+        from telegram_service import _currency_amount, send_bot_message, tr, update_order_message
         from store_context import store_for_order
         customer = (await db.execute(select(Customer).filter(Customer.id == order.customer_id))).scalars().first()
         settings = await store_for_order(db, order)
@@ -183,7 +183,8 @@ async def notify_issue_resolved(db: AsyncSession, order: Order, issue, refund_am
                                        order, settings.staff_group_language, items, customer)
             await send_bot_message(settings.telegram_staff_group_id,
                                    tr("order.shortageResolved", settings.staff_group_language,
-                                      order=order.public_code, amount=f"{refund_amount_minor / 100:.2f}"))
+                                      order=order.public_code,
+                                      amount=_currency_amount(refund_amount_minor, order.currency)))
     except Exception as exc:
         log.warning("shortage notification failed for %s: %s", getattr(order, "public_code", "?"), exc)
 

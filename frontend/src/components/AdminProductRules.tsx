@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import api from '../api';
 import { toMinorUnits } from '../format';
 
-type SaleWindowRow = { start: string; end: string };
-type OptionRow = { nameEn: string; nameZh: string; nameKm: string; price: string; isDefault: boolean; active: boolean };
-type GroupRow = {
+export type SaleWindowRow = { start: string; end: string };
+export type OptionRow = { nameEn: string; nameZh: string; nameKm: string; price: string; isDefault: boolean; active: boolean };
+export type GroupRow = {
   nameEn: string; nameZh: string; nameKm: string;
   kind: 'SPEC' | 'ADDON'; required: boolean; multiSelect: boolean; maxSelect: string; active: boolean;
   options: OptionRow[];
@@ -16,6 +16,37 @@ const emptyGroup = (): GroupRow => ({
   nameEn: '', nameZh: '', nameKm: '', kind: 'SPEC', required: true, multiSelect: false,
   maxSelect: '', active: true, options: [emptyOption()],
 });
+
+export const toRulesWindows = (windows: Array<{ start: string; end: string }> = []): SaleWindowRow[] =>
+  windows.map((window) => ({ start: window.start, end: window.end }));
+
+export const toRulesGroups = (groups: Array<{
+  name?: Record<string, string>;
+  name_text?: string;
+  kind: string;
+  required: boolean;
+  multi_select: boolean;
+  max_select: number | null;
+  active?: boolean;
+  options: Array<{ name?: Record<string, string>; name_text?: string; price_delta_minor: number; is_default: boolean; active?: boolean }>;
+}> = []): GroupRow[] => groups.map((group) => ({
+  nameEn: group.name?.en ?? group.name_text ?? '',
+  nameZh: group.name?.['zh-CN'] ?? '',
+  nameKm: group.name?.km ?? '',
+  kind: (group.kind === 'ADDON' ? 'ADDON' : 'SPEC') as 'SPEC' | 'ADDON',
+  required: group.required,
+  multiSelect: group.multi_select,
+  maxSelect: group.max_select ? String(group.max_select) : '',
+  active: group.active !== false,
+  options: group.options.map((option) => ({
+    nameEn: option.name?.en ?? option.name_text ?? '',
+    nameZh: option.name?.['zh-CN'] ?? '',
+    nameKm: option.name?.km ?? '',
+    price: String(option.price_delta_minor / 100),
+    isDefault: option.is_default,
+    active: option.active !== false,
+  })),
+}));
 
 /**
  * 菜品的「售卖时间」与「规格 / 附加」编辑器（管理端）。

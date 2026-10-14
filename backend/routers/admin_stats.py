@@ -4,15 +4,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import func, text
+from sqlalchemy import case, cast, func, Integer, or_, text
 
 from database import get_db
 from dependencies import get_current_staff
 from store_context import default_store, get_store, visible_store_id
-from models import Order, PaymentReview, StoreSettings
+from models import Order, OrderItem, OrderRefund, PaymentReview, StoreSettings, Customer, CustomerDailyActivity, Store
 from refund_metrics import ZERO_REFUND_METRICS, refund_metrics
 
 router = APIRouter(prefix="/api/v1/admin/analytics", tags=["Admin Stats"])
+dashboard_router = APIRouter(prefix="/api/v1/admin", tags=["Admin Dashboard"])
 
 
 @router.get("/")
@@ -179,3 +180,98 @@ async def get_analytics(
         "by_currency": [{"currency": currency, **values} for currency, values in sorted(totals.items())],
         "manual_review_basis": True,
     }
+
+
+@dashboard_router.get("/dashboard")
+async def get_dashboard(days: int = Query(7, ge=7, le=30), store: str | None = None,
+                        staff_info: dict = Depends(get_current_staff),
+                        db: AsyncSession = Depends(get_db)):
+    """Single-request overview aggregation using the same store/date rules as finance."""
+    if days not in {7, 30}:
+        raise HTTPException(status_code=422, detail="days must be 7 or 30")
+    scope = visible_store_id(staff_info)
+    selected = await get_store(db, scope) if scope is not None else await default_store(db)
+    if scope is None and store:
+        selected = (await db.execute(select(Store).filter(Store.code == store, Store.status == "ACTIVE"))).scalars().first()
+        if selected is None:
+            raise HTTPException(status_code=404, detail="Store not found")
+        scope = selected.id
+    timezone_name = (selected.timezone if selected else None) or "Asia/Phnom_Penh"
+    try:
+        store_tz = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError as exc:
+        raise HTTPException(status_code=500, detail="Store timezone is invalid") from exc
+    today = datetime.now(store_tz).date()
+    start_date = today - timedelta(days=days - 1)
+    start_utc = datetime.combine(start_date, time.min, store_tz).astimezone(timezone.utc)
+    end_utc = datetime.combine(today + timedelta(days=1), time.min, store_tz).astimezone(timezone.utc)
+
+    def order_scope():
+        return or_(Order.store_id == scope, Order.store_id.is_(None)) if scope is not None else True
+
+    # Use bounded GROUP BY queries instead of loading every order/customer/item
+    # into Python just to render the dashboard.
+    local_day = func.date(func.timezone(timezone_name, Order.created_at))
+    local_hour = cast(func.extract("hour", func.timezone(timezone_name, Order.created_at)), Integer)
+    sales_case = case((Order.order_status != "CANCELLED", Order.total_minor), else_=0)
+    series = {(start_date + timedelta(days=i)).isoformat(): {"orders": 0, "sales_minor": 0, "new_users": 0, "daily_active": 0} for i in range(days)}
+    day_rows = await db.execute(select(local_day, func.count(Order.id), func.coalesce(func.sum(sales_case), 0)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(local_day))
+    for day, count, amount in day_rows.all():
+        if day.isoformat() in series:
+            series[day.isoformat()]["orders"] = int(count or 0)
+            series[day.isoformat()]["sales_minor"] = int(amount or 0)
+
+    customer_day = func.date(func.timezone(timezone_name, Customer.created_at))
+    customer_rows = await db.execute(select(customer_day, func.count(Customer.id)).where(
+        Customer.created_at < end_utc,
+        or_(Customer.store_id == scope, Customer.store_id.is_(None)) if scope is not None else True,
+    ).group_by(customer_day))
+    total_users = 0
+    for day, count in customer_rows.all():
+        total_users += int(count or 0)
+        if day.isoformat() in series:
+            series[day.isoformat()]["new_users"] = int(count or 0)
+
+    activity_rows = await db.execute(select(CustomerDailyActivity.activity_date, func.count(func.distinct(CustomerDailyActivity.customer_id))).where(
+        CustomerDailyActivity.activity_date >= start_date,
+        CustomerDailyActivity.activity_date <= today,
+        or_(CustomerDailyActivity.store_id == scope, CustomerDailyActivity.store_id.is_(None)) if scope is not None else True,
+    ).group_by(CustomerDailyActivity.activity_date))
+    for day, count in activity_rows.all():
+        if day.isoformat() in series:
+            series[day.isoformat()]["daily_active"] = int(count or 0)
+
+    status_rows = await db.execute(select(Order.order_status, func.count(Order.id)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(Order.order_status))
+    status_breakdown = {status: int(count or 0) for status, count in status_rows.all()}
+    payment_rows = await db.execute(select(Order.payment_method, func.count(Order.id)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(Order.payment_method))
+    payment_breakdown = {method or "UNKNOWN": int(count or 0) for method, count in payment_rows.all()}
+    hourly_rows = await db.execute(select(local_hour, func.count(Order.id)).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc, order_scope()).group_by(local_hour))
+    hourly = [0] * 24
+    for hour, count in hourly_rows.all():
+        if hour is not None and 0 <= int(hour) < 24:
+            hourly[int(hour)] = int(count or 0)
+
+    pending_orders = await db.scalar(select(func.count(Order.id)).where(Order.order_status == "NEW", order_scope())) or 0
+    pending_review = await db.scalar(select(func.count(Order.id)).where(Order.payment_status == "PROOF_SUBMITTED", order_scope())) or 0
+    name_expr = func.coalesce(OrderItem.product_name_snapshot.op("->>")("en"), "—")
+    item_rows = await db.execute(select(name_expr, func.sum(OrderItem.quantity)).join(Order, OrderItem.order_id == Order.id).where(
+        Order.created_at >= start_utc, Order.created_at < end_utc,
+        Order.order_status != "CANCELLED", order_scope()).group_by(name_expr).order_by(func.sum(OrderItem.quantity).desc()).limit(10))
+    top_products = [{"name": str(name), "quantity": int(quantity or 0)} for name, quantity in item_rows.all()]
+    pending_refunds = await db.scalar(select(func.count(OrderRefund.id)).join(Order, OrderRefund.order_id == Order.id).where(
+        OrderRefund.status == "PENDING", order_scope())) or 0
+    sales = sum(item["sales_minor"] for item in series.values())
+    return {"from": start_date.isoformat(), "to": today.isoformat(), "timezone": timezone_name,
+            "currency": (selected.currency if selected else "USD"),
+            "kpis": {"today_orders": series[today.isoformat()]["orders"], "today_sales_minor": series[today.isoformat()]["sales_minor"],
+                     "pending_orders": int(pending_orders), "pending_review": int(pending_review),
+                     "pending_refunds": int(pending_refunds), "total_users": total_users,
+                     "new_users": series[today.isoformat()]["new_users"], "daily_active": series[today.isoformat()]["daily_active"]},
+            "series": [{"date": key, **value} for key, value in series.items()],
+            "status_breakdown": status_breakdown, "payment_breakdown": payment_breakdown,
+            "hourly": [{"hour": hour, "orders": count} for hour, count in enumerate(hourly)],
+            "top_products": top_products, "sales_minor": sales}

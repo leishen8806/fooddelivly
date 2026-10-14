@@ -1,0 +1,7 @@
+import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import api from '../api';
+import { AdminSectionPage } from './layout/AdminSectionPage';
+import { useAuthStore } from '../store/authStore';
+export default function AdminForcePasswordPage() { const { t } = useTranslation(); const navigate = useNavigate(); const { setAdminAuth, staffId, role, storeId, catalogWriteAllowed } = useAuthStore(); const [password, setPassword] = useState(''); const [error, setError] = useState(''); const submit = async (event: FormEvent) => { event.preventDefault(); try { await api.post('/api/v1/auth/admin/change-password', { password }); setAdminAuth(staffId || '', role || 'STAFF', storeId, catalogWriteAllowed, false); navigate('/admin/overview'); } catch (cause) { setError((cause as { response?: { data?: { detail?: string } } }).response?.data?.detail || t('error.generic')); } }; return <AdminSectionPage activeSection="overview"><section className="panel catalog-edit-page"><h2>{t('admin.settings.forcePasswordTitle')}</h2>{error && <p className="error" role="alert">{error}</p>}<form className="product-form" onSubmit={(event) => void submit(event)}><label>{t('admin.settings.forcePassword')}<input type="password" minLength={12} value={password} onChange={(event) => setPassword(event.target.value)} required /></label><button className="primary">{t('common.save')}</button></form></section></AdminSectionPage>; }

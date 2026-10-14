@@ -11,6 +11,7 @@ from database import get_db
 from models import StoreSettings, AuditLog
 from store_context import default_store as load_default_store
 from dependencies import get_current_manager, get_current_staff
+from telegram_service import _bot
 from jose import jwt
 import os
 
@@ -36,6 +37,7 @@ class BusinessHour(BaseModel):
 
 class SettingsUpdate(BaseModel):
     currency: str = Field(pattern=r"^[A-Z]{3}$")
+    confirm_currency_change: bool = False
     timezone: str = Field(min_length=1, max_length=64)
     aba_qr_asset_key: str | None = None
     payment_link: str | None = None
@@ -90,6 +92,10 @@ class SettingsUpdate(BaseModel):
             raise ValueError("Telegram group ID must be numeric")
         return value
 
+
+class TestNotificationRequest(BaseModel):
+    message: str = Field(default="Tea Cafe test message", min_length=1, max_length=500)
+
 async def _resolve_target_store(db: AsyncSession, staff_info: dict, store_code: str | None):
     """决定这次读写哪家门店。
 
@@ -112,9 +118,9 @@ async def _resolve_target_store(db: AsyncSession, staff_info: dict, store_code: 
     return await default_store(db)
 
 
-def _store_payload(store) -> dict:
+def _store_payload(store, *, include_sensitive: bool = True) -> dict:
     """统一的门店配置结构（管理端设置页用的就是它）。"""
-    return {
+    payload = {
         "store_id": store.id,
         "store_code": store.code,
         "store_name": store.name,
@@ -138,6 +144,26 @@ def _store_payload(store) -> dict:
         "commission_fixed_minor": store.commission_fixed_minor or 0,
         "settlement_cycle": store.settlement_cycle,
     }
+    if not include_sensitive:
+        # STAFF may inspect operating status and non-sensitive regional values,
+        # but must not receive payment endpoints, QR asset keys, or staff-group IDs.
+        payload.pop("aba_qr_asset_key", None)
+        payload.pop("payment_link", None)
+        payload.pop("telegram_staff_group_id", None)
+    return payload
+
+
+def _summary_payload(payload: dict, *, include_sensitive: bool = True) -> dict:
+    result = {
+        "business": {key: payload[key] for key in ("is_accepting_orders", "business_hours", "min_order_minor", "delivery_fee_minor", "service_fee_minor", "unpaid_order_timeout_minutes", "unpaid_order_reminder_minutes", "shortage_customer_response_timeout_minutes", "shortage_refund_review_minor")},
+        "payment": {"currency": payload["currency"]},
+        "notice": {"staff_group_language": payload["staff_group_language"]},
+        "region": {key: payload[key] for key in ("timezone", "store_code", "store_name")},
+    }
+    if include_sensitive:
+        result["payment"].update({key: payload[key] for key in ("aba_qr_asset_key", "payment_link")})
+        result["notice"]["telegram_staff_group_id"] = payload["telegram_staff_group_id"]
+    return result
 
 
 @router.get("", include_in_schema=False)
@@ -153,7 +179,20 @@ async def get_settings(store: str | None = None,
     target = await _resolve_target_store(db, staff_info, store)
     if target is None:
         raise HTTPException(status_code=404, detail="Store not found")
-    return _store_payload(target)
+    include_sensitive = staff_info.get("role") == "MANAGER"
+    return _store_payload(target, include_sensitive=include_sensitive)
+
+
+@router.get("/summary")
+async def get_settings_summary(store: str | None = None,
+                               staff_info: dict = Depends(get_current_staff),
+                               db: AsyncSession = Depends(get_db)):
+    target = await _resolve_target_store(db, staff_info, store)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Store not found")
+    include_sensitive = staff_info.get("role") == "MANAGER"
+    payload = _store_payload(target, include_sensitive=include_sensitive)
+    return {"settings": payload, "groups": _summary_payload(payload, include_sensitive=include_sensitive)}
 
 
 @router.patch("", include_in_schema=False)
@@ -173,6 +212,12 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
                 raise HTTPException(status_code=422,
                                     detail="营业时间的开始与结束不能相同（全天营业请留空）")
 
+    currency_before = target.currency
+    if req.currency != target.currency:
+        if manager_info.get("store_id") is not None:
+            raise HTTPException(status_code=403, detail="Only headquarters can change currency")
+        if not req.confirm_currency_change:
+            raise HTTPException(status_code=422, detail="confirm_currency_change is required")
     target.currency = req.currency
     target.timezone = req.timezone
     target.aba_qr_asset_key = req.aba_qr_asset_key
@@ -222,9 +267,8 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
         legacy.shortage_customer_response_timeout_minutes = int(target.shortage_customer_response_timeout_minutes or 0)
         legacy.shortage_refund_review_minor = int(target.shortage_refund_review_minor or 0)
 
-    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
-                    entity_id=str(target.id), action="updated", store_id=target.id,
-                    details={"store_code": target.code, "currency": target.currency,
+    details = {"store_code": target.code, "currency_before": currency_before,
+                             "currency_after": target.currency,
                              "timezone": target.timezone,
                              "payment_link_configured": bool(target.payment_link),
                              "qr_configured": bool(target.aba_qr_asset_key),
@@ -238,7 +282,46 @@ async def update_settings(req: SettingsUpdate, store: str | None = None,
                              "unpaid_order_timeout_minutes": target.unpaid_order_timeout_minutes,
                              "unpaid_order_reminder_minutes": target.unpaid_order_reminder_minutes,
                              "shortage_customer_response_timeout_minutes": target.shortage_customer_response_timeout_minutes,
-                             "shortage_refund_review_minor": target.shortage_refund_review_minor}))
+                             "shortage_refund_review_minor": target.shortage_refund_review_minor}
+    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
+                    entity_id=str(target.id), action="updated", store_id=target.id,
+                    details=details))
     await db.commit()
     await db.refresh(target)
     return _store_payload(target)
+
+
+@router.patch("/{section}")
+async def update_settings_section(section: str, req: SettingsUpdate, store: str | None = None,
+                                  manager_info: dict = Depends(get_current_manager),
+                                  db: AsyncSession = Depends(get_db)):
+    if section not in {"business", "payment", "notice", "region"}:
+        raise HTTPException(status_code=404, detail="Settings section not found")
+    # Keep one validation and audit path; section pages submit the full current
+    # snapshot so legacy clients and new pages cannot diverge.
+    return await update_settings(req, store, manager_info, db)
+
+
+@router.post("/test-notification")
+async def test_notification(req: TestNotificationRequest, store: str | None = None,
+                            manager_info: dict = Depends(get_current_manager),
+                            db: AsyncSession = Depends(get_db)):
+    target = await _resolve_target_store(db, manager_info, store)
+    if target is None:
+        raise HTTPException(status_code=404, detail="Store not found")
+    if not target.telegram_staff_group_id:
+        return {"ok": False, "reason": "Telegram staff group is not configured"}
+    bot = _bot()
+    if bot is None:
+        return {"ok": False, "reason": "Telegram bot is not configured"}
+    try:
+        await bot.send_message(chat_id=target.telegram_staff_group_id, text=req.message)
+    except Exception as exc:  # noqa: BLE001 - return a safe provider reason
+        return {"ok": False, "reason": f"Telegram send failed: {exc}"}
+    finally:
+        await bot.session.close()
+    db.add(AuditLog(actor_staff_id=manager_info["staff_id"], entity_type="store_settings",
+                    entity_id=str(target.id), action="test_notification", store_id=target.id,
+                    details={"group_configured": True, "language": target.staff_group_language}))
+    await db.commit()
+    return {"ok": True, "group_id": target.telegram_staff_group_id}
