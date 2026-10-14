@@ -2919,6 +2919,82 @@ small {
 .dashboard-peak { margin: .25rem 0 0; color: var(--color-muted); font-size: 12px; }
 .dashboard-chart-empty { min-height: 180px; display: grid; place-items: center; }
 
+/* Overview control-room treatment: compact, high-signal, and still on the Tea Cafe palette. */
+.admin-shell .admin-sidebar {
+  background: var(--color-surface);
+  border-right-color: var(--color-border);
+}
+.admin-shell .admin-sidebar-brand {
+  padding-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border);
+}
+.admin-shell .admin-header {
+  position: relative;
+  overflow: hidden;
+  border-bottom: 0;
+  background: var(--color-brand);
+  color: #fff;
+}
+.admin-shell .admin-header::after {
+  position: absolute;
+  right: 7%;
+  bottom: -4.5rem;
+  width: 14rem;
+  height: 8rem;
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+}
+.admin-shell .admin-header .eyebrow,
+.admin-shell .admin-header h1 { position: relative; z-index: 1; color: #fff; }
+.admin-shell .admin-header .eyebrow { color: #c8eaf1; }
+.admin-shell .admin-header .header-actions { position: relative; z-index: 2; }
+.admin-shell .admin-header .header-actions select,
+.admin-shell .admin-header .header-actions button { border-color: rgb(255 255 255 / 45%); color: #fff; background: transparent; }
+.admin-shell .admin-header .header-actions select:focus-visible,
+.admin-shell .admin-header .header-actions button:focus-visible { box-shadow: 0 0 0 3px rgb(255 255 255 / 35%); }
+.admin-shell .admin-nav button { transition: background-color .18s ease, color .18s ease, transform .18s ease; }
+.admin-shell .admin-nav button:hover { color: var(--color-brand); background: var(--color-tint); transform: translateX(2px); }
+.dashboard-page { padding: 0; border: 0; background: transparent; box-shadow: none; }
+.dashboard-toolbar { margin-bottom: var(--space-4); padding: var(--space-4) var(--space-5); border: 1px solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface); box-shadow: var(--shadow-card); }
+.dashboard-toolbar .eyebrow { color: var(--color-accent); letter-spacing: .14em; }
+.dashboard-period { font-weight: var(--weight-semibold); letter-spacing: .01em; }
+.dashboard-period-switch { border-color: var(--color-brand); background: var(--color-canvas); }
+.dashboard-period-switch button { transition: background-color .18s ease, color .18s ease, transform .18s ease; }
+.dashboard-period-switch button:hover { transform: translateY(-1px); }
+.dashboard-page > .overview-grid { gap: var(--space-3); }
+.dashboard-page > .overview-grid .metric { position: relative; overflow: hidden; min-height: 7.5rem; padding: var(--space-4) var(--space-5); border-color: var(--color-border); background: var(--color-surface); box-shadow: 0 8px 24px rgb(76 105 113 / 7%); }
+.dashboard-page > .overview-grid .metric::before { position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--color-accent); content: ""; }
+.dashboard-page > .overview-grid .metric:nth-child(2)::before { background: #d16b45; }
+.dashboard-page > .overview-grid .metric:nth-child(3)::before,
+.dashboard-page > .overview-grid .metric:nth-child(4)::before,
+.dashboard-page > .overview-grid .metric:nth-child(5)::before { background: var(--color-warning); }
+.dashboard-page > .overview-grid .metric span { font-size: 12px; letter-spacing: .02em; }
+.dashboard-page > .overview-grid .metric strong { margin-top: var(--space-2); font-size: 1.75rem; line-height: 1.15; letter-spacing: -.02em; }
+.dashboard-page > .overview-grid .metric-subtitle { max-width: 15rem; }
+.dashboard-page > .overview-grid .metric-action:hover { border-color: var(--color-accent); box-shadow: 0 10px 28px rgb(70 170 211 / 16%); transform: translateY(-2px); }
+.dashboard-grid { gap: var(--space-3); }
+.dashboard-grid > .panel { min-width: 0; overflow: hidden; padding: var(--space-4) var(--space-5) var(--space-5); border-color: var(--color-border); background: var(--color-surface); box-shadow: 0 8px 24px rgb(76 105 113 / 7%); }
+.dashboard-grid > .panel h3 { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-3); color: var(--color-brand); font-size: var(--type-small); letter-spacing: .03em; }
+.dashboard-period-tag { flex: none; padding: .2rem .5rem; border: 1px solid var(--color-border); border-radius: var(--radius-pill); background: var(--color-canvas); font-size: 12px; letter-spacing: 0; }
+.dashboard-chart-wrap { padding: var(--space-2) var(--space-2) var(--space-1); border: 1px solid var(--color-border); border-radius: var(--radius-control); background: var(--color-canvas); }
+.dashboard-chart-label, .dashboard-chart-value, .dashboard-axis-label { font-variant-numeric: tabular-nums; }
+.dashboard-chart-label { font-weight: var(--weight-medium); }
+.dashboard-chart-value { font-weight: var(--weight-bold); }
+.dashboard-trend-chart polyline { stroke-linecap: round; stroke-linejoin: round; }
+.dashboard-single-payment { padding: var(--space-5); background: var(--color-tint); }
+.dashboard-single-payment > strong { color: var(--color-brand); font-variant-numeric: tabular-nums; }
+.dashboard-peak { padding-top: var(--space-2); font-weight: var(--weight-semibold); }
+
+@media (prefers-color-scheme: dark) {
+  .admin-shell .admin-sidebar { background: var(--color-surface); }
+  .admin-shell .admin-header { background: #20383e; }
+  .dashboard-toolbar, .dashboard-page > .overview-grid .metric, .dashboard-grid > .panel { box-shadow: 0 8px 24px rgb(0 0 0 / 20%); }
+  .dashboard-period-switch { background: var(--color-surface-raised); }
+  .dashboard-chart-wrap { background: var(--color-surface-raised); }
+}
+
 
 .coupon-claim-notice {
   position: fixed;
