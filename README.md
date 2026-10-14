@@ -46,6 +46,16 @@ docker compose exec backend python create_manager.py manager
 
 The command prompts for and confirms a password. Do not put the password in shell history or process arguments. After a manager exists, create other staff accounts in the admin console.
 
+To create a cross-store headquarters manager when managers already exist, use the explicit HQ flow:
+
+```sh
+docker compose exec backend python create_manager.py hq-manager --hq
+# type: yes
+# enter and confirm the password interactively (12-72 UTF-8 bytes)
+```
+
+`--hq` creates a `MANAGER` with `store_id = NULL`, writes an `hq_manager_created` audit record without the password, and may be used alongside existing branch managers. `--yes` is reserved for automation; passwords are never accepted as command-line or environment values.
+
 ## Telegram webhook setup
 
 After the public HTTPS route is live, register the webhook from the backend container so the token and secret do not appear in shell history:

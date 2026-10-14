@@ -111,7 +111,8 @@ SELECT count(*) FROM stores WHERE status = 'ACTIVE';
 
 ## 6. 多门店前置条件（开第二家店之前）
 
-- [ ] **先创建总部账号**（`staff.store_id IS NULL` 的 MANAGER）。目前 `create_manager.py` 只在没有任何经理时可用，且新建的是总部账号；已有经理时需要用库内操作或后续提供的 `--hq` 选项。**没有总部账号就开第二家店，会导致任何人都无法修改共享菜单。**
+- [ ] **先创建总部账号**（`staff.store_id IS NULL` 的 MANAGER）。迁移完成后在 backend 容器中执行 `python create_manager.py <登录名> --hq`，按提示输入 `yes`，再交互输入并确认 12–72 UTF-8 字节密码；不要把密码放入参数、环境变量或 shell 历史。该命令即使已有门店经理也会创建总部账号，并写入 `hq_manager_created` 审计记录（不含密码）。**没有总部账号就开第二家店，会导致任何人都无法修改共享菜单。**
+- [ ] 登录总部账号后确认 `/auth/admin/me` 返回 `store_id: null`，后台显示“全部门店”，可以跨店读取并修改共享目录；随后立即在后台改用唯一强密码并保管凭据。
 - [ ] 门店经理改价/沽清在多店模式下 403，需等「门店覆盖」功能（见后台重构提示词阶段 D）。
 - [ ] 验证：`python backend/tests/cross_store_security_test.py <url>`（需种子数据）。
 
