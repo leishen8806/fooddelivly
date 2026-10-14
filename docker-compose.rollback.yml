@@ -1,0 +1,17 @@
+# 回滚专用覆盖文件：让后端**跳过** `alembic upgrade head` 直接启动。
+#
+# 用途：上线后需要回滚代码，但数据库已迁移到更高版本时使用。
+# 旧代码的镜像默认命令是 `alembic upgrade head && uvicorn ...`，数据库版本比旧代码更高，
+# 迁移会报 "Can't locate revision" 导致容器反复重启。本文件把命令换成只启动服务。
+#
+# 已在演练环境验证（旧版 f750caa 代码 + 已升级到 q0123456789j 的库）：
+# 菜单、下单、后台订单列表、财务统计均正常。迁移是"只加不删"，旧代码不受新列/新表影响。
+#
+# 用法（先 git checkout 回上一个稳定提交）：
+#   docker compose -f docker-compose.yml -f docker-compose.rollback.yml up -d --build backend frontend
+#
+# 注意：这只回滚代码，数据库保持不动；回滚期间新功能产生的数据（退款记录、缺货记录、日活等）
+# 旧代码不会读取，但仍保留在库里。恢复正常版本后无需额外处理。
+services:
+  backend:
+    command: ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers"]

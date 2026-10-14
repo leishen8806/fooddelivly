@@ -129,11 +129,14 @@ SELECT count(*) FROM stores WHERE status = 'ACTIVE';
 
 ## 8. 回滚
 
-**优先回滚代码，不回滚数据库。** 本次迁移全部为加列/建表，旧版本代码对新列无感知（新增列均有默认值）：
+**优先回滚代码，不回滚数据库。** 本次迁移全部为加列/建表/回填，旧版本代码对新列无感知（新增列均有默认值）。已在演练环境验证：旧版代码跳过迁移直接启动，连接已升级到 `q0123456789j` 的库，菜单、下单、后台订单列表、财务统计均正常。
+
 ```bash
-git checkout <上一个稳定提交> && docker compose build backend frontend && docker compose up -d
+git checkout <上一个稳定提交>
+# 必须使用回滚覆盖文件：旧镜像默认命令含 alembic upgrade head，库版本更高会报 "Can't locate revision" 而反复重启
+docker compose -f docker-compose.yml -f docker-compose.rollback.yml up -d --build backend frontend
 ```
-> 旧代码启动时会执行 `alembic upgrade head`，因库已在更新版本，Alembic 会报「找不到版本」而无法启动。回滚代码前需临时把 Dockerfile 的启动命令去掉 `alembic upgrade head`（或用 `alembic stamp` 谨慎处理），**这一步务必在演练环境先试过**。
+> 恢复到新版本时去掉覆盖文件即可（`docker compose up -d --build`）。
 
 > 迁移 `p`（日活表）、`q`（员工两列）均可 `alembic downgrade` 回退，但回退会丢失日活数据与「必须改密」标记；`m`/`n`/`o` 的回退同样只删表/删列。**回滚代码前先备份。**
 
