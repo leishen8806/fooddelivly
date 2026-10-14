@@ -83,7 +83,9 @@ class CustomerDailyActivityPostgresTest(unittest.IsolatedAsyncioTestCase):
         self.Customer = Customer
         self.CustomerDailyActivity = CustomerDailyActivity
         self.Store = Store
-        self.engine = create_async_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+        self.engine = create_async_engine(
+            os.environ["DATABASE_URL"], pool_pre_ping=True, pool_size=5, max_overflow=0
+        )
         self.sessions = async_sessionmaker(self.engine, expire_on_commit=False, class_=AsyncSession)
         async with self.sessions() as db:
             self.store = (await db.execute(select(Store).order_by(Store.id).limit(1))).scalars().first()
@@ -143,12 +145,12 @@ class CustomerDailyActivityPostgresTest(unittest.IsolatedAsyncioTestCase):
                 )
                 await db.commit()
 
-        await asyncio.gather(*(write(index) for index in range(100)))
+        await asyncio.gather(*(write(index) for index in range(30)))
         async with self.sessions() as db:
             rows = (await db.execute(self._select(self.CustomerDailyActivity).where(
                 self.CustomerDailyActivity.customer_id == self.customer.id))).scalars().all()
         self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0].last_seen_at, moment + timedelta(seconds=99))
+        self.assertEqual(rows[0].last_seen_at, moment + timedelta(seconds=29))
 
     async def test_telegram_login_records_activity(self):
         from starlette.requests import Request

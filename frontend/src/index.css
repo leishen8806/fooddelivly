@@ -2868,6 +2868,16 @@ small {
 .dashboard-breakdown-row { display: grid; grid-template-columns: minmax(6rem, 1fr) 2fr auto; align-items: center; gap: .6rem; }
 .dashboard-breakdown-track { height: .55rem; background: var(--color-tint); border-radius: 999px; overflow: hidden; }
 .dashboard-breakdown-track i { display: block; height: 100%; background: var(--color-accent); border-radius: inherit; }
+.dashboard-chart-wrap { min-width: 0; overflow: hidden; }
+.dashboard-chart-label, .dashboard-chart-value { fill: currentColor; font-size: 12px; }
+.dashboard-chart-value { font-weight: 700; }
+.dashboard-chart-legend { display: grid; gap: .45rem; margin: 0; padding: 0; list-style: none; font-size: var(--type-caption); }
+.dashboard-chart-legend li, .dashboard-chart-legend > span { display: flex; align-items: center; gap: .45rem; }
+.dashboard-chart-legend li strong { margin-left: auto; }
+.dashboard-chart-legend i { width: .7rem; height: .7rem; border-radius: 50%; flex: none; }
+.dashboard-legend-line { display: inline-block; width: 1.2rem; border-top: 3px solid var(--color-accent); }
+.dashboard-legend-sales { border-top-style: dashed; border-top-color: #d16b45; }
+.dashboard-chart-empty { min-height: 180px; display: grid; place-items: center; }
 
 
 .coupon-claim-notice {

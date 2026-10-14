@@ -266,6 +266,7 @@ async def get_dashboard(days: int = Query(7, ge=7, le=30), store: str | None = N
         OrderRefund.status == "PENDING", order_scope())) or 0
     sales = sum(item["sales_minor"] for item in series.values())
     return {"from": start_date.isoformat(), "to": today.isoformat(), "timezone": timezone_name,
+            "currency": (selected.currency if selected else "USD"),
             "kpis": {"today_orders": series[today.isoformat()]["orders"], "today_sales_minor": series[today.isoformat()]["sales_minor"],
                      "pending_orders": int(pending_orders), "pending_review": int(pending_review),
                      "pending_refunds": int(pending_refunds), "total_users": total_users,
