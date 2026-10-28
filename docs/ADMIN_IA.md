@@ -2,7 +2,7 @@
 
 > 依据：当前 `frontend/src/App.tsx` 的 `AdminPage` 与 `components/Admin*.tsx`、后台 API 返回字段、P0 之后的门店隔离规则。
 > 标 **【新增】** 的字段/功能需要后端补接口或字段，其余现有 API 已提供。
-> 配套：问题与修复阶段见 [ADMIN_FIX_PROMPT.md](ADMIN_FIX_PROMPT.md)；本文是 P1–P3 的界面规格。
+> 配套：问题与修复阶段见 ADMIN_FIX 任务提示词（只保存在本机，不在仓库）；本文是 P1–P3 的界面规格。
 
 ## 1. 现状的主要问题
 
